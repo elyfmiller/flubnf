@@ -1,0 +1,584 @@
+diff --git a/app/tests/test_data_issues.py b/app/tests/test_data_issues.py
+index 6b449b7c..12e4cf37 100644
+--- a/app/tests/test_data_issues.py
++++ b/app/tests/test_data_issues.py
+@@ -346,6 +346,45 @@ def test_a_zero_state_without_a_choice_takes_the_recommendation(tmp_path, monkey
+     assert ui_state._status.get("running") is None
+ 
+ 
++def test_a_zero_state_the_trailing_zero_rule_covers_is_offered_only_what_applies(
++        tmp_path, monkeypatch):
++    """FC-13: with Newest weeks reading 0 counted as unreported, the box
++    still offered Level, Extend and Blend for a state that rule covers,
++    and a run recorded the choice ("Arizona: ... level") beside the rule's
++    own line ("treated as unreported (trailing zero): Arizona 1"). The
++    engines forecast such a state from the week before whatever zero rule
++    it is given, so the box offers only what applies and the record never
++    says a rule it did not use."""
++    _hub(tmp_path / "hub", monkeypatch, newest={"Ohio": "0", "Utah": "5"})
++    ui_state._last_form.clear()
++    ui_state._last_form.update({"forecast_date": NEW, "locations": ["all"],
++                                "engine": "all",
++                                "knobs": {"data.trailing_zero": "missing"}})
++    page = client.get("/forecast").text
++    box = page[page.index('id="data-issues"'):page.index("</fieldset>")]
++    ohio = box.split('name="gap.39"', 1)[1].split("</select>", 1)[0]
++    assert "<option value=\"level\"" not in ohio and "Extend" not in ohio
++    assert '<option value="set_aside" selected>Both from' in ohio
++    assert '<option value="omit">Leave out</option>' in ohio
++    assert "counted as unreported by the Newest weeks reading 0 setting" in box
++    # a stale form's zero rule for that state is not recorded as applied
++    started = _capture_run(monkeypatch)
++    r = _post({"gap.39": "level", "gap.49": "keep",
++               "knob.data.trailing_zero": "missing"})
++    assert r.status_code == 303 and len(started) == 1
++    dc = started[0].extra["data_choices"]
++    assert "Ohio" not in dc["states"] and dc["states"]["Utah"]["choice"] == "keep"
++    assert "Ohio" not in runs_mod.data_issues_label(started[0].extra)
++    # without the rule the choice is the state's, as before
++    ui_state._last_form["knobs"] = {}
++    page = client.get("/forecast").text
++    ohio = page.split('name="gap.39"', 1)[1].split("</select>", 1)[0]
++    assert '<option value="level"' in ohio
++    r = _post({"gap.39": "level", "gap.49": "keep"})
++    assert len(started) == 2
++    assert started[1].extra["data_choices"]["states"]["Ohio"]["choice"] == "level"
++
++
+ def test_the_choices_reach_the_spec_and_a_left_out_state_leaves_the_list(tmp_path, monkeypatch):
+     _hub(tmp_path / "hub", monkeypatch, newest={"Ohio": "0", "Utah": "5"})
+     started = _capture_run(monkeypatch)
+diff --git a/app/tests/test_datasets_ui.py b/app/tests/test_datasets_ui.py
+index d82bf94c..f72953b0 100644
+--- a/app/tests/test_datasets_ui.py
++++ b/app/tests/test_datasets_ui.py
+@@ -326,8 +326,12 @@ def test_run_refuses_a_number_the_browser_allows_in_words(monkeypatch):
+         "dataset": ds.id, "forecast_date": "2023-12-02", "locations": "all",
+         "engine": "analogue", "weeks_to_drop": "1e1"}, follow_redirects=False)
+     assert r.status_code == 303 and got == []
+-    assert ("Not run: model settings: run.weeks_to_drop: '1e1' is not a "
+-            "valid int." in ui_state._status["flash"])
++    # the panel on the dataset's Forecast view says it, once (FC-21)
++    assert "model settings" not in (ui_state._status.get("flash") or "")
++    page = client.get(f"/forecast?source={ds.id}").text
++    said = page.split('id="ms-refused">')[1].split("</div>")[0]
++    assert "<strong>Not run.</strong>" in said
++    assert "Weeks to drop: &#39;1e1&#39; is not a whole number." in said
+ 
+ 
+ def test_run_refuses_a_blank_date_in_plain_words(monkeypatch):
+diff --git a/app/tests/test_forecast_mechanics.py b/app/tests/test_forecast_mechanics.py
+index e7455755..667e1d1b 100644
+--- a/app/tests/test_forecast_mechanics.py
++++ b/app/tests/test_forecast_mechanics.py
+@@ -213,7 +213,7 @@ def test_a_saturday_with_no_week_says_why():
+     says what the run's refusal will."""
+     js = ("var VS = ['2025-01-04', '2025-01-11', '2025-01-25'];\n" + _anchor_js()
+           + "\nconsole.log(JSON.stringify(['2025-01-18', '2027-01-02', "
+-            "'2024-12-28', '2025-01-20'].map(function (d) {"
++            "'2024-12-28', '2025-01-20', ''].map(function (d) {"
+             " return [anchorFor(d), anchorFor(d) ? '' : noWeek(d)]; })));")
+     out = subprocess.run(["node", "-e", js], capture_output=True, text=True,
+                          timeout=60)
+@@ -222,7 +222,21 @@ def test_a_saturday_with_no_week_says_why():
+         [None, "No snapshot dated 2025-01-18; nearest earlier 2025-01-11."],
+         [None, "No data for 2027-01-02 yet; the data ends at 2025-01-25."],
+         [None, "No archived week on or before 2024-12-28."],
+-        ["2025-01-11", ""]]
++        ["2025-01-11", ""],
++        # the field cleared: a prompt, never "on or before ." (FC-23)
++        [None, "Pick a date."]]
++
++
++def test_the_picker_follows_a_typed_date():
++    """FC-25: the archived-week picker kept the week last picked after a
++    date was typed, so that week could not be picked again (re-choosing
++    the shown option fires no change). It follows the date now."""
++    assert ("if (pick) pick.value = VS.indexOf(box.value) >= 0 ? box.value : '';"
++            in TEMPLATE)
++    css = (Path(__file__).resolve().parents[1] / "ui" / "static" / "tabs"
++           / "forecast.css").read_text()
++    # FC-18: a Data issues select is as wide as its longest option
++    assert ".fc-di .di-state select{width:auto;flex:1 1 auto;min-width:7.5rem;" in css
+ 
+ 
+ def test_the_anchor_line_hides_when_it_has_nothing_to_say():
+diff --git a/app/tests/test_knobs_panel.py b/app/tests/test_knobs_panel.py
+index 4d5536bf..6879cdcf 100644
+--- a/app/tests/test_knobs_panel.py
++++ b/app/tests/test_knobs_panel.py
+@@ -143,6 +143,9 @@ def test_forecast_panel_renders_every_forecast_knob_with_its_help():
+           / "model_settings.js").read_text()
+     assert "g.querySelectorAll('.ms-row.ms-changed:not([hidden])')" in js
+     assert "c.textContent = n + ' changed';" in js
++    # Reset to defaults hides the refusal over the values it reset (FC-22)
++    reset = js.split("reset.addEventListener('click'", 1)[1].split("update();", 1)[0]
++    assert "box.querySelector('.fc-ms-refused')" in reset and "said.hidden = true" in reset
+     # a changed row's mark names the default
+     assert "--ms-mark:'changed · default 10,000'" in panel
+     # raw choice values read as words
+@@ -258,7 +261,8 @@ def test_a_refused_submission_keeps_the_typed_values_and_reads_modified(
+                               "knob.oracle.w": "0.25", "replicates": "4",
+                               "submit_modified": "1"},      # no reason
+                 follow_redirects=False)
+-    assert "needs a reason" in ui_state._status.get("flash", "")
++    # the panel says it, once (FC-21): no second notice at the top
++    assert "needs a reason" not in (ui_state._status.get("flash") or "")
+     html = client.get("/forecast").text
+     f = _panel_form(html)
+     got = dict(f.fields)
+@@ -506,6 +510,27 @@ def test_a_refusal_names_the_setting_as_the_panel_does():
+     assert ui_forms._refusal_words("the form sent knob.x more than once") == (
+         "The form sent knob.x more than once.")
+     assert ui_forms._knob_panel("forecast", {"ms_refused": True})["refused"] == ""
++    # the engine's and the coercion's phrases in plain words (FC-21)
++    assert ui_forms._refusal_words(
++        "pf.prior.Reff: prior_ranges: Reff__FREE [2.5, 0.6] is not a valid "
++        "uniform_var range") == (
++        "Prior range for Reff: the low end must be below the high end "
++        "(2.5, 0.6).")
++    assert ui_forms._refusal_words(
++        "pf.prior.r: prior_ranges: r__FREE [0.0, 2.0] is not a valid "
++        "loguniform_var range") == (
++        "Prior range for r: the low end must be above 0 and below the high "
++        "end (0.0, 2.0).")
++    assert ui_forms._refusal_words("pf.jitter: 'abc' is not a valid float") == (
++        "Kernel jitter: 'abc' is not a number.")
++    assert ui_forms._refusal_words("pf.replicates: '2.5' is not a valid int") == (
++        "Replicates: '2.5' is not a whole number.")
++    assert ui_forms._refusal_words("pf.prior.r: '0.1' is not a valid range") == (
++        "Prior range for r: '0.1' needs two numbers, low then high.")
++    # the panel's alert leads with the one line that says the run did not
++    # start, on either tab
++    assert ui_forms._knob_panel("forecast", {})["refused_lead"] == "Not run."
++    assert ui_forms._knob_panel("retro", {})["refused_lead"] == "Not started."
+ 
+ 
+ def test_the_panel_comes_into_view_when_opened_near_the_windows_foot():
+diff --git a/app/tests/test_knobs_wiring.py b/app/tests/test_knobs_wiring.py
+index 39b2fdda..f22b5ede 100644
+--- a/app/tests/test_knobs_wiring.py
++++ b/app/tests/test_knobs_wiring.py
+@@ -15,6 +15,7 @@ No hub and no engine: the console fixture of test_oracle_step fakes the
+ filter and the Groundhog and runs the real Oracle step on a tiny vintage.
+ """
+ import csv
++import html
+ import json
+ import sys
+ from pathlib import Path
+@@ -189,19 +190,20 @@ def test_older_field_names_are_the_same_knobs(tmp_path, monkeypatch):
+     # two different off-shipped values for one knob: refused, nothing runs
+     _post({"particles": "2000", "knob.pf.particles": "3000"})
+     assert len(started) == 3 and ui_state._status.get("running") is None
+-    assert "two values" in ui_state._status.get("flash", "")
++    assert "two values" in client.get("/forecast").text.split(
++        'id="ms-refused">')[1].split("</div>")[0]
+ 
+ 
+ @pytest.mark.parametrize("data,msg", [
+     ({"knob.oracle.w": "2"}, "outside"),
+     ({"knob.pf.jitter": "nan"}, "finite"),
+     ({"knob.oracle.count_floor": "5"}, "coming later"),
+-    ({"knob.pf.particle": "5"}, "unknown knob"),
+-    ({"replicates": "0"}, "pf.replicates"),
++    ({"knob.pf.particle": "5"}, "Unknown knob"),
++    ({"replicates": "0"}, "Replicates: 0 is outside 1 to 10"),
+     # typed as text: valid to the browser's number box, not a whole number
+-    ({"particles": "1e4"}, "pf.particles"),
+-    ({"replicates": "2.5"}, "pf.replicates"),
+-    ({"weeks_to_drop": "one"}, "run.weeks_to_drop"),
++    ({"particles": "1e4"}, "Particles: '1e4' is not a whole number"),
++    ({"replicates": "2.5"}, "Replicates: '2.5' is not a whole number"),
++    ({"weeks_to_drop": "one"}, "Weeks to drop: 'one' is not a whole number"),
+     ({"knob.oracle.w": "0.25", "submit_modified": "1"}, "needs a reason"),
+     ({"members": "3", "knob.pf.prior.r": "0.1,80"}, "two-strain"),
+     # a knob field repeated in one form: refused, never the last value
+@@ -212,12 +214,16 @@ def test_older_field_names_are_the_same_knobs(tmp_path, monkeypatch):
+ def test_a_refused_knob_starts_nothing(tmp_path, monkeypatch, data, msg,
+                                        pf_engine_ready):
+     started = _capture_run(monkeypatch, tmp_path)
++    ui_state._status.pop("flash", None)
+     r = _post(data)
+     assert r.status_code == 303
+     assert started == [] and ui_state._status.get("running") is None
+-    assert msg in ui_state._status.get("flash", "")
+-    assert "Not run" in ui_state._status.get("flash", "")
+-    assert ui_state._status.get("flash_kind") == "warn"
++    # the panel says it, once, in plain words, under "Not run." (FC-21):
++    # the tab gets no second notice at the top
++    assert not ui_state._status.get("flash")
++    page = client.get("/forecast").text
++    said = html.unescape(page.split('id="ms-refused">')[1].split("</div>")[0])
++    assert "<strong>Not run.</strong>" in said and msg in said, said
+ 
+ 
+ @pytest.mark.parametrize("field,typed,key", [
+@@ -229,14 +235,19 @@ def test_a_number_the_browser_allows_is_refused_on_the_panel(
+     """The browser's number box passes 1e4; an int field answered with a
+     raw JSON 422 page. Now the panel's own refusal, the typed value kept."""
+     started = _capture_run(monkeypatch, tmp_path)
++    ui_state._status.pop("flash", None)
+     r = _post({field: typed})
+     assert r.status_code == 303 and started == []
+-    assert (f"Not run: model settings: {key}: '{typed}' is not a valid int."
+-            in ui_state._status["flash"])
++    # the panel says it, once, in plain words: no second notice at the
++    # top by the setting's key (FC-21)
++    assert not ui_state._status.get("flash")
+     page = client.get("/forecast").text
+     assert '<details class="adv" open data-refused id="model-settings"' in page
+     why = page.split('id="ms-refused">')[1].split("</div>")[0]
+-    assert f"{K.BY_KEY[key].label}: &#39;{typed}&#39; is not a valid int." in why
++    assert "<strong>Not run.</strong>" in why
++    assert (f"{K.BY_KEY[key].label}: &#39;{typed}&#39; is not a whole number."
++            in why)
++    assert "is not a valid int" not in page
+     assert f'name="{field}" id="ks-{key.replace(".", "-")}" value="{typed}"' in page
+ 
+ 
+@@ -257,8 +268,12 @@ def test_a_replay_refuses_a_number_the_browser_allows_in_words(tmp_path,
+         "season": "2024-25", "locations": "panel6", "engine": "pf",
+         "replicates": "3.5"}, follow_redirects=False)
+     assert r.status_code == 303 and launched == []
+-    assert ("Not started: model settings: pf.replicates: '3.5' is not a "
+-            "valid int." in ui_state._status["flash"])
++    # the Settings card's panel says it, once (FC-21): no second notice
++    assert "model settings" not in (ui_state._status.get("flash") or "")
++    page = html.unescape(client.get("/retro").text)
++    said = page.split('id="ms-refused">')[1].split("</div>")[0]
++    assert "<strong>Not started.</strong>" in said
++    assert "Replicates: '3.5' is not a whole number." in said
+ 
+ 
+ @pytest.mark.parametrize("typed,width", [
+diff --git a/app/tests/test_partial_week_datasets.py b/app/tests/test_partial_week_datasets.py
+index 6ea36f61..afac57ee 100644
+--- a/app/tests/test_partial_week_datasets.py
++++ b/app/tests/test_partial_week_datasets.py
+@@ -63,10 +63,8 @@ def test_a_dataset_run_refuses_it(monkeypatch):
+         "engine": "analogue", f"knob.{PARTIAL}": "missing"},
+         follow_redirects=False)
+     assert got == []
+-    flash = ui_state._status.get("flash", "")
+-    assert (f"Not run: model settings: {PARTIAL}: this rule's floor (a prior "
+-            "week of 20 or more) assumes hospital admission counts and cannot "
+-            "run on the custom dataset 'Kids'.") in flash
++    # the panel opens on it and says why (checked below); no top notice
++    assert "model settings" not in ui_state._status.get("flash", "")
+     # the trailing-zero rule runs
+     client.post("/run/dataset", data={
+         "dataset": ds.id, "forecast_date": "2023-12-02", "locations": "all",
+diff --git a/app/tests/test_research_run.py b/app/tests/test_research_run.py
+index 33a4c453..bcf568fc 100644
+--- a/app/tests/test_research_run.py
++++ b/app/tests/test_research_run.py
+@@ -127,7 +127,10 @@ def test_particles_defaults_and_refuses_out_of_range(tmp_path, monkeypatch):
+     # refused before the engine is claimed, never clamped
+     assert len(started) == 1
+     assert ui_state._status.get("running") is None
+-    assert "pf.particles" in ui_state._status.get("flash", "")
++    # the panel says it, once (FC-21): no notice at the top by its key
++    assert not ui_state._status.get("flash")
++    assert "Particles: 999,999 is outside" in client.get("/forecast").text.split(
++        'id="ms-refused">')[1].split("</div>")[0]
+ 
+ 
+ # ----------------------------------------------------------------- the tag
+diff --git a/app/tests/test_retro_forms.py b/app/tests/test_retro_forms.py
+index 7f15104a..a1f94942 100644
+--- a/app/tests/test_retro_forms.py
++++ b/app/tests/test_retro_forms.py
+@@ -93,8 +93,11 @@ def test_the_run_form_shows_its_choices_again_after_a_refusal(tmp_path,
+     client.post("/retro/run", data={**fields, "locations": "panel6",
+                                     "knob.groundhog.zero_anchor": "often"},
+                 follow_redirects=False)
+-    assert "model settings" in ui_state._status["flash"]
+-    assert 'open data-refused id="model-settings"' in _run_form()
++    # the panel says it, once (FC-21): no second notice at the top
++    assert "model settings" not in (ui_state._status.get("flash") or "")
++    form = _run_form()
++    assert 'open data-refused id="model-settings"' in form
++    assert "<strong>Not started.</strong>" in form
+     assert 'open data-refused' not in _run_form()
+ 
+ 
+diff --git a/app/ui/datasets_ui.py b/app/ui/datasets_ui.py
+index 2c7893bb..0a42450e 100644
+--- a/app/ui/datasets_ui.py
++++ b/app/ui/datasets_ui.py
+@@ -742,7 +742,7 @@ def _start_run(request, background, ds_id, forecast_date, locations, engine,
+     try:
+         kraw = knob_values(ds, knob_fields, knobs_json)
+     except ValueError as e:                  # KnobError is a ValueError
+-        shared._flash(f"Not run: model settings: {e}.", "warn")
++        shared._flash(f"Not run: {forms._refusal_words(str(e))}", "warn")
+         return RedirectResponse(here, status_code=303)
+     _LAST[ds.id] ={"forecast_date": fd, "locations": groups
+                     if len(groups) < len(ds.groups) else ["all"],
+@@ -771,9 +771,9 @@ def _start_run(request, background, ds_id, forecast_date, locations, engine,
+         from app.core import missing as _missing
+         _missing.refuse_on_dataset(extra, ds.name)
+     except ValueError as e:
+-        # the panel opens on its error, the reason under its head
++        # the panel opens on its error, the reason under its head; no
++        # second notice for it
+         _LAST[ds.id]["ms_refused"] = str(e) or True
+-        shared._flash(f"Not run: model settings: {e}.", "warn")
+         return RedirectResponse(here, status_code=303)
+     kspec = forms._knobs.spec_fields(nd)
+     # built before the claim: nothing between the claim and the queued
+diff --git a/app/ui/forms.py b/app/ui/forms.py
+index 1eca566e..cb7ad32e 100644
+--- a/app/ui/forms.py
++++ b/app/ui/forms.py
+@@ -181,15 +181,39 @@ def _knob_panel(scope: str, form: dict | None = None,
+     why = form.get("ms_refused")
+     p["open"] = bool(why)
+     p["refused"] = _refusal_words(why) if isinstance(why, str) else ""
++    # the one line that says the run did not start: the panel's, under
++    # its head (the page shows no second notice for it)
++    p["refused_lead"] = "Not started." if scope == "retro" else "Not run."
+     return p
+ 
+ 
++#: the engine's and the coercion's phrases, said in plain words for the
++#: panel (the key's label comes first; these are the rest of the line)
++_PLAIN = (
++    (re.compile(r"prior_ranges: \S+ \[(.+?), (.+?)\] is not a valid "
++                r"loguniform_var range"),
++     r"the low end must be above 0 and below the high end (\1, \2)"),
++    (re.compile(r"prior_ranges: \S+ \[(.+?), (.+?)\] is not a valid "
++                r"uniform_var range"),
++     r"the low end must be below the high end (\1, \2)"),
++    (re.compile(r"is not a valid float"), "is not a number"),
++    (re.compile(r"is not a valid int"), "is not a whole number"),
++    (re.compile(r"is not a valid range"), "needs two numbers, low then high"),
++    (re.compile(r"is not a valid date"), "is not a date (YYYY-MM-DD)"),
++    (re.compile(r"is not a valid bool"), "is not on or off"),
++)
++
++
+ def _refusal_words(text: str) -> str:
+     """A refusal over the model settings as the panel says it: its knob
+     named by the panel's label ("Oracle blend weight: 2 is outside 0 to
+-    1."), never by its key."""
++    1."), never by its key, and the engine's phrases in plain words
++    (_PLAIN)."""
+     key, sep, rest = text.strip().partition(": ")
+     knob = _knobs.BY_KEY.get(key) if sep else None
++    if knob:
++        for pat, plain in _PLAIN:
++            rest = pat.sub(plain, rest)
+     text = f"{knob.label}: {rest}" if knob else text.strip()
+     text = text[:1].upper() + text[1:]
+     return text if text.endswith(".") else text + "."
+diff --git a/app/ui/routes/forecast.py b/app/ui/routes/forecast.py
+index f52a964c..f9a12991 100644
+--- a/app/ui/routes/forecast.py
++++ b/app/ui/routes/forecast.py
+@@ -22,7 +22,8 @@ from app.core.runs import (Ledger, RunSpec, results_html, results_tip,
+ from app.ui import pipeline, retro_seasons, shared, state, templating
+ from app.ui.forms import (_default_forecast_date, _gap_form, _int_field,
+                           _knob_form, _knob_panel, _knob_raw, _knobs,
+-                          _season_auto, _str_field, resolve_anchor)
++                          _refusal_words, _season_auto, _str_field,
++                          resolve_anchor)
+ from app.ui.retro_seasons import _RETRO_ACTIVE, _season_status
+ from app.ui.routes import data as data_routes
+ from app.ui.routes import output as output_routes
+@@ -96,11 +97,14 @@ def forecast_page(request: Request, source: str = "", tab: str = ""):
+     # this page is built (its card's poll reloads the page)
+     running = _status.get("running") or ""
+     _fa.restore_last_form(_last_form, _default_forecast_date)
+-    form = dict(_last_form) or {"forecast_date": _default_forecast_date(),
+-                                "locations": ["all"],
+-                                "engine": "all",
+-                                "weeks_to_drop": 0, "weeks_to_nowcast": 0,
+-                                "replicates": 3, "members": 2, "season_start": ""}
++    # the defaults under the remembered form: a refusal before the first
++    # run remembers only its reason, and the page still needs every field
++    form = {"forecast_date": _default_forecast_date(),
++            "locations": ["all"],
++            "engine": "all",
++            "weeks_to_drop": 0, "weeks_to_nowcast": 0,
++            "replicates": 3, "members": 2, "season_start": "",
++            **_last_form}
+     # a refusal over the model settings opens the panel on this page only;
+     # a later visit shows it as the user left it
+     _last_form.pop("ms_refused", None)
+@@ -270,6 +274,18 @@ def _data_issues_context(rep, form) -> tuple:
+     from app.core import missing as MS
+     from app.core import reported as _rep
+     rows = _rep.box_rows(rep)
++    # a zero state the run-wide trailing-zero rule covers (the last form's
++    # setting) is forecast from the week before whatever zero rule it is
++    # given: the box offers it only what applies
++    knobs = (form or {}).get("knobs") or {}
++    for r in rows:
++        if _rule_covers_zero(r, knobs):
++            r["options"] = [(v, t) for v, t in r["options"]
++                            if v not in MS.ZERO_ANCHOR_RULES]
++            if r["rec"] in MS.ZERO_ANCHOR_RULES:
++                r["rec"] = "set_aside"
++            r["why"] = r["hint"] = (f"{r['why']}; counted as unreported by "
++                                    "the Newest weeks reading 0 setting")
+     prior = ((form or {}).get("data_choices") or {}).get(rep.week) or {}
+     facts = " ".join(f for f, on in ((_rep.ZERO_FACT, rep.zeros),
+                                      (_rep.COLLAPSED_FACT, rep.collapsed)) if on)
+@@ -279,6 +295,20 @@ def _data_issues_context(rep, form) -> tuple:
+              "all_options": all_options}, _source_sha(rep.week))
+ 
+ 
++def _rule_covers_zero(row: dict, knobs) -> bool:
++    """Whether the run-wide trailing-zero rule (data.trailing_zero =
++    missing in `knobs`, raw or normalized) counts this zero state's newest
++    weeks as unreported (missing.tail_flags on the weeks the box shows):
++    the engines then anchor on the week before, so a zero rule chosen for
++    the state would never apply."""
++    from app.core import missing as MS
++    if (row.get("issue") != "zero"
++            or str((knobs or {}).get("data.trailing_zero") or "") != "missing"):
++        return False
++    values = [float(v) for _, v in row.get("reported") or ()]
++    return bool(MS.tail_flags(values, {"data.trailing_zero": "missing"}))
++
++
+ def _data_choices(forecast_date: str, newest, engine: str, locs: list,
+                   gap_fields: dict, nd: dict, prior=None) -> tuple:
+     """The per-state choices of a run: (the data_choices record or None,
+@@ -337,6 +367,10 @@ def _data_choices(forecast_date: str, newest, engine: str, locs: list,
+             if g.reason == "zero" and knob:
+                 continue             # the run-wide rule covers it
+             choice = r["rec"]        # the box's preselection
++        if choice in MS.ZERO_ANCHOR_RULES and _rule_covers_zero(r, nd):
++            continue    # the trailing-zero rule forecasts it from the week
++            #             before: a zero rule for it would never apply, so
++            #             the record never says it did
+         entry = {"issue": g.reason, "what": g.what(), "choice": choice,
+                  "week": rep.week,
+                  "reported": (r["aside"] if choice == "set_aside"
+@@ -1063,6 +1097,19 @@ def _report_v2_retired() -> tuple:
+ 
+ 
+ # === Forecast: POST /run (form and rerun entry to _run_all) ===
++def _settings_refused(request: Request, e: Exception) -> RedirectResponse:
++    """A run refused over its model settings: the Forecast tab's panel
++    opens on it and says why under its head (ms_refused, one-shot), so
++    the tab gets no second notice; a page without the panel (a model
++    page's form) gets the one line, in the panel's words."""
++    from urllib.parse import urlsplit
++    _last_form["ms_refused"] = str(e) or True
++    back = _back(request, "/forecast")
++    if urlsplit(back.headers["location"]).path != "/forecast":
++        _flash(f"Not run: {_refusal_words(str(e))}", "warn")
++    return back
++
++
+ @router.post("/run")
+ def run_models(request: Request,
+                background: BackgroundTasks,
+@@ -1134,10 +1181,7 @@ def run_models(request: Request,
+     try:
+         kraw = _knob_raw(knob_fields, knobs)
+     except ValueError as e:                  # KnobError is a ValueError
+-        # the panel opens on its error, the reason under its head
+-        _last_form["ms_refused"] = str(e) or True
+-        _flash(f"Not run: model settings: {e}.", "warn")
+-        return _back(request, "/forecast")
++        return _settings_refused(request, e)
+     override =_str_field(submit_modified).lower() in ("1", "on", "true", "yes")
+     reason = _str_field(modified_reason).strip()
+     kept, kept_fields = _kept_settings(
+@@ -1255,9 +1299,7 @@ def run_models(request: Request,
+                     "drop_same_day": bool(_int_field(drop_same_day))},
+             override=override, reason=reason)
+     except ValueError as e:                  # KnobError is a ValueError
+-        _last_form["ms_refused"] = str(e) or True
+-        _flash(f"Not run: model settings: {e}.", "warn")
+-        return _back(request, "/forecast")
++        return _settings_refused(request, e)
+     kspec = _knobs.spec_fields(nd)
+     season_start = kspec.get("season_start", "")
+     weeks_to_drop = int(kspec.get("weeks_to_drop", 0))
+diff --git a/app/ui/routes/retro.py b/app/ui/routes/retro.py
+index f6894860..4a570a8b 100644
+--- a/app/ui/routes/retro.py
++++ b/app/ui/routes/retro.py
+@@ -597,8 +597,9 @@ def retro_run(background: BackgroundTasks, season: str = Form(...),
+                         **({"drop_same_day": drop_same_day}
+                            if _str_field(drop_same_day).strip() else {})})
+         except ValueError as e:              # KnobError is a ValueError
++            # the panel opens on it and says why, once; no second notice
+             _last_retro_form["ms_refused"] = str(e) or True
+-            return _refused(f"Not started: model settings: {e}.")
++            return RedirectResponse("/retro", status_code=303)
+         particles = int(nd.get("pf.particles", RunSpec.particles))
+         replicates = int(nd.get("pf.replicates", RunSpec.replicates))
+         # runners, as typed: the browser's number box lets 2e0 through, and
+diff --git a/app/ui/static/model_settings.js b/app/ui/static/model_settings.js
+index e4987547..f293c048 100644
+--- a/app/ui/static/model_settings.js
++++ b/app/ui/static/model_settings.js
+@@ -191,6 +191,9 @@
+       syncSeason();
+       if (tick) tick.checked = false;
+       if (reason) reason.value = '';
++      // the refusal was over the values just reset
++      var said = box.querySelector('.fc-ms-refused');
++      if (said) said.hidden = true;
+       update();
+     });
+     // open or closed as the user left it this session; the server opens
+diff --git a/app/ui/static/tabs/forecast.css b/app/ui/static/tabs/forecast.css
+index bd2c5ebf..9e13625e 100644
+--- a/app/ui/static/tabs/forecast.css
++++ b/app/ui/static/tabs/forecast.css
+@@ -157,7 +157,7 @@
+ .fc-di .di-state:first-of-type{border-top:0;padding-top:0}
+ .fc-di .di-row select{margin:0;font-size:var(--fs-label);
+   padding:.3rem .45rem}
+-.fc-di .di-state select{width:auto;flex:1 1 7.5rem;min-width:7.5rem;
++.fc-di .di-state select{width:auto;flex:1 1 auto;min-width:7.5rem;
+   max-width:15rem}
+ .fc-di .di-all{display:flex;align-items:center;gap:.4rem;flex-wrap:wrap;
+   margin-bottom:.2rem}
+diff --git a/app/ui/templates/_model_settings.html b/app/ui/templates/_model_settings.html
+index 96996bee..c67b2be0 100644
+--- a/app/ui/templates/_model_settings.html
++++ b/app/ui/templates/_model_settings.html
+@@ -77,7 +77,7 @@
+   <button type="button" class="quiet" id="{{ px }}ms-reset">Reset to defaults</button>
+   {% call tips.toggletip(px ~ "ms-about", "model settings") %}{{ kp.about or ("Each field starts at its default; focus one to see what it does. Any change marks the run modified" ~ (", and its files are named <hub id>" ~ kp.suffix ~ " unless you export them under the hub names with a reason." if kp.override else ", and the season's results are not published.")) }} <a href="/methods#settings">Every setting on Methods</a>{% endcall %}
+  </div>
+- {% if kp.refused %}<div class="fc-ms-refused">{{ tips.alert("warn", kp.refused, id=px ~ "ms-refused", live="") }}</div>{% endif %}
++ {% if kp.refused %}<div class="fc-ms-refused">{{ tips.alert("warn", kp.refused, title=kp.refused_lead, id=px ~ "ms-refused", live="") }}</div>{% endif %}
+  {% for g in kp.groups %}{% set rows = g.rows | rejectattr("later") | list %}{% if rows %}
+  {% set changed = rows | selectattr("changed") | list %}{% set gid = px ~ "ms-" ~ g.id %}
+  <details class="uk-fold ms-group" data-affects="{{ g.affects }}" id="{{ gid }}"{% if changed %} open{% endif %}>
+diff --git a/app/ui/templates/forecast.html b/app/ui/templates/forecast.html
+index f0b4fe36..5b3bebb3 100644
+--- a/app/ui/templates/forecast.html
++++ b/app/ui/templates/forecast.html
+@@ -141,6 +141,7 @@
+       // Saturday past the data, or one the archive skipped (the nearest
+       // earlier week named); else no week is on or before the day
+       function noWeek(day) {
++        if (!day) return 'Pick a date.';            // the field cleared
+         var d = new Date(day + 'T00:00:00Z'), newest = VS[VS.length - 1];
+         if (!isNaN(d) && d.getUTCDay() === 6 && newest) {
+           if (day > newest) return 'No data for ' + day + ' yet; the data ends at ' + newest + '.';
+@@ -226,7 +227,12 @@
+       document.querySelectorAll('.pill.mode').forEach(function (b) {
+         b.addEventListener('click', function () { setMode(b.dataset.mode, true); });
+       });
+-      if (box) box.addEventListener('change', function () { paint(); paintSeason(); });
++      // the picker follows a typed date (an archived week shows as itself,
++      // any other day resets it), so the same week can be picked again
++      if (box) box.addEventListener('change', function () {
++        if (pick) pick.value = VS.indexOf(box.value) >= 0 ? box.value : '';
++        paint(); paintSeason();
++      });
+       if (pick) pick.addEventListener('change', function () {
+         if (this.value) { box.value = this.value; paint(); paintSeason(); }
+       });
