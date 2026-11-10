@@ -11,3 +11,5 @@ A's patch applied on b4b176b: 120 targeted tests pass, ruff clean; served on 882
 Tests: A's three sentence-named tests cover the four bugs (the RE-13 one also pins the panel opening once). B's RE-25 Settings-row check (`test_a_replay_page_leads_back_and_says_how_far_a_stopped_one_got`, the "76 of 142" assertion) would go into A's replay test.
 
 Vote: combine: A's patch, plus from B (1) `fail(msg, title)` in retro_season.html with the reveal's "Nothing opened: …" sentence as the alert's title, and (2) the Settings "weeks" row reading "N of M (first to last)" for a replay that stopped short (datasets_ui.py) with its assertion. Everything else A's.
+
+Vote (final): combine as A's compare says: A's patch with B's RE-12 (the {ok, message, detail} answer and `fail(msg, title)`). The Settings "weeks" row stays as it is: the badge carries the count once.
