@@ -518,14 +518,44 @@ def _week_in_flight(root: Path) -> tuple | None:
     return wd.name, fits, total
 
 
+#: seconds a run record's wall span may exceed its active time and still
+#: read as one stretch of running (_one_stretch). Both are written at every
+#: fold of the clock, so one stretch matches to the millisecond; a stop
+#: and a start again take longer than this
+_ONE_STRETCH_SLACK_S = 1.0
+
+
+def _one_stretch(meta: dict) -> bool:
+    """Whether a run record shows one stretch of running: from started_utc
+    to heartbeat_utc (written with elapsed_s at every fold of the clock,
+    and at the finish; finished_utc in a record without it) no longer than
+    its elapsed_s. A replay stopped and resumed, paused, interrupted and
+    resumed, or resumed for weeks the season gained spent time off the
+    clock, and its record keeps only the settings of its last start: its
+    weeks may have run at another width than the record says (a resume may
+    change the width). A worker that died and was closed later
+    (runner._close) stopped its clock at its last heartbeat: one stretch.
+    A record without these times shows no break."""
+    try:
+        start = float(meta["started_utc"])
+        end = float(meta.get("heartbeat_utc") or meta["finished_utc"])
+        active = float(meta["elapsed_s"])
+    except (KeyError, TypeError, ValueError):
+        return True
+    return end - start <= active + _ONE_STRETCH_SLACK_S
+
+
 @ttlcache.ttl_cache()
 def _scan_cost_ratio(retro_root: Path) -> tuple:
     """(ratio, weeks): the median of this computer's timed Oracle replay
     weeks over the cost model's figure for each (at the week's recorded
     locations, Independent Runs, particles and width, on the engine that
     fitted it), from the run records of the live and archived trees under
-    retro_root; imported replays ran elsewhere and are left out. (None, 0)
-    with none timed."""
+    retro_root; imported replays ran elsewhere and are left out. So is a
+    tree whose record shows more than one stretch of running
+    (_one_stretch): the record keeps one width, its last start's, so a
+    week run before a resume at another width would be priced at the
+    wrong width and skew the ratio. (None, 0) with none timed."""
     from app.core import estimates, retro
     from app.core.engine_build import engine_of
     from app.core.replay_bundle import imported_label
@@ -543,7 +573,7 @@ def _scan_cost_ratio(retro_root: Path) -> tuple:
         meta = retro.read_meta(root)
         s = _oracle_settings(meta)
         fits, particles, width = _fits_of(s)
-        if fits <= 0 or width <= 0:
+        if fits <= 0 or width <= 0 or not _one_stretch(meta):
             continue
         start = retro.season_bounds(season)[0]
         builds = meta.get("week_engine_builds")
@@ -620,18 +650,20 @@ def _cost_words(weeks, start: str, fits: int, particles: int, width: int,
     week (locations x Independent Runs), `particles` and `width`; " here"
     when the span rests on this computer's recorded `ratio`; ", N weeks
     left" when only the `left` weeks a resume runs are priced. "" for no
-    figure (no weeks, no fits). retro_progress.js FluBNFRetroCost.words is
-    this rule in the page."""
+    figure (no weeks, no fits, or a figure too large to work out: a posted
+    form can carry any number, which the page remembers and prices on
+    every visit). retro_progress.js FluBNFRetroCost.words is this rule in
+    the page."""
     from app.core import estimates
     if not weeks or fits <= 0:
         return ""
     try:
         ns = [estimates.n_obs_for(w, start) for w in weeks]
-    except ValueError:
+        lo, hi = estimates.span(
+            estimates.run_seconds(ns, fits, particles, width), ratio)
+        words = estimates.human(lo, hi)
+    except (ArithmeticError, ValueError):
         return ""
-    lo, hi = estimates.span(
-        estimates.run_seconds(ns, fits, particles, width), ratio)
-    words = estimates.human(lo, hi)
     if not words:
         return ""
     if ratio:

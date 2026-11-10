@@ -154,6 +154,11 @@ def _compute_map_cards(root: Path, wk: str, sp: Path, mtime: int,
                                "hover_html": hover}
         if cards:
             by_model[model] = cards
+    # the warm checks again just before it writes: a delete or a move of
+    # the tree may have stopped it while this week was worked out
+    job = getattr(_WARM_THREAD, "job", None)
+    if job is not None and job.get("warm_stop"):
+        return by_model
     try:
         # write beside, then replace; never re-creating a season tree
         # deleted meanwhile (no parents=True above playback_cache)
@@ -207,6 +212,14 @@ _WARM_PAUSE_S = 0.2
 #: to mark the season done (it does so just after the job); a season still
 #: replaying after that is busy, and the warm does not start
 _WARM_SETTLE_S = 10.0
+#: how long a delete or a move of a season tree waits for the warm it
+#: stopped to leave the week in hand (_stop_warm; a week takes about a
+#: second, a large one on a slow computer several)
+_WARM_STOP_WAIT_S = 20.0
+#: the warm's own thread knows its job (_warm_map_cards sets it), so the
+#: card write (_compute_map_cards) can check the job's stop just before
+#: writing; other callers' writes are left as they were
+_WARM_THREAD = threading.local()
 
 
 def _season_busy(season: str) -> bool:
@@ -226,11 +239,14 @@ def _season_busy(season: str) -> bool:
 
 
 def _warm_should_stop(root: Path, season: str, job: dict) -> bool:
-    """Whether the map-card warm stops before its next week: a newer job
-    claimed the root, the season tree is gone, a forecast run or a sandbox
-    fit or experiment is active, a replay of any season holds the engine
-    here, or a replay of the season holds it."""
+    """Whether the map-card warm stops before its next week: a delete or a
+    move of the tree stopped it (_stop_warm), a newer job claimed the
+    root, the season tree is gone, a forecast run or a sandbox fit or
+    experiment is active, a replay of any season holds the engine here, or
+    a replay of the season holds it."""
     from app.ui import retro_seasons
+    if job.get("warm_stop"):
+        return True
     if _results_jobs.get(str(root)) is not job:
         return True
     if not (Path(root) / "weeks").is_dir():
@@ -249,22 +265,24 @@ def _warm_should_stop(root: Path, season: str, job: dict) -> bool:
 def _warm_settled(root: Path, season: str, job: dict) -> bool:
     """Whether the warm may start: the season worker that ran this job (if
     any) has released the season within _WARM_SETTLE_S, and the job is
-    still the root's."""
+    still the root's and not stopped."""
     t_end = time.monotonic() + _WARM_SETTLE_S
     while _season_busy(season):
-        if (time.monotonic() >= t_end
+        if (time.monotonic() >= t_end or job.get("warm_stop")
                 or _results_jobs.get(str(root)) is not job):
             return False
         time.sleep(0.25)
-    return True
+    return not job.get("warm_stop")
 
 
 def _warm_map_cards(root: Path, season: str, job: dict) -> None:
     """After a finalize: every stored week's map cards, newest first, so
     playing the season never waits on a week's forecasting samples. A cached
     week costs a stat and a small read; a failed week is left for its
-    first view, as before. Sets job["warm"] however it ends."""
+    first view, as before. Sets job["warm"] however it ends, after its
+    last write."""
     from app.core import retro
+    _WARM_THREAD.job = job
     try:
         if not _warm_settled(root, season, job):
             return
@@ -281,7 +299,54 @@ def _warm_map_cards(root: Path, season: str, job: dict) -> None:
     except Exception:
         pass
     finally:
+        _WARM_THREAD.job = None
         job["warm"].set()
+
+
+def _jobs_on(root: Path) -> list:
+    """The results jobs recorded for the tree at `root`: under its own
+    name, or the same folder named another way."""
+    root = Path(root)
+    out = []
+    for key, job in list(_results_jobs.items()):
+        if not job:
+            continue
+        same = key == str(root)
+        if not same:
+            try:
+                same = Path(key).resolve() == root.resolve()
+            except OSError:
+                same = False
+        if same:
+            out.append(job)
+    return out
+
+
+def _stop_warm(root: Path) -> bool:
+    """Before a season tree is deleted or moved (Start's discard and
+    archive, an archived run's delete, Storage's delete): stop the map-card
+    warm on it, so it begins no other week and writes no other card, and
+    wait up to _WARM_STOP_WAIT_S for it to leave the week in hand. Without
+    this the warm could make playback_cache again inside a tree the
+    delete had half removed, and the delete fail with the weeks gone.
+
+    True when no warm can write into the tree any more; False while one is
+    still on its week (the caller refuses, nothing removed). A finalize
+    still running is not waited for, as before the warm existed; its warm
+    will not start."""
+    t_end = time.monotonic() + _WARM_STOP_WAIT_S
+    stopped = True
+    for job in _jobs_on(root):
+        warm = job.get("warm")
+        if warm is None:
+            continue                  # a record from before the warm
+        job["warm_stop"] = True
+        done = job.get("done")
+        if done is not None and not done.is_set():
+            continue
+        if not warm.wait(max(0.0, t_end - time.monotonic())):
+            stopped = False
+    return stopped
 
 
 def _ensure_results_job(root: Path, season: str,

@@ -1376,13 +1376,55 @@ def national_week_quantiles(d: dict, levels: list) -> tuple:
     return pf_nat, an_nat
 
 
+def _samples_content_bytes(sp: Path, st: os.stat_result) -> int:
+    """How many bytes a stored samples file holds once read, modulo 2**32:
+    a plain file's size, a gzip file's own record of it (the last four
+    bytes, little-endian, as gzip writes them). The same before and after
+    compress_samples_file."""
+    if not str(sp).endswith(".gz"):
+        return st.st_size % 2 ** 32
+    with open(sp, "rb") as f:
+        f.seek(-4, os.SEEK_END)
+        return int.from_bytes(f.read(4), "little")
+
+
 def _national_week_key(sp: Path, levels: list) -> dict:
     """One week's national quantile sets' validity key: the construction's
-    version and draws, the samples file's mtime (kept by
-    compress_samples_file), the levels and the horizons."""
+    version and draws, the samples file's mtime to the nanosecond and the
+    bytes it holds once read (_samples_content_bytes), the levels and the
+    horizons. compress_samples_file keeps both the mtime and the content,
+    so reclaim's gzip leaves the week's cache valid; a samples file
+    replaced within the same second (a restore that keeps times, a file
+    system with coarse times) changes the size, the nanoseconds or both."""
+    st = sp.stat()
     return {"v": NATIONAL_CACHE_V, "draws": _NATIONAL_DRAWS,
-            "mtime": int(sp.stat().st_mtime), "levels": list(levels),
-            "horizons": list(hz.HORIZONS)}
+            "mtime_ns": st.st_mtime_ns,
+            "bytes": _samples_content_bytes(sp, st),
+            "levels": list(levels), "horizons": list(hz.HORIZONS)}
+
+
+#: a temporary week cache older than this, in seconds, belongs to a writer
+#: that died between its write and its rename (a write takes milliseconds)
+_US_QUANTILES_TMP_STALE_S = 600.0
+
+
+def _sweep_us_quantiles_tmp(root: Path) -> None:
+    """Remove playback_cache/us_quantiles/*.tmp files left by a process
+    killed between writing a week's cache and renaming it
+    (_national_week), once they are _US_QUANTILES_TMP_STALE_S old; a
+    writer still at work is never touched. Never fatal."""
+    qd = Path(root) / "playback_cache" / US_QUANTILES_DIRNAME
+    now = time.time()
+    try:
+        tmps = list(qd.glob("*.tmp"))
+    except OSError:
+        return
+    for p in tmps:
+        try:
+            if now - p.stat().st_mtime > _US_QUANTILES_TMP_STALE_S:
+                p.unlink()
+        except OSError:
+            pass
 
 
 def _national_week(root: Path, sp: Path, levels: list) -> tuple:
@@ -1465,6 +1507,9 @@ def national_aggregate(root: Path) -> dict | None:
     except Exception:
         pass
     t0 = time.monotonic()
+    # a recomputation follows any that a killed process left unfinished:
+    # its temporary week caches go now
+    _sweep_us_quantiles_tmp(root)
     truth, _n2f = scoring.load_truth()
     levels = [float(L) for L in QL]
     rows = []                       # (model, asof, horizon 0-based, metrics)

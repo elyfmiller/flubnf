@@ -256,6 +256,14 @@ def retro_index(request: Request, dataset: str = "", tab: str = ""):
     _last_retro_form.pop("ms_refused", None)
     state_names = _retro_state_names()
     knob_panel = _knob_panel("retro", form)
+    # the Oracle option's cost: display only, so a fault here (a posted
+    # form is remembered before it is checked, and can carry any number)
+    # leaves the option without its figure rather than the page without
+    # its form, as the Forecast page's time line does
+    try:
+        costs = _form_costs(seasons, form, state_names, knob_panel)
+    except Exception:
+        costs = {}
     return templates.TemplateResponse(request, "retro.html",
                                       {"active": "Retrospective",
                                        "own_tab": False, "seasons": seasons,
@@ -266,8 +274,7 @@ def retro_index(request: Request, dataset: str = "", tab: str = ""):
                                        "knob_panel": knob_panel,
                                        "panel6_label": _panel6_label(),
                                        # the Oracle preset's cost (F53)
-                                       **_form_costs(seasons, form,
-                                                     state_names, knob_panel),
+                                       **costs,
                                        # nothing replayed, running, kept or
                                        # imported here yet (F46)
                                        "no_replays": not any(
@@ -377,6 +384,12 @@ def retro_archive_delete(request: Request, season: str, stamp: str,
     what = (f"the {season} run {replay_bundle.imported_label(p)}"
             if replay_bundle.imported_label(p) else
             f"the archived {season} run from {retro.stamp_human(stamp)}")
+    # its week maps may still be written (a results page opened it): a
+    # delete meanwhile could fail half way
+    if not retro_prep._stop_warm(p):
+        _flash(f"Not deleted: the week maps of {what} are still being "
+               "prepared.", "warn", detail="Try again in a minute.")
+        return _back(request, "/retro")
     try:
         retro.delete_tree(p)
     except Exception as e:
@@ -818,6 +831,15 @@ def retro_run(background: BackgroundTasks, season: str = Form(...),
                 "newest week reads 0.",
                 "Set Groundhog when the newest week reads 0: abstain, "
                 "level, extend or blend.")
+        if mode in ("discard", "archive") and existing and \
+                not retro_prep._stop_warm(live):
+            # the week maps written after a replay finished: a delete or
+            # a move while one is written could fail half way
+            return _refused(
+                f"Not started: the {season} week maps are still being "
+                "prepared.", "Nothing was "
+                + ("deleted" if mode == "discard" else "archived")
+                + ". Try again in a minute.")
         if mode == "discard":
             if existing:
                 try:
