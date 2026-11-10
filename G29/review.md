@@ -17,3 +17,6 @@ Approve.
   - ST-17: "not ok" shows 4 of 50 (partial, stopped, interrupted, failed); Find "2026-11-10" finds that day's two runs.
   - ST-15: the counted sentence is the tests' (no dataset left in this state).
 - No run path touched.
+
+## Re-review of 92104c3 (B)
+Approve. The push changes only `app/tests/test_storage_words.py`: the Phoenix reading is checked where a zone can be set, the form "YYYY-MM-DD HH:MM" everywhere, and the TZ-removed assertion that failed on Windows is gone. The file passes here, and with `time.tzset` deleted (as on Windows). No product code changed; my approval of 4dfe348 stands for this head.
