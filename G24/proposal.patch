@@ -1,0 +1,430 @@
+diff --git a/app/core/data.py b/app/core/data.py
+index fafb4774..dfebb26b 100644
+--- a/app/core/data.py
++++ b/app/core/data.py
+@@ -308,11 +308,18 @@ def source_phrase(rec) -> str:
+     return f"archived vintage {wk}" if wk else "archived vintage"
+ 
+ 
++#: the Data tab's name for the live target file, read as a vintage when
++#: it holds a week the hand-kept archive does not yet (never a run's)
++LIVE_VINTAGE = "live"
++
++
+ def load_vintage(date: str):
+     """One archived vintage as a frame: location zero-filled, value numeric,
+     unreported rows dropped (the missingness policy: dropped, never imputed).
+-    Raises the same LOUD error as vintage_path for a date never archived."""
+-    df = pd.read_csv(vintage_path(date), dtype={"location": str})
++    Raises the same LOUD error as vintage_path for a date never archived.
++    LIVE_VINTAGE reads the live target file (the Data tab's browser)."""
++    path = live_path() if date == LIVE_VINTAGE else vintage_path(date)
++    df = pd.read_csv(path, dtype={"location": str})
+     df["location"] = df["location"].str.zfill(2)
+     df["value"] = pd.to_numeric(df["value"], errors="coerce")
+     return df[df["value"].notna()]
+diff --git a/app/tests/test_data_page_fixes.py b/app/tests/test_data_page_fixes.py
+new file mode 100644
+index 00000000..e2bfd1ff
+--- /dev/null
++++ b/app/tests/test_data_page_fixes.py
+@@ -0,0 +1,122 @@
++"""The Data page's behavior (bug hunt 2026-10-25, G24).
++
++  * Storing or deleting a dataset lands on the notice that says so (#main,
++    where the flash is), and its warnings are counted in words.
++  * Missing comparators say what adds them, make Update data the next
++    step, and the pull says it added them.
++  * When the live target file holds a week the archive does not yet, the
++    vintage browser lists it and opens on it.
++  * A season keeps one colour on the page: the Archive strip and the
++    season-over-season chart read one map.
++  * A snapshot dataset's chart title names the snapshot.
++"""
++import re
++from datetime import date
++
++from app.core import data as data_mod
++from app.ui import state as ui_state
++from app.ui.routes import data as ui_data
++from test_data_view import V2, archive                     # noqa: F401
++from test_datasets_ui import client, isolated, stored        # noqa: F401
++from test_dataset_engines import grouped_bytes              # noqa: E402
++
++
++# ---------------------------------- DA-04: the notice is where the page lands
++
++def test_store_and_delete_land_on_their_notice():
++    raw = grouped_bytes(groups=("Pediatric", "Adult"),
++                        end=date(2023, 12, 2)).decode().replace(
++        "Pediatric", "Niños").encode("cp1252")
++    r = client.post("/data/datasets",
++                    files={"file": ("cp.csv", raw, "text/csv")},
++                    data={"name": "cp", "next": "data"},
++                    follow_redirects=False)
++    assert r.status_code == 303 and r.headers["location"].endswith("#main")
++    assert ui_state._status["flash"].endswith(" 1 warning.")
++    ds_id = r.headers["location"].split("source=", 1)[1].split("#", 1)[0]
++    ui_state._status["flash"] = None            # the page would show it
++    r = client.post(f"/data/datasets/{ds_id}/delete", data={"confirm": "cp"},
++                    follow_redirects=False)
++    assert r.headers["location"] == "/data#main"
++    assert ui_state._status["flash"].startswith("Deleted cp")
++
++
++# ------------------------------------- DA-05: comparators and their remedy
++
++def test_missing_comparators_say_what_adds_them(archive, monkeypatch):
++    page = client.get("/data").text
++    assert "baseline, ensemble missing · Update data adds them" in page
++    assert '<button class="gold" id="hub-pull"' in page
++    r = client.post("/freshness", headers={"Accept": "application/json"})
++    assert r.json()["comparators_missing"] is True
++
++    def pull():                   # the pull adds the comparators' folders
++        for sub in ("FluSight-baseline", "FluSight-ensemble"):
++            (archive / "model-output" / sub).mkdir(parents=True)
++        return True, "Already up to date."
++    monkeypatch.setattr(data_mod, "pull_hub", pull)
++    msg = client.post("/data/pull", headers={"Accept": "application/json"}
++                      ).json()["message"]
++    assert "baseline and ensemble comparators added" in msg
++    page = client.get("/data").text
++    assert 'id="comp-ok"' in page
++    assert '<button class="quiet" id="hub-pull"' in page
++
++
++# ------------------------------- DA-07: the live file in the vintage browser
++
++def test_the_browser_shows_the_live_file_when_the_archive_lags_it(archive):
++    live = archive / "target-data" / "target-hospital-admissions.csv"
++    live.parent.mkdir(parents=True)
++    newer = (archive / f"target-hospital-admissions_{V2}.csv").read_text()
++    live.write_text(newer + "2098-01-17,39,Ohio,230,0.0\n")
++    page = client.get("/data?loc=Ohio").text
++    assert '<option selected value="live">2098-01-17 (live file)</option>' \
++        in page
++    assert '"2098-01-17"' in page.split("const VSERIES", 1)[1].split(";")[0]
++    # an archived vintage is still a choice
++    page = client.get(f"/data?vintage={V2}&loc=Ohio").text
++    assert f"<option selected>{V2}</option>" in page
++    assert '"2098-01-17"' not in page.split("const VSERIES", 1)[1].split(
++        ";")[0]
++
++
++# ------------------------------------------- DA-19: one colour per season
++
++def test_a_season_keeps_one_colour_on_the_page():
++    assert ui_data._season_vars(["2023-24", "2025-26", "2024-25"]) == {
++        "2025-26": "--gold", "2024-25": "--season-1", "2023-24": "--season-2"}
++    ctx = {"vintage_rows": [{"season": "2025-26"}, {"season": "2024-25"}]}
++    # the chart's older season continues the strip's order
++    ui_data._set_season_vars(ctx, ["2023-24", "2024-25", "2025-26"])
++    assert [r["var"] for r in ctx["vintage_rows"]] == ["--gold", "--season-1"]
++    assert ctx["season_vars"]["2023-24"] == "--season-2"
++
++
++def test_the_strip_and_the_chart_read_the_same_map(archive):
++    page = client.get("/data").text
++    strip = page.split('class="archive-strip"', 1)[1].split("</svg>", 1)[0]
++    assert 'style="fill:var(--gold)"' in strip
++    sv = re.search(r"const SEASON_VARS = (\{[^;]*\});", page).group(1)
++    assert '"2097-98": "--gold"' in sv
++    assert "SEASON_VARS[k]&&css(SEASON_VARS[k])" in page
++
++
++# ------------------------------------ DA-23: the snapshot in the title
++
++def test_a_snapshot_datasets_chart_title_names_the_snapshot():
++    lines = grouped_bytes(groups=("West",), end=date(2023, 12, 2)).decode(
++        ).strip().split("\n")
++    head, rows = lines[0], lines[1:]
++    snaps = "\n".join([head + ",as_of"]
++                      + [r + ",2023-11-25" for r in rows[:-1]]
++                      + [r + ",2023-12-02" for r in rows]) + "\n"
++    ds = stored(snaps.encode(), "flu")
++    assert ds.vintage_true
++    page = client.get(f"/data?source={ds.id}").text
++    assert "const VASOF = true ? ' · as of '+VVINTAGE : '';" in page
++    assert "VLOC+' · '+VDS+VASOF" in page
++    plain = stored(grouped_bytes(groups=("West",), end=date(2023, 12, 2)),
++                   "plain")
++    assert "const VASOF = false ?" in client.get(
++        f"/data?source={plain.id}").text
+diff --git a/app/tests/test_pull_hub.py b/app/tests/test_pull_hub.py
+index cab02e98..6c393e0d 100644
+--- a/app/tests/test_pull_hub.py
++++ b/app/tests/test_pull_hub.py
+@@ -412,7 +412,7 @@ def test_the_buttons_answer_json_when_asked(hub, monkeypatch):
+     r = client.post("/freshness", headers={"Accept": "application/json"})
+     assert r.json() == {"ok": True, "fresh": True, "pill": "ok",
+                         "words": "up to date", "detail": "up to date with origin",
+-                        "behind": False}
++                        "behind": False, "comparators_missing": False}
+     r = client.post("/freshness")
+     assert r.status_code == 200
+     assert ('<span class="uk-badge uk-badge--ok" id="hub-pill" '
+diff --git a/app/ui/datasets_ui.py b/app/ui/datasets_ui.py
+index 2c7893bb..d094b104 100644
+--- a/app/ui/datasets_ui.py
++++ b/app/ui/datasets_ui.py
+@@ -384,12 +384,15 @@ async def upload(request: Request):
+     # the counts on the line; the snapshots and any warnings in its tip
+     shared._flash((f"This file is already stored as {ds.name}: {counts}"
+                    if again else f"Stored {ds.name}: {counts}")
+-                  + (f" {len(warn)} warning(s)." if warn else ""),
++                  + (f" {len(warn)} warning{'s' if len(warn) != 1 else ''}."
++                     if warn else ""),
+                   "warn" if warn else "ok",
+                   detail=" ".join(([snaps] if snaps else []) + warn))
+     if nxt == "forecast":
+         return RedirectResponse(f"/forecast?source={ds.id}", status_code=303)
+-    return RedirectResponse(f"/data?source={ds.id}#datasets", status_code=303)
++    # #main, where the notice is: the form's #datasets, which a redirect
++    # without a fragment keeps, scrolled it out of view
++    return RedirectResponse(f"/data?source={ds.id}#main", status_code=303)
+ 
+ 
+ def _delete_confirmed(ds_id: str, confirm: str) -> None:
+@@ -415,7 +418,9 @@ def _delete_confirmed(ds_id: str, confirm: str) -> None:
+ @router.post("/data/datasets/{ds_id}/delete")
+ def delete(request: Request, ds_id: str, confirm: str = Form("")):
+     _delete_confirmed(ds_id, confirm)
+-    return RedirectResponse("/data#datasets", status_code=303)
++    # #main, where the notice is (the delete form's #datasets would keep
++    # it out of view)
++    return RedirectResponse("/data#main", status_code=303)
+ 
+ 
+ def api_series(ds, locs: str) -> dict:
+diff --git a/app/ui/routes/data.py b/app/ui/routes/data.py
+index 603bef01..935033cd 100644
+--- a/app/ui/routes/data.py
++++ b/app/ui/routes/data.py
+@@ -94,6 +94,7 @@ def _data_context(loc: str = "", vintage: str = "", freshness=None) -> dict:
+            # season-over-season chart palette (fallback for --season-N)
+            "season_colors_json": _script_json(_season_colors())}
+     ctx["vintage_rows"] = _vintage_rows(vs)
++    _set_season_vars(ctx, [])
+     # the live target file: its newest week is what a real-time run reads
+     # when the hand-kept archive has not caught up yet
+     try:
+@@ -118,6 +119,12 @@ def _data_context(loc: str = "", vintage: str = "", freshness=None) -> dict:
+     if not vs:
+         return ctx
+     latest = vs[-1]
++    # the live target file holds a week the archive does not yet: the
++    # browser lists it first and opens on it, the data a real-time run reads
++    live = ctx["live_week"]
++    live_newer = bool(live) and live > latest
++    if live_newer:
++        ctx["vintages"].insert(0, state.data_mod.LIVE_VINTAGE)
+     try:
+         ctx["latest"] = _vintage_summary(
+             str(state.data_mod.vintage_path(latest)), latest)
+@@ -128,11 +135,15 @@ def _data_context(loc: str = "", vintage: str = "", freshness=None) -> dict:
+         return ctx
+     sel_v = (vintage if _re.fullmatch(r"\d{4}-\d{2}-\d{2}", vintage or "")
+              and vintage in vs else latest)
++    if live_newer and vintage in ("", state.data_mod.LIVE_VINTAGE):
++        sel_v = state.data_mod.LIVE_VINTAGE
+     if vintage and sel_v != vintage:
+         ctx["view_note"] = (f"No archived vintage for {vintage}; showing "
+                             f"the latest, {latest}.")
+     try:
+-        pv = str(state.data_mod.vintage_path(sel_v))
++        pv = str(state.data_mod.live_path()
++                 if sel_v == state.data_mod.LIVE_VINTAGE
++                 else state.data_mod.vintage_path(sel_v))
+         names = list(_vintage_locations(pv, sel_v))
+         sel_loc = loc if loc in names else (names[0] if names else "")
+         if loc and sel_loc != loc:
+@@ -156,12 +167,24 @@ def _data_context(loc: str = "", vintage: str = "", freshness=None) -> dict:
+             ctx["series_json"] = _script_json(
+                 {"dates": [str(d)[:10] for d in dates],
+                  "values": [float(v) for v in values]})
++        # the chart's seasons share the strip's colours
++        _set_season_vars(ctx, [_season_label(d) for d in dates])
+     except Exception as e:
+         ctx["view_note"] = (f"Could not read the {sel_v} vintage "
+                             f"({type(e).__name__}).")
+     return ctx
+ 
+ 
++def _set_season_vars(ctx: dict, more) -> None:
++    """The page's season colours (_season_vars) over the strip's seasons and
++    `more` (the chart's), onto each strip row and for the chart's script."""
++    sv = _season_vars([r["season"] for r in ctx["vintage_rows"]]
++                      + list(more))
++    ctx["season_vars"] = sv
++    for r in ctx["vintage_rows"]:
++        r["var"] = sv.get(r["season"], "")
++
++
+ #: days past a week's Saturday after which its data counts as overdue: the
+ #: hub adds each week on the Wednesday after it (4 days), so a week's data
+ #: is due by day 11 at the latest
+@@ -202,6 +225,27 @@ def _clone_behind(f) -> bool:
+         return False
+ 
+ 
++def _season_vars(labels) -> dict:
++    """{season label: colour token}: the newest season --gold, the older
++    ones --season-1, -2, ... by rank, as the season-over-season chart draws
++    them. One map for the Archive strip and the chart, so a season keeps
++    one colour on the page."""
++    n = len(_season_colors() or []) or 1
++    out = {}
++    for k, s in enumerate(sorted(set(labels), reverse=True)):
++        out[s] = "--gold" if k == 0 else f"--season-{(k - 1) % n + 1}"
++    return out
++
++
++def _season_label(day) -> str:
++    """A date's season (August to July), as the strip and the chart name
++    it: 2025-26."""
++    from datetime import date as _d
++    d = _d.fromisoformat(str(day)[:10])
++    y = d.year if d.month >= 8 else d.year - 1
++    return f"{y}-{str(y + 1)[2:]}"
++
++
+ def _vintage_rows(vs) -> list:
+     """The archive as rows: one per season (August to July), each vintage
+     a (week offset from August 1, date) point, newest season first."""
+@@ -342,6 +386,8 @@ def _pull() -> tuple:
+         before = None
+     # the live file's values, to say what the pull changed (None: unread)
+     values_before = _live_values()
++    # the comparators the clone lacked: the pull adds them, and says so
++    comp_before = state.data_mod.comparators()
+     ok, msg = state.data_mod.pull_hub()
+     _invalidate_scans()
+     if not ok:
+@@ -373,7 +419,13 @@ def _pull() -> tuple:
+     bits = [lead]
+     # what changed, in counts: weeks added and earlier values revised
+     bits += _pull_changes(before, after, values_before, _live_values())
+-    clause = _pull_clause(_newest_report(), state.data_mod.comparators())
++    comp_after = state.data_mod.comparators()
++    added = [k for k, ok_ in comp_after.items()
++             if ok_ and not comp_before.get(k)]
++    if added:
++        bits.append(" and ".join(added)
++                    + f" comparator{'s' if len(added) != 1 else ''} added")
++    clause = _pull_clause(_newest_report(), comp_after)
+     if clause:
+         bits.append(clause)
+     bits += [n for n in msg.split(" · ")[1:] if "repaired" in n]
+@@ -399,7 +451,10 @@ def freshness(request: Request):
+         cls, words = f.pill()
+         return JSONResponse({"ok": True, "fresh": f.is_fresh, "pill": cls,
+                              "words": words, "detail": f.detail,
+-                             "behind": _clone_behind(f)})
++                             "behind": _clone_behind(f),
++                             # Update data adds a missing comparator
++                             "comparators_missing": not all(
++                                 state.data_mod.comparators().values())})
+     return templates.TemplateResponse(request, "data.html",
+                                       _data_context(freshness=f))
+ 
+diff --git a/app/ui/templates/data.html b/app/ui/templates/data.html
+index b08d1f07..b2a59606 100644
+--- a/app/ui/templates/data.html
++++ b/app/ui/templates/data.html
+@@ -46,7 +46,7 @@
+    {# the hub's baseline and official ensemble, which runs are scored
+       against (an older sparse clone may lack them; Update data adds
+       them) #}
+-   {% set comp %}{% if comparators_missing %}{{ tips.badge("error", comparators_missing | join(", ") ~ " missing", id="comp-missing") }}{% else %}{{ tips.badge("ok", "present", id="comp-ok") }}{% endif %}{% endset %}
++   {% set comp %}{% if comparators_missing %}{{ tips.badge("error", comparators_missing | join(", ") ~ " missing · Update data adds them", id="comp-missing") }}{% else %}{{ tips.badge("ok", "present", id="comp-ok") }}{% endif %}{% endset %}
+    {{ tips.stat("Scored against", comp, id="comparators") }}
+    {# did every jurisdiction report the newest week? (the file a real-time
+       run reads; app/core/reported.py) #}
+@@ -58,9 +58,9 @@
+      is safe and resumable (the flash banner reports it); the data-pull guard
+      still intercepts a pull during run preparation #}
+   {# the primary is what to do next: Update data once a check shows the
+-     clone behind (or with no data at all), else the check (the script
+-     swaps them when a check answers) #}
+-  {% set pull_first = hub_behind or (not live_week and not n_vintages) %}
++     clone behind, a comparator missing (the pull adds it) or no data at
++     all, else the check (the script swaps them when a check answers) #}
++  {% set pull_first = hub_behind or comparators_missing or (not live_week and not n_vintages) %}
+   <div class="row hubacts">
+   <form method="post" action="/data/pull">
+    <button class="{{ 'gold' if pull_first else 'quiet' }}" id="hub-pull" data-guard="data-pull">Update data</button></form>
+@@ -101,7 +101,8 @@
+    <text x="0" y="{{ y + 4 }}" font-size="11" fill="currentColor">{{ row.season }}</text>
+    <line x1="64" y1="{{ y }}" x2="556" y2="{{ y }}" stroke="currentColor" stroke-opacity=".18"/>
+    {# a shipped snapshot is a ring, not a dot; its title says so #}
+-   {% for off, d in row.points %}{% if d in shipped %}<circle cx="{{ 64 + off * 9.4 }}" cy="{{ y }}" r="3.2" fill="none" stroke="{{ row.color }}" stroke-width="1.6"><title>{{ d }} (shipped snapshot)</title></circle>{% else %}<circle cx="{{ 64 + off * 9.4 }}" cy="{{ y }}" r="3.2" fill="{{ row.color }}"><title>{{ d }}</title></circle>{% endif %}{% endfor %}
++   {# a season's colour is the chart's (routes/data._season_vars) #}
++   {% for off, d in row.points %}{% if d in shipped %}<circle cx="{{ 64 + off * 9.4 }}" cy="{{ y }}" r="3.2" fill="none" stroke="{{ row.color }}"{% if row.var %} style="stroke:var({{ row.var }})"{% endif %} stroke-width="1.6"><title>{{ d }} (shipped snapshot)</title></circle>{% else %}<circle cx="{{ 64 + off * 9.4 }}" cy="{{ y }}" r="3.2" fill="{{ row.color }}"{% if row.var %} style="fill:var({{ row.var }})"{% endif %}><title>{{ d }}</title></circle>{% endif %}{% endfor %}
+    {% endfor %}
+    {% set yb = 14 + 22 * vintage_rows | length %}
+    {% for m, lab in ((0, "Aug"), (13, "Nov"), (26, "Feb"), (39, "May"), (52, "Aug")) %}
+@@ -143,7 +144,7 @@
+    <select id="dv-vintage" name="vintage">
+     {# a shipped snapshot's label says so (the hub's alone: a dataset's
+        as_of dates are its own); its value stays the bare date #}
+-    {% for v in vintages %}{% set shp = not ds and v in shipped %}<option {% if v == sel_vintage %}selected{% endif %}{% if shp %} value="{{ v }}"{% endif %}>{{ v }}{% if shp %} (shipped snapshot){% endif %}</option>{% endfor %}
++    {% for v in vintages %}{% set shp = not ds and v in shipped %}{% if not ds and v == "live" %}<option {% if v == sel_vintage %}selected{% endif %} value="live">{{ live_week }} (live file)</option>{% else %}<option {% if v == sel_vintage %}selected{% endif %}{% if shp %} value="{{ v }}"{% endif %}>{{ v }}{% if shp %} (shipped snapshot){% endif %}</option>{% endif %}{% endfor %}
+    </select></span>
+   {% endif %}
+   <span class="dt-field"><label for="dv-loc">{{ "Group" if ds else "Location" }}</label>
+@@ -216,6 +217,12 @@
+  const VSERIES = {{ series_json | safe }};
+  const VLOC = {{ sel_loc | tojson }};
+  const VVINTAGE = {{ sel_vintage | tojson }};
++ // how the title names the chosen data: the live file, a snapshot of a
++ // dataset with as_of dates, or an archived vintage
++ const VAS = VVINTAGE==='live' ? 'in the live file' : 'as archived '+VVINTAGE;
++ const VASOF = {{ (ds.vintage_true if ds else false) | tojson }} ? ' · as of '+VVINTAGE : '';
++ // each season's colour token, shared with the Archive strip
++ const SEASON_VARS = {{ (season_vars or {}) | tojson }};
+  // a custom dataset's name and unit (null on the hub's vintage browser)
+  const VDS = {{ (ds.name if ds else none) | tojson }};
+  const VUNIT = {{ (ds.unit if ds else "admissions") | tojson }};
+@@ -276,7 +283,7 @@
+         name:'newest week',marker:{size:9,color:css('--gold-bright')||css('--gold')},
+         hovertemplate:'newest: %{x} · %{y:'+VFMT+'}<extra></extra>'}];
+      FluCharts.react(el,traces,
+-       vlay(VDS ? VLOC+' · '+VDS : VLOC+': admissions as archived '+VVINTAGE,380),
++       vlay(VDS ? VLOC+' · '+VDS+VASOF : VLOC+': admissions '+VAS,380),
+        vconf('flubnf_vintage_'+VVINTAGE+'_'+VLOC));
+      return;
+    }
+@@ -290,10 +297,11 @@
+      customdata:by[k].d,
+      hovertemplate:k+' · %{customdata} · %{y:'+VFMT+'}<extra></extra>',
+      line:{width:i===seasons.length-1?3:1.5,
+-           color:i===seasons.length-1?(css('--gold')||SCOLORS[0])
+-                :seasonColor(seasons.length-2-i)}}));
+-   const L=vlay(VDS ? VLOC+' · '+VDS+': season over season'
+-                : VLOC+': season over season, as archived '+VVINTAGE,380);
++           color:(SEASON_VARS[k]&&css(SEASON_VARS[k]))
++                ||(i===seasons.length-1?(css('--gold')||SCOLORS[0])
++                   :seasonColor(seasons.length-2-i))}}));
++   const L=vlay(VDS ? VLOC+' · '+VDS+VASOF+': season over season'
++                : VLOC+': season over season, '+VAS,380);
+    L.xaxis.tickvals=SEASON_MONTHS.map(m=>m[1]);
+    L.xaxis.ticktext=SEASON_MONTHS.map(m=>m[0]);
+    FluCharts.react(el,traces,L,vconf('flubnf_vintage_seasons_'+VVINTAGE+'_'+VLOC));
+@@ -350,11 +358,13 @@
+        if(det)det.textContent=d.detail||'';
+        if(wrap)wrap.hidden=!d.detail;
+        // the next step is the primary: Update data when the clone is behind
++       // or a comparator is missing (the pull adds it)
+        var pb=document.getElementById('hub-pull'),
+-           cb=document.getElementById('hub-check');
++           cb=document.getElementById('hub-check'),
++           pull=d.behind||d.comparators_missing;
+        if(pb&&cb){
+-         pb.className=d.behind?'gold':'quiet';
+-         cb.className=d.behind?'quiet':'gold';
++         pb.className=pull?'gold':'quiet';
++         cb.className=pull?'quiet':'gold';
+        }
+        busy(false,'');
+        stat.textContent=d.words?'Hub clone: '+d.words:'';
