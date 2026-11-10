@@ -74,7 +74,7 @@
  <div><div class="card dsr-replays">
   {# the tab's one explainer: what a replay does, what the data badge
      means, the groups and the models (their labels carry no tips) #}
-  {% call tips.heading("Replays of " ~ d.name, "rt-ds-about", tip_label="replaying your own data") %}<span class="ncline">{{ about }}</span><span class="ncline">{{ "Vintage-true: each replayed week sees the as_of snapshot that held it." if d.vintage_true else "Final data: with no as_of snapshots each week is cut from the final series, so later revisions leak in and the scores are optimistic." }}</span><span class="ncline">Every group by default; a national group is scored beside the others, never pooled. {{ dr.names.analogue }} is instant; the plain SIHRS particle filter needs counts with a population and the engine, and takes minutes per week.</span>{% endcall %}
+  {% call tips.heading("Replays of " ~ d.name, "rt-ds-about", tip_label="replaying your own data") %}<span class="ncline">{{ about }} relWIS below 1 beats that baseline.</span><span class="ncline">{{ "Vintage-true: each replayed week sees the as_of snapshot that held it." if d.vintage_true else "Final data: with no as_of snapshots each week is cut from the final series, so later revisions leak in and the scores are optimistic." }}</span><span class="ncline">Every group by default; a national group is scored beside the others, never pooled. {{ dr.names.analogue }} is instant; the plain SIHRS particle filter needs counts with a population and the engine, and takes minutes per week.</span>{% endcall %}
   {% for r in d.replays %}
   {% set rid = loop.index %}
   <div class="archrow">
@@ -86,7 +86,7 @@
     {% if r.modified %}{{ tips.badge("warn", "modified settings") }}{% endif %}
     {% set fx = namespace(items=[("", r.kind), ("", r.done ~ "/" ~ r.total ~ " weeks")]) %}
     {% for m, v in r.rels.items() %}{% set t %}{{ dr.names.get(m, m) }} relWIS <span class="{{ 'ok' if v < 1 else 'bad' }}">{{ "%.3f"|format(v) }}</span>{{ tips.icon("check" if v < 1 else "warning", "beats the baseline" if v < 1 else "does not beat the baseline", cls="rt-verdict " ~ ("uk-c-ok" if v < 1 else "uk-c-error")) }}{% endset %}{% set fx.items = fx.items + [("", t)] %}{% endfor %}
-    <div class="rt-meta">{{ tips.meta(fx.items, label="Replay facts") }}{% if r.rels %}{{ tips.tip("dsr-rel-" ~ rid, "relWIS", "relWIS vs in-house persistence baseline: below 1 beats it.") }}{% endif %}</div></div>
+    <div class="rt-meta">{{ tips.meta(fx.items, label="Replay facts") }}</div></div>
    <a class="btn quiet" href="/retro/dataset/{{ d.id }}/{{ r.stamp }}">Results →</a>
   </div>
   {% else %}

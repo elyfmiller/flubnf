@@ -74,6 +74,9 @@ def test_the_your_data_tab_has_one_explainer(tmp_path, monkeypatch):
         assert gone not in page, gone
     tip = page.split('id="tip-rt-ds-about"', 1)[1].split("</span></span>")[0]
     assert "a national group is scored beside the others" in tip
+    assert "relWIS below 1 beats that baseline." in tip
+    assert '"dsr-rel-"' not in (UI / "_dataset_replay.html").read_text(
+        encoding="utf-8")
     assert "Add FluSurv-NET donors (US flu hospitalizations only)" in page
     rd = (UI / "retro_dataset.html").read_text(encoding="utf-8")
     for gone in ('"rd-rel"', '"rd-beside"', '"rd-h"', "rd-abst-\" ~ m) }}\n"):
