@@ -1075,14 +1075,17 @@ def groundhog_donors(rep: Report):
     it forecasts all four. The stored notice (dataset_checks, horizon 1)
     is not changed by it.
 
-    "seasons" takes what an earlier season gave the fewest horizon in
-    this file: its count over the earlier seasons holding a week of the
-    window (a horizon that reaches into weeks reading 0 gains less from
-    each). A group's season reading 0 throughout (or nothing at all) says
+    "seasons" takes what an earlier season of a group gave the fewest
+    horizon in this file: its count over the groups' earlier seasons
+    holding a week of the window (a horizon that reaches into weeks
+    reading 0 gains less from each), once for every group (more_seasons).
+    A group's season reading 0 throughout (or nothing at all) says
     nothing about growth and is not one of them: the figure divided by
     it came out several times too large (review of #93 at 42db2a82,
-    finding 3). With none to go by, an ordinary season of every group
-    (window_weeks_a_season: four weeks around a week 53, else five). A
+    finding 3), and a group with no other season is taken to give what
+    the others' seasons give (at ac51731d, finding 5). With none to go
+    by, an ordinary season of every group (window_weeks_a_season: four
+    weeks around a week 53, else five). A
     horizon at 0 although earlier seasons hold a week of the window and
     the week that horizon later, where some group's seasons show that
     more like them give it nothing (_seasons_say: a summer of zeros, say,
@@ -1096,8 +1099,6 @@ def groundhog_donors(rep: Report):
     where every group shows it but some through one season only, one
     season is too few to say more would not help, and the check says
     more seasons may (at 42db2a82, finding 2)."""
-    import math
-
     from flubnf import analogue as AN
     s = rep.summary
     if not rep.ok or not s or s.get("weeks", 0) < 2:
@@ -1115,13 +1116,14 @@ def groundhog_donors(rep: Report):
               and AN.calendar_distance(AN.epiweek(d), E)
               <= AN.DEFAULT_BANDWIDTH}
     cased = _cased(bank)
-    # the earlier seasons holding a week of the window with a case in
-    # them: a season reading 0 throughout gave nothing and says nothing
-    seasons = {AN.season_of(d) for g, d in bank
-               if d in window and (g, AN.season_of(d)) in cased}
-    per = (n / len(seasons) if n and seasons else
-           window_weeks_a_season(E) * max(1, len(s.get("groups") or ())))
-    more = math.ceil((need - n) / per) if n < need else 0
+    # each group's earlier seasons holding a week of the window with a
+    # case in them: a season reading 0 throughout gave nothing and says
+    # nothing
+    held = {(g, AN.season_of(d)) for g, d in bank
+            if d in window and (g, AN.season_of(d)) in cased}
+    more = more_seasons(need, n, len(held),
+                        max(1, len(s.get("groups") or ())),
+                        window_weeks_a_season(E))
     heard = _seasons_heard(bank, window, counts, cased) if not n else None
     left, one = heard if heard is not None else (None, set())
     if heard is not None:
@@ -1132,6 +1134,26 @@ def groundhog_donors(rep: Report):
             "seasons": more, "open": len(left or ()),
             "open_new": bool(left) and not (left & earlier),
             "one_season": 0 if left else len(one)}
+
+
+def more_seasons(need: int, n: int, held: int, groups: int,
+                 ordinary: int) -> int:
+    """About how many more earlier seasons of every group bring `n` donor
+    weeks to `need` (0 when `n` is there): `held` earlier seasons of the
+    groups with a case gave the `n`, so a season of each of the `groups`
+    gives n x groups / held; with no `n` or none held, an ordinary
+    season gives `ordinary` weeks (window_weeks_a_season) for each group.
+    Worked out in whole numbers, as the ceiling of an exact fraction: in
+    floats 15 weeks over 13 seasons gave 14 where 13 bring it to 30 (15 /
+    (15 / 13) is 13.000000000000002; review of #93 at ac51731d, finding
+    2). A group whose seasons read 0 throughout, or that has the newest
+    season only, is one of the `groups` and not of the `held`: nothing in
+    the file says its seasons give less than the others' (finding 5)."""
+    if n >= need:
+        return 0
+    if n > 0 and held > 0:
+        return -(-(need - n) * held // (n * groups))
+    return -(-(need - n) // (ordinary * groups))
 
 
 def _cased(bank) -> set:
