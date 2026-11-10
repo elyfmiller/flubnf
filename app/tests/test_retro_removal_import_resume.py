@@ -194,9 +194,12 @@ def test_a_replace_refuses_while_a_finalize_runs_on_the_import(
 
 def test_a_results_page_opened_during_a_replace_starts_no_finalize(
         world, monkeypatch):
-    """(b): while the Replace's delete walks the archived run, its results
-    page finds the scores gone; it starts no finalize on the half removed
-    tree and says why. The Replace then lands whole."""
+    """(b): while the Replace's delete walks the old archived run, its
+    results page starts no finalize and says why. The Replace then lands
+    whole. (Since the review of #105 at bc045672, finding 3, the run
+    being deleted is the old one set aside, its scores gone; the run's
+    name already holds the new tree, whole, and the mark is still
+    held.)"""
     p, dst, stamp = _imported(world)
     page = f"/retro/{SEASON}?archive={stamp}"
     paused, go = _paused_delete(monkeypatch)
@@ -212,8 +215,12 @@ def test_a_results_page_opened_during_a_replace_starts_no_finalize(
     t.start()
     try:
         assert paused.wait(20), "the Replace's delete did not begin"
-        assert (dst / "weeks").is_dir()
-        assert not (dst / "scores.json").exists()
+        aside = [q for q in dst.parent.iterdir()
+                 if q.name.startswith(dst.name + ".replaced-")]
+        assert len(aside) == 1, sorted(q.name for q in dst.parent.iterdir())
+        assert (aside[0] / "weeks").is_dir()
+        assert not (aside[0] / "scores.json").exists()
+        assert (dst / "scores.json").is_file()      # the new tree, whole
         r = client.get(page, follow_redirects=False)
         seen = _flash()
         job = RP._results_jobs.get(str(dst))
