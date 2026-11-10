@@ -7,6 +7,8 @@ hunt 2026-10-25, G21).
   * Delete, Delete all and Reclaim refuse the same trees: the sealed
     records (the production reseal too), the hub clone and
     FLUBNF_PROTECT_ROOTS. A protected workroot's row has no Delete.
+    Retrospective's two deletes (an archived run's Delete, the Run form's
+    discard) refuse them too, and no refusal claims which record it is.
   * Reclaim keeps the cell trees of a run with fit failures, as the
     pipeline does.
   * /output/download serves only the CSVs the console links: a model's
@@ -27,6 +29,7 @@ import app.core.runs as runs_mod                               # noqa: E402
 from app.core import reclaim                                    # noqa: E402
 from app.ui import server as srv                               # noqa: E402
 from app.ui import shared as ui_shared                         # noqa: E402
+from app.ui import state as ui_state                          # noqa: E402
 from app.ui.routes import storage as ui_storage                # noqa: E402
 
 REPO = Path(__file__).resolve().parents[2]
@@ -103,6 +106,75 @@ def test_delete_and_reclaim_refuse_the_same_trees(state, monkeypatch):
     reseal.mkdir(parents=True)
     assert ui_storage._storage_protected(reseal)
     assert reclaim.is_protected(reseal)
+
+
+def test_retrospective_deletes_refuse_a_protected_season_and_archive(
+        state, monkeypatch, request):
+    """Review S3 (ST-06): an archived run's Delete and the Run form's
+    discard went to delete_tree with no protection check. A protected
+    archive or season is now refused in plain words and stays whole; the
+    same posts go ahead once nothing protects them."""
+    from app.core import retro
+    from app.ui import retro_seasons
+    from app.ui.routes import retro as ui_retro
+    from test_retro_archive import (SEASON, STAMP, _roots, _season_tree,
+                                    _tree_snapshot)
+    # the season stores this test's claim changes, put back after it
+    kept = [(d, type(d)(d)) for d in (retro_seasons._retro_status,
+                                      retro_seasons._retro_claim_at,
+                                      retro_seasons._retro_stop)]
+    request.addfinalizer(lambda: [(d.clear(), d.update(v)) for d, v in kept])
+    rr = _roots(state, monkeypatch)
+    _season_tree(rr, SEASON)
+    retro.archive_run(rr, SEASON, stamp=STAMP)
+    arch = rr / f"{SEASON}__archived_{STAMP}"
+    live = _season_tree(rr, SEASON)
+    live_before, arch_before = _tree_snapshot(live), _tree_snapshot(arch)
+    started = []
+    monkeypatch.setattr(ui_retro, "_retro_bg",
+                        lambda *a, **k: started.append(a[0]))
+    discard = {"season": SEASON, "mode": "discard", "confirm": SEASON,
+               "engine": "analogue", "locations": "panel6",
+               "knob.groundhog.zero_anchor": "abstain"}
+
+    def flash():
+        f = ui_state._status.get("flash") or ""
+        ui_state._status.pop("flash", None)
+        return f
+    # the archive protected: its Delete is refused, nothing goes
+    monkeypatch.setenv("FLUBNF_PROTECT_ROOTS", str(arch))
+    client.post(f"/retro/{SEASON}/archive/{STAMP}/delete",
+                data={"confirm": SEASON}, follow_redirects=False)
+    said = flash()
+    assert said.startswith(f"Not deleted: the archived {SEASON} run from ")
+    assert said.endswith(" is in a protected folder, which the console "
+                         "never deletes."), said
+    assert _tree_snapshot(arch) == arch_before
+    # the season protected (in another spelling): the discard is refused
+    # before anything is moved or started
+    monkeypatch.setenv("FLUBNF_PROTECT_ROOTS", " " + str(live))
+    client.post("/retro/run", data=discard, follow_redirects=False)
+    assert flash() == (f"Not started: the {SEASON} results are in a "
+                       "protected folder, which the console never deletes.")
+    assert ui_state._status.get("flash_detail") == "Nothing was deleted."
+    assert started == [] and _tree_snapshot(live) == live_before
+    assert _tree_snapshot(arch) == arch_before
+    # Storage says the same of a protected season, naming no record
+    client.post("/storage/delete", data={"kind": "retro-season",
+                                         "ident": SEASON,
+                                         "confirm": SEASON},
+                follow_redirects=False)
+    assert flash() == ("Not deleted: that folder is protected; the console "
+                       "never deletes it.")
+    assert _tree_snapshot(live) == live_before
+    # nothing protected: both posts go ahead (the barrier stopped them)
+    monkeypatch.delenv("FLUBNF_PROTECT_ROOTS")
+    client.post(f"/retro/{SEASON}/archive/{STAMP}/delete",
+                data={"confirm": SEASON}, follow_redirects=False)
+    assert flash().startswith(f"Deleted the archived {SEASON} run")
+    assert not arch.exists()
+    client.post("/retro/run", data=discard, follow_redirects=False)
+    assert started == [SEASON] and not (live / "weeks").exists()
 
 
 # ---------------------------- ST-07: a failed fit's trees are its evidence

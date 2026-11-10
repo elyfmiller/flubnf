@@ -47,23 +47,16 @@ def _tree_size(path: str) -> int:
 def _storage_protected(p: Path) -> bool:
     """True when a path lies inside a sealed record or the hub clone, or
     anything else reclaim protects (FLUBNF_PROTECT_ROOTS): one barrier for
-    Delete, Delete all and Reclaim."""
+    Delete, Delete all and Reclaim, and for Retrospective's two deletes (an
+    archived run's Delete, the Run form's discard)."""
     from app.core import reclaim
     from flubnf.settings import HUB
     if reclaim.is_protected(p):
         return True
-    try:
-        rp = Path(p).resolve()
-    except OSError:
-        return True                      # unresolvable: refuse, never guess
-    for root in [base for base, _ in _sealed_roots()] + [HUB]:
-        try:
-            r = Path(root).resolve()
-            if rp == r or rp.is_relative_to(r):
-                return True
-        except OSError:
-            continue
-    return False
+    # the same comparison (another spelling of a root matches; an
+    # unresolvable path is refused, never guessed)
+    return reclaim.inside_any(
+        p, [base for base, _ in _sealed_roots()] + [HUB])
 
 
 def _live_workroot_ids() -> set:
@@ -517,9 +510,10 @@ def _storage_target(kind: str, ident: str):
     # but _storage_protected resolves, so a link into a protected tree fails.
     assert p.parent == Path(base), "storage target escaped its parent"
     if _storage_protected(p):
-        return None, ("That tree is protected (the sealed validation "
-                      "record and the hub clone are never deletable from "
-                      "the interface).")
+        # which record it is is not claimed: FLUBNF_PROTECT_ROOTS protects
+        # folders that are neither the sealed records nor the hub clone
+        return None, ("That folder is protected; the console never "
+                      "deletes it.")
     if not (p.is_dir() or p.is_symlink()):
         return None, "Nothing is on disk under that name."
     return p, ""
