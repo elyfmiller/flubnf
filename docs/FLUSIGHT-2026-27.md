@@ -88,9 +88,12 @@ two-per-target limit for the admissions target.
 | `NAU_PyBNF-GroundHogCGR` | `analogue` | last observed count x empirical quantiles of growth ratios at the same epiweek in earlier seasons, pooled across jurisdictions with the jurisdiction's own past weeks carrying half of the weight (since 2026-10-15) and donor weeks whose count is near the jurisdiction's newest weighted most (since 2026-10-23, size-matched donors; [DONOR-BANKS.md](DONOR-BANKS.md)), with a FluSurv-NET donor bank pooled across sites; no fitting, no engine needed |
 
 Recorded pooled relative WIS (ratio of sums vs FluSight-baseline, replays of
-2023-24 to 2025-26, not real-time): Oracle SIHRS 0.738 (15,300 cells, the
-earlier cell rule), Groundhog 0.642 (0.680 / 0.627 / 0.645 by season;
-17,116 cells, FluSight's cell rule). That is the shipped form since
+2023-24 to 2025-26, not real-time): Oracle SIHRS 0.738 under its registered
+form (weight one half, the season-to-date seed, no narrowing or cap, on the
+private fork; 15,300 cells, the earlier cell rule; the settings submitted
+since October have not been scored on those cells), Groundhog 0.642
+(0.680 / 0.627 / 0.645 by season; 17,116 cells, FluSight's cell rule).
+That is the shipped form since
 2026-10-23, own-state weighting with size-matched donors (`flubnf groundhog
 retro all --aux flusurv`, hub at 3a83d410). On the same cells the own-state
 form without the size weighting, shipped 2026-10-15 to 2026-10-23, scores
