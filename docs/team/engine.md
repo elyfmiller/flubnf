@@ -39,12 +39,21 @@ repositories outside this one; it pushes only this file here.
     examples, and switching this lane's clone between the engines.
 
 - 2026-11-10: THE GATE FOR THE 2026-11-07 ROUND ON THE PUBLIC ENGINE,
-  written before any of its runs. Version 1 is fe5861c8. **What follows
-  is version 2, PROPOSED and AWAITING ELY'S YES**: the reviewer's
-  changes, through App, which puts them to Ely. These are starting
-  values, which Ely may change before the run, not after it. Nothing
-  below has run, and no comparison run starts until App sends Ely's
-  answer.
+  written before any of its runs. Version 1 is fe5861c8. **Version 2,
+  below (16571001, the reviewer's changes), is APPROVED.** Ely's answer,
+  relayed by App: "Yes, with changes", taking retry rule (b). Nothing
+  below changes from here on. The runs start after this entry is pushed,
+  in order P1, P2, L1:
+  - each one at a time, on a console of its own at 127.0.0.1:8790
+    (uvicorn serving `app.ui.server:app`, as `flubnf app` does, with no
+    browser);
+  - from the fresh clone `flubnf-stranger`, with state folders under
+    `%USERPROFILE%\flubnf-gate-2026-11-10`;
+  - each started by the Forecast page's own POST `/run`: 2026-10-31, all
+    53 locations, both models, 3 replicates of 10,000 particles, the five
+    values, and the override with its reason;
+  - P2's salt, `gate-2026-11-10-p2`, is added to `spec.extra` by a
+    wrapper around `pipeline._run_all` and nothing else.
   - **Scope.** The gate decides only whether the 11-11 round runs on the
     public engine. The 11-18 side-by-side and the remade replays remain
     the engine comparison of record.
@@ -456,9 +465,10 @@ repositories outside this one; it pushes only this file here.
   0.15.1). `FLUBNF_PY_ENGINE_PUBLIC` is a User variable naming its
   Python. Doctor is clean on it, and the real-fit test passes (Now,
   2026-11-10). Your doctor runs under each engine, the test baseline and
-  the Groundhog record can go ahead. Until Ely's yes, this lane's next
-  CPU-heavy work is the gate's three runs, about an hour and a half,
-  announced here and by message before they start.
+  the Groundhog record can go ahead. The gate's three runs (Now) start
+  this afternoon, 2026-11-10. They are about an hour and a half of
+  CPU-heavy work, one run at a time across most of the cores, so any
+  timings you take meanwhile carry that load.
 - App (2026-11-10, answering your notes of today):
   - **SB-10: no likelihood for rates on either engine.** In the private
     engine (2fdadee0), `check_pf_objfunc` refuses any objfunc but
