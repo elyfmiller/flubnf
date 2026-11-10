@@ -37,7 +37,9 @@ from app.ui.templating import (_member_colors, _script_json, _season_colors,
 router = APIRouter()
 
 # Sections, in file order:
-#   /forecast           RERUN_STATUSES, forecast_page
+#   /forecast           RERUN_STATUSES, the Run row's time line (RUN_MODELS,
+#                       GROUNDHOG_RUN_WORDS, run_words, _run_estimate),
+#                       forecast_page
 #   Data issues box     US_CHOICE, _source_sha, _data_issues_context,
 #                       _data_choices, _location_list, _official_overlay
 #   console controls    run_stop
@@ -52,6 +54,103 @@ router = APIRouter()
 #: Statuses offered the one-click re-run. Console fits hold no checkpoint, so
 #: it is a FRESH run with the recorded settings (never worded "resume").
 RERUN_STATUSES = ("stopped", "error", "failed", "interrupted", "partial")
+
+#: the Run row's time line names the models the form runs (run_words)
+RUN_MODELS = {"all": "Oracle SIHRS and Groundhog", "pf": "Oracle SIHRS",
+              "analogue": "Groundhog"}
+#: the Groundhog alone on the hub, said without a figure: the cost model
+#: (app/core/estimates.py) prices fits only. Its donor search is a few
+#: seconds or less for the 53 locations (UX review F1, F55), but a whole
+#: run also reads the data, scores and writes the report, and no record
+#: times that as one, so "about a minute", never "under a minute"
+GROUNDHOG_RUN_WORDS = "about a minute"
+
+
+def _whole_field(text, default):
+    """A form value as the time line reads it (static/forecast_form.js
+    whole): digits are their number, anything else (blank included) is
+    `default`."""
+    import re
+    t = str(text if text is not None else "").strip()
+    return int(t) if re.fullmatch(r"[0-9]+", t) else default
+
+
+def run_words(engine: str, locations: int, replicates, particles,
+              anchor: str, season_start: str = "", ratio=None,
+              pf_state: str = "ready") -> str:
+    """The Run row's time line: the models, the locations and how long,
+    "Oracle SIHRS and Groundhog, 53 locations: about 10 to 40 min".
+
+    With the Liu-West filter: estimates.human of the span of `locations`
+    x `replicates` fits (Independent Runs) of `particles` at `anchor`'s
+    observed weeks from `season_start` (blank: August 1), at this
+    computer's width (pf.shard_width); " here" when the span rests on
+    this computer's recorded `ratio`. The Groundhog alone, or Both
+    without the engine (`pf_state` "absent"), says GROUNDHOG_RUN_WORDS.
+    "" for nothing to say: no location, no Independent Run, no usable
+    date, a field the form lacks (None), or a model the engine cannot run
+    here. static/forecast_form.js runWords is this rule in the page."""
+    from app.core import estimates
+    if engine not in RUN_MODELS or not locations or locations <= 0:
+        return ""
+    ready = pf_state == "ready"
+    if engine == "pf" and not ready:
+        return ""
+    if engine == "all" and not ready and pf_state != "absent":
+        return ""                 # a broken install fails Both at run time
+    where = f"{locations} location{'' if locations == 1 else 's'}"
+    if engine == "analogue" or not ready:
+        return f"Groundhog, {where}: {GROUNDHOG_RUN_WORDS}"
+    if replicates is None or particles is None:
+        return ""
+    try:
+        n_obs = estimates.n_obs_for(anchor, season_start)
+    except ValueError:
+        return ""
+    lo, hi = estimates.span(estimates.run_seconds(
+        [n_obs], locations * replicates, particles), ratio)
+    words = estimates.human(lo, hi)
+    if not words:
+        return ""
+    return f"{RUN_MODELS[engine]}, {where}: {words}{' here' if ratio else ''}"
+
+
+def _run_estimate(form: dict, all_locs: list, panel, anchor: str,
+                  pf_state: str, us_checked: bool) -> dict:
+    """The Run row's time line for the form as first shown (run_words),
+    and what static/forecast_form.js needs to redo it on every change:
+    the cost model's data-est-* attributes for the form
+    (estimates.page_params at this computer's width), this computer's
+    recorded pace (the Retrospective's: retro_seasons._own_cost_ratio),
+    the count "all" stands for, the engine's state and the Groundhog's
+    words. Display only: nothing here reaches a run."""
+    from app.core import estimates
+    ratio, _weeks = retro_seasons._own_cost_ratio()
+    rows = {r["key"]: r for g in (panel or {}).get("groups", ())
+            for r in g.get("rows", ())}
+
+    def knob(key):
+        r = rows.get(key)
+        if r is None:
+            return None
+        return _whole_field(r.get("value"), _whole_field(r.get("default"),
+                                                         None))
+    locs = form.get("locations") or []
+    n_all = len(all_locs) + 1 if all_locs else 53
+    n = n_all if "all" in locs else (
+        len({l for l in locs if l in all_locs}) + (1 if us_checked else 0))
+    # the select shows the first choice (Both) when the remembered one is
+    # off or unknown
+    engine = form.get("engine")
+    if engine not in ENGINES or (engine == "pf" and pf_state != "ready"):
+        engine = "all"
+    season = str((rows.get("run.season_start") or {}).get("value") or "")
+    return {"est": estimates.page_params(None),
+            "text": run_words(engine, n, knob("pf.replicates"),
+                              knob("pf.particles"), anchor, season, ratio,
+                              pf_state),
+            "ratio": ratio, "all": n_all, "pf": pf_state,
+            "gh": GROUNDHOG_RUN_WORDS}
 
 
 # === Forecast (/forecast) -> forecast.html ===
@@ -203,6 +302,16 @@ def forecast_page(request: Request, source: str = "", tab: str = ""):
     newest_report = _newest_report()
     # the per-state choices for that week (the Data issues box)
     data_issues, data_issues_sha = _data_issues_context(newest_report, form)
+    pf_state = pipeline._pf_engine_state()
+    knob_panel = _knob_panel("forecast", form, season_auto=_season_auto(
+        form.get("forecast_date", ""), _anchor))
+    # the Run row's time line: display only, so a fault here leaves the
+    # page without the line rather than without the page
+    try:
+        run_est = _run_estimate(form, all_locs, knob_panel, _anchor or "",
+                                pf_state, us_checked)
+    except Exception:
+        run_est = None
     return templates.TemplateResponse(request, "forecast.html", {
         "active": "Forecast", "engines": ENGINES, "status": _status,
         "ledger": ledger_rows, "all_locs": all_locs,
@@ -217,11 +326,11 @@ def forecast_page(request: Request, source: str = "", tab: str = ""):
         # the particle-filter engine's state: without it the run refuses
         # Oracle SIHRS only, and Both runs the Groundhog alone (a broken
         # install fails Both at run time), which the form says
-        "pf_state": pipeline._pf_engine_state(),
+        "pf_state": pf_state,
         "us_choice": US_CHOICE, "us_checked": us_checked,
         "official_json": _script_json(official),
-        "knob_panel": _knob_panel("forecast", form, season_auto=_season_auto(
-            form.get("forecast_date", ""), _anchor)),
+        "knob_panel": knob_panel,
+        "run_est": run_est,
         "elapsed0": _console_elapsed(),
         "series_json": _script_json(series), "fanq_json": _script_json(fanq),
         "model_names_json": _script_json(templating._model_names()),

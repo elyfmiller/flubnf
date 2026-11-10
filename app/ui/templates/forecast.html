@@ -1,7 +1,10 @@
 {% extends "base.html" %}{% block title %}FluBNF · Forecast{% endblock %}
 {% block head %}<link rel="stylesheet" href="/static/tabs/forecast.css">
 <script src="/static/plotly.min.js"></script><script src="/static/charts.js"></script>
-<script src="/static/quips.js"></script>{% endblock %}
+<script src="/static/quips.js"></script>
+{# the form's read-only lines: the Run row's time line from the engine's
+   cost model (estimate.js) and a dataset's donor line (forecast_form.js) #}
+<script src="/static/estimate.js" defer></script><script src="/static/forecast_form.js" defer></script>{% endblock %}
 {% block content %}{% import "_tips.html" as tips %}
 <h1>Forecast</h1>
 {% import "_dataset_upload.html" as dsup %}
@@ -60,7 +63,10 @@
    {{ dsup.box("forecast") }}
   </details>
   {% endif %}
-  <form method="post" action="{{ '/run/dataset' if dataset else '/run' }}" id="fcform">
+  {# the hub form carries the cost model's constants (estimates.page_params)
+     for the Run row's time line (static/forecast_form.js) #}
+  {% set fc_est = run_est if (run_est is defined and run_est and not dataset) else none %}
+  <form method="post" action="{{ '/run/dataset' if dataset else '/run' }}" id="fcform"{{ (fc_est.est if fc_est else {}) | xmlattr }}>
    {% if dataset %}<input type="hidden" name="dataset" value="{{ dataset.id }}">{% endif %}
    {# two modes, one form (same controls, same run record): Real-time takes
       the latest archived week the calendar allows; Vintage names one #}
@@ -119,6 +125,20 @@
     <option value="">{{ "or pick a week" if dataset else "or pick an archived week" }} ({{ vintage_dates|length }})</option>
     {% for v in vintage_dates %}<option value="{{ v }}">{{ v }}</option>{% endfor %}
    </select>
+   {% endif %}
+   {# a dataset week too thin for the Groundhog: its donor weeks at the
+      anchor week (datasets_ui.donor_weeks, counted at the shipped donor
+      window), said while the Groundhog runs and the donor window and
+      Weeks to drop are at their defaults; static/forecast_form.js redoes
+      it as the form changes. Informs only: Run models stays on #}
+   {% if dataset and dataset.donor_weeks is defined and dataset.donor_need %}
+   {% set dn_need = dataset.donor_need %}
+   {% set dn_n = dataset.donor_weeks.get(anchor_week) if anchor_week else none %}
+   {% set dn_rows = {} %}{% for g in (knob_panel.groups if knob_panel else []) %}{% for r in g.rows %}{% set _ = dn_rows.update({r.key: r}) %}{% endfor %}{% endfor %}
+   {% set dn_off = [] %}{% for k in ("groundhog.bandwidth", "run.weeks_to_drop") %}{% set r = dn_rows.get(k) %}{% if r and not r.later and (r.value | trim) != "" and (r.value | float(-1.5)) != (r.default | float(-2.5)) %}{% set _ = dn_off.append(k) %}{% endif %}{% endfor %}
+   {% set dn_show = dn_n is not none and dn_n < dn_need and form.engine != "pf" and not dn_off %}
+   <script type="application/json" id="fc-donor-data">{{ {"need": dn_need, "weeks": dataset.donor_weeks} | tojson }}</script>
+   {{ tips.alert("warn", ("The Groundhog has too little history for this week (" ~ dn_n ~ " of " ~ dn_need ~ " donor weeks).") if dn_show else "", id="fc-ds-donors", hidden=not dn_show) }}
    {% endif %}
    <script>
     (function () {
@@ -261,6 +281,17 @@
     {% if pre.failed %}<button type="button" class="quiet fc-chip" data-preset="failed" data-locs="{{ pre.failed | tojson | forceescape }}">Failed last run <span class="fc-chip-n">{{ pre.failed | length }}</span></button>{% endif %}
    </div>
    {% endif %}
+   {# the filter and the list in a fold: closed while the pick is one the
+      chips and the count already say (all 53, the 52 without US, US
+      only), open for any other pick, an unreadable state list or a
+      dataset; "Last pick" and "Failed last run" open it (the script
+      below). A closed fold still posts its boxes: /run gets the same form #}
+   {% set fl = form.locations or [] %}
+   {% set fl_st = fl | select("in", all_locs) | unique | list %}
+   {% set fl_preset = ("all" in fl) or (us_checked and not fl_st)
+        or (not us_checked and all_locs and fl_st | length == all_locs | length) %}
+   {% call tips.fold("Pick groups" if dataset else "Pick locations", id="fc-locpick",
+        open=(dataset or locations_error or not fl_preset), cls="fc-locpick") %}
    <input type="search" id="fc-locfilter" class="fc-locfilter" placeholder="Filter" autocomplete="off"
      aria-label="{{ 'Filter the groups' if dataset else 'Filter the locations' }}" aria-controls="fc-checklist">
    <div class="checklist" id="fc-checklist" role="group" aria-labelledby="fc-locs-lbl">
@@ -278,6 +309,7 @@
      {% endif %}
      <p class="fc-nomatch" id="fc-nomatch" hidden>No match</p>
    </div>
+   {% endcall %}
    {{ tips.label("Model", "fc-model", for_="model-pick") }}
    {% set pf_off = pf_state is defined and pf_state != "ready" %}
    {% if dataset %}
@@ -341,6 +373,10 @@
    <div class="fc-runrow">
     <button class="gold" data-guard="console-run">Run models</button>
     {% if lr %}<span id="fc-vslast" class="fc-vslast" aria-live="polite">{{ tips.badge("ok", "Same as last run", id="fc-vs-last") }}</span>{% endif %}
+    {# how long the run takes here: the models, the locations and the
+       cost model's span (routes/forecast.run_words), redone on every
+       change by static/forecast_form.js. Display only #}
+    {% if fc_est %}<div id="fc-est" class="fc-est" data-all="{{ fc_est.all }}" data-pf="{{ fc_est.pf }}" data-gh="{{ fc_est.gh }}"{% if fc_est.ratio %} data-ratio="{{ fc_est.ratio }}"{% endif %}{% if not fc_est.text %} hidden{% endif %}>{{ tips.meta([("clock", fc_est.text, "Run time")], label="Run time") }}</div>{% endif %}
    </div>
   </form>
   {% if lr %}
@@ -480,8 +516,13 @@
          b.setAttribute('aria-pressed', String(presetKey(b) === k));
        });
      }
+     // the fold around the filter and the list (closed for a preset pick)
+     var FOLD = document.getElementById('fc-locpick');
      function apply(b) {
        var key = presetKey(b);
+       // a remembered pick is shown in the list it came from
+       var p = b.getAttribute('data-preset');
+       if (FOLD && (p === 'last' || p === 'failed')) FOLD.open = true;
        if (key === 'all') {
          CKALL.checked = true;
          if (CKUS) CKUS.checked = true;
@@ -530,6 +571,8 @@
      }
      LIST.addEventListener('scroll', paintFade);
      addEventListener('resize', paintFade);
+     // a closed fold measures the list as empty: measure again on opening
+     if (FOLD) FOLD.addEventListener('toggle', paintFade);
      sync();
    })();
   </script>
