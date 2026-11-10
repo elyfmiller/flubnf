@@ -1,10 +1,49 @@
 # Engine lane notes
 
-The private PyBNF fork, the Liu–West filter, and its port to public PyBNF.
-Works on the lab Mac, in repositories outside this one; it pushes only
-this file here.
+The private PyBNF fork, the Liu-West filter, and its port to public PyBNF.
+Works on Ely's Windows PC since 2026-11-09 (the lab Mac before), in
+repositories outside this one; it pushes only this file here.
 
 ## Now
+
+- 2026-11-09 (night): the lane moved to Ely's Windows PC, since the lab
+  needs the lab Mac back (submission.md Open, 2026-11-04). It starts
+  fresh: no earlier session's memory or scratchpads, none of the lab
+  Mac's local folders. The Model lane starts here too and shares the CPU.
+  - The machine: Windows 11 Pro (build 26200), Intel i7-12700KF (12
+    cores, 20 threads), 32 GB, an RTX 4070 Ti that nothing here uses,
+    282 GB free on C: and 747 GB on D:. Controlled Folder Access is on;
+    long paths are off. Numbers this lane posts from here name this
+    machine and say that bngsim's code generation is off
+    (`BNGSIM_NO_CODEGEN=1`, as the console sets it on Windows).
+  - Set up tonight: this lane's clone, `%USERPROFILE%\GitHub\flubnf` on
+    `dev` (identity Ely's); python.org Python 3.12.10 x64 for this
+    account only, not on PATH (`py -3.12`); GitHub CLI 2.103.3, logged in
+    as elyfmiller by Ely through the browser. That is an OAuth token with
+    `repo`, `workflow`, `read:org` and `gist`, not the lab Mac's
+    fine-grained one: it reaches cdcepi and lanl, so the outward-facing
+    rule is the only guard. Already
+    here: Git 2.45.2, Python 3.11.9, Strawberry Perl 5.42.2 machine-wide
+    (`C:\Strawberry`, so FluBNF.bat will not install its own), and an old
+    FluBNF install of Ely's (`%LOCALAPPDATA%\FluBNF\flubnf`, `main`
+    2eaada8 of 2026-09-01; its private engine `Documents\GitHub\PyBNF-pf`
+    is at eab31c71 of 2026-08-20, not the pin 2fdadee0), which Ely says
+    this lane may replace. No engine is installed yet, public or private.
+  - The wheel is published (release
+    `pybnf-8410f794e3fa4817572fd07fceb043ddec39d77b`, asset
+    `pybnf-1.8.1-py3-none-any.whl`); GitHub's digest for the asset equals
+    the sha256 recorded on 2026-10-29 below, so the lock's wheel line
+    installs.
+  - pybnf 1.8.2 is on PyPI (2026-11-04; lanl tag v1.8.2, 3c3185c5, 46
+    commits past 8410f794: noise-model, gradient, bngsim output-grid and
+    petab fixes). It needs bngsim 0.17.0 or newer. Ely keeps 8410f794
+    with bngsim 0.15.1 for now (Decided); this lane measures 1.8.2 with
+    bngsim 0.17 against it here first.
+  - Next, in order: the public venv from the lock as a stranger would,
+    from a fresh clone once App's merge is on `dev`; one forecast cell
+    through the console's public path; the private engine as the
+    fallback, both engines on the same cell; then stage 2 and the cost
+    model here, after Ely's answers under Open.
 
 - 2026-10-29 (late): the console's public engine is on `engine-public`
   ([2de2ec8](https://github.com/elyfmiller/flubnf/commit/2de2ec8)),
@@ -27,15 +66,14 @@ this file here.
     real defects (a Windows drive-letter split, the readiness gate,
     weeks resumed across engines, Sandbox edge cases); all fixed, each
     with a test.
-  - Still open: the wheel release (Ely publishes it; until then the
-    lock's wheel address answers 404 and no real venv can match the
-    lock), then `~/.venvs/flubnf-public` built from it as a stranger
-    would, and a forecast run through the console end to end.
+  - Still open (the wheel release is published, 2026-11-09): a public
+    venv built from the lock as a stranger would, and a forecast run
+    through the console end to end; both now on Ely's Windows PC.
 
 - 2026-10-29 (Ely's go on plan v3 and the wheel release): stage 1's
-  engine side, on `engine-public`. **In flight there: `pf.py`,
-  `retro.py`, `sandbox.py`, `engine_build.py`, `flubnf/settings.py`,
-  `flubnf/doctor.py`, `reclaim.py`.** To keep out of the student
+  engine side, on `engine-public`. (That day's in-flight list is closed:
+  this lane has nothing in flight in those files; see For other lanes,
+  2026-11-09.) To keep out of the student
   workspace's way, the public writer, runner and reader go in a new module
   of their own (`app/core/engines/lwf.py`); `pf.py` and the others gain
   only small switch points on `FLUBNF_ENGINE`. `dev` is merged into
@@ -45,7 +83,7 @@ this file here.
     (pinned setuptools, `SOURCE_DATE_EPOCH` = the commit's time): sha256
     `18a59bc24caa99ae1b4cc14518a4233cf17a0e4edac45d50d5e4189413ee21e5`.
     Its release, `pybnf-8410f794e3fa4817572fd07fceb043ddec39d77b` on this
-    repository, is Ely's to publish (pending).
+    repository, was published by Ely on 2026-11-09.
   - The lock, `engine-requirements.txt`: the 38 packages measured in the
     144-cell replay (antimony, pandas, python-dateutil and six dropped:
     neither FluBNF nor `lwf` imports them) with every CPython 3.12 wheel's
@@ -107,7 +145,7 @@ this file here.
   season but splits by season on the Oracle member. Record:
   FluBNF-local/research/pf-parameter-jitter (VERDICT.md, RESULTS.md).
 - 2026-10-13: the pull request is open: lanl/PyBNF#985, "feat: job_type =
-  lwf, the Liu–West filter", from elyfmiller/PyBNF `pr/liu-west-filter`
+  lwf, the Liu-West filter", from elyfmiller/PyBNF `pr/liu-west-filter`
   a9b1a3ae onto `main` b5fa894a, eight commits. lanl's CI is the branch's
   first Linux run: the build and changelog-fragment checks passed, the
   pytest and ruff legs were still running when this was written. Engine
@@ -142,14 +180,6 @@ this file here.
   - The branch a laptop installs or updates from,
     elyfmiller/PyBNF-Private `feature/particle-filter`, is at 2fdadee0.
   - bngsim stays pinned at 0.15.1.
-  - Lab Mac fallback: `~/GitHub/PyBNF-pf` is at 2fdadee0 with a clean tree,
-    and its engine venv ran 144 production cells without a failure on
-    2026-10-03.
-- Lab Mac on Wednesday: no engine job is running or scheduled. Engine will
-  start nothing on it all Wednesday, and nothing until the hub pull request
-  is open.
-- The PyBNF pull-request work (`pr/liu-west-filter` on elyfmiller/PyBNF)
-  touches neither FluBNF nor the production pin.
 - 2026-10-03 (overnight): measured whether upstream `lwf` reproduces
   FluBNF production forecasts. Fed production's random numbers, it gives
   identical forecast draws on 144 of 144 SIHRS cells from the console's own
@@ -159,7 +189,7 @@ this file here.
   week also show no difference. lwf is about 2.1x slower per cell. Nothing
   in production changes: FluBNF stays on the private engine until a
   deliberate migration (checklist in FluBNF-local, lwf-production-equivalence
-  SUMMARY.md). The lab Mac's CPU is free again.
+  SUMMARY.md).
 - 2026-10-01 (night): the PyBNF pull request branch on Ely's fork is now
   `pr/liu-west-filter` at 28c067f7 (force-pushed over ad671377; still 8
   commits on lanl/PyBNF `main` 0cb92a7f, about 6,000 lines). Ely opens the
@@ -173,10 +203,9 @@ this file here.
   28c067f7: the Python 3.12, 3.13 and bngsim-less 3.14 suites clean with no
   failures, bngsim 0.15.1 on every touched test file, docs build, ruff,
   changelog, every commit's own tests, and byte-identity with the previous
-  tip except the new fingerprint key. No engine job is using the lab Mac's
-  CPU. If you need the machine, say so here (`Engine:` in your notes).
-- 2026-09-30: porting the Liu–West filter to public lanl/PyBNF as
-  `job_type = lwf` ("Liu–West Particle Filter", family `filter`, settings
+  tip except the new fingerprint key.
+- 2026-09-30: porting the Liu-West filter to public lanl/PyBNF as
+  `job_type = lwf` ("Liu-West Particle Filter", family `filter`, settings
   `lwf_*`). Branch `feat/particle-filter` of Ely's fork elyfmiller/PyBNF,
   from lanl/PyBNF `main` 0cb92a7f; local, not pushed, no pull request yet.
   - Done locally: the segment integrator that the filter and IBIS
@@ -195,7 +224,7 @@ this file here.
     citations) and a tutorial lesson tested in CI. Head 381bba5e, 63
     commits. Next: tidy the series and draft the pull request; Ely opens it.
   - Done (2026-10-01): a pre-registered synthetic study of whether the
-    Liu–West filter follows a change in transmission partway through a
+    Liu-West filter follows a change in transmission partway through a
     series, with an independent re-analysis and a skeptic. Record:
     FluBNF-local `research/lwf-change-tracking/RESULTS.md`. Summary under
     For other lanes. Branch head a1bc35bb; Ely decides the pull request's
@@ -211,17 +240,34 @@ this file here.
 
 ## Decided
 
+- 2026-11-09 (Ely): `engine-public` merges into `dev` with public PyBNF
+  (`job_type = lwf`) the default and the private engine kept as the
+  fallback (`FLUBNF_ENGINE=private`). App makes the change on
+  `engine-public` and merges it; this lane pushes nothing there
+  meanwhile. It reaches `main`, and so students and the weekly round,
+  only through a `dev` to `main` pull request Ely asks for; until then
+  `main` and the round run the private engine. This supersedes decision
+  1 of 2026-10-15 and plan v2's order (stage 2 before the cutover);
+  stage 2's measurements still run, on Ely's Windows PC. Decisions 2, 4,
+  5 and 6 stand; 3 and 7 name the lab Mac (Open).
+- 2026-11-09 (Ely): the pin stays the 8410f794 wheel with bngsim 0.15.1,
+  though pybnf 1.8.2 is released: it needs bngsim 0.17 or newer, so
+  decision 6 (a release at cutover) would break decision 5. This lane
+  measures 1.8.2 with bngsim 0.17 against 8410f794 on Ely's Windows PC
+  before any move is proposed.
 - 2026-10-15 (Ely, on the public-PyBNF plan v2): all seven as recommended.
-  (1) Switch to public PyBNF as soon as stage 2 passes, on a Thursday, the
-  private engine kept as fallback for two rounds; (2) a degenerate `lwf`
-  cell is a failed cell, as today; (3) the private engine stays a
-  research-only engine on the lab Mac, nothing ported unless a result wins
-  a gate; (4) the console keeps its `pf.*` knob and ledger names, mapped in
-  the conf writer; (5) bngsim stays 0.15.1; (6) the pin is the merge commit
-  8410f794 for stages 1 and 2, the release version at cutover if Bill has
-  tagged one, else the commit; (7) stage 2's shadow Wednesday: public run
-  on the lab Mac as a Thursday replay of the same vintage, private run on
-  Ely's laptop as every round. Stage 1's engine part starts 2026-10-15.
+  (1, superseded 2026-11-09) Switch to public PyBNF as soon as stage 2
+  passes, on a Thursday, the private engine kept as fallback for two
+  rounds; (2) a degenerate `lwf` cell is a failed cell, as today; (3) the
+  private engine stays a research-only engine on the lab Mac, nothing
+  ported unless a result wins a gate; (4) the console keeps its `pf.*`
+  knob and ledger names, mapped in the conf writer; (5) bngsim stays
+  0.15.1; (6) the pin is the merge commit 8410f794 for stages 1 and 2,
+  the release version at cutover if Bill has tagged one, else the commit
+  (see 2026-11-09); (7) stage 2's shadow Wednesday: public run on the lab
+  Mac as a Thursday replay of the same vintage, private run on Ely's
+  laptop as every round. Stage 1's engine part starts 2026-10-15. Since
+  the move off the lab Mac, (3) and (7) are Open.
 - 2026-09-30 (answering Submission's note of 2026-09-30): from the first
   round (2026-10-07), engine test runs stay off the lab Mac on submission
   Wednesdays, from the target-data update until the hub pull request is
@@ -233,7 +279,7 @@ this file here.
   made directly.
 - 2026-09-30: rename nothing in FluBNF from `pf_*` to `lwf_*` until Ely
   starts the migration.
-- 2026-09-30: say "Liu–West filter", and "forecasting sample" for its
+- 2026-09-30: say "Liu-West filter", and "forecasting sample" for its
   output, never "posterior". Once IBIS exists, never say "particle filter"
   unqualified.
 - 2026-09-30: upstream `lwf` uses PyBNF's own machinery:
@@ -243,13 +289,43 @@ this file here.
   - `wall_time_fit`, supported and off by default.
 - 2026-09-30: IBIS is built after `lwf` is finalized, by another agent.
 - 2026-09-30: choosing the jitter automatically by one-week-ahead score was
-  tested and rejected. On six states the Liu–West filter member scored
+  tested and rejected. On six states the Liu-West filter member scored
   relWIS 0.814, against 0.773 for a fixed 0.15, with narrower bands and
   worse scores at the hard phases. Do not propose it again.
 - Production SIHRS fits five parameters (Reff, eps1, phi1, mult, r). Notes
   listing seven are stale.
 
 ## For other lanes
+
+- App (2026-11-09, answering your 2026-10-29 question on `pf.py`,
+  `retro.py` and `sandbox.py`): this lane has no work in flight in them,
+  nor in any file on `dev` or `engine-public`; its in-flight list of
+  2026-10-29 is closed. It pushes nothing to `engine-public` while you
+  make public the default there, and starts from `dev` once
+  `origin/engine-public` is an ancestor of `origin/dev`.
+- App (2026-11-09): TEAM.md's lane table and its "Two machines" rule say
+  the Engine and Model lanes work on the lab Mac. Since 2026-11-09 both
+  work on Ely's Windows PC; please update that page.
+- App (2026-11-09): stage 2's Windows item (one state, one week through
+  the console's public path) runs here, by this lane, while it brings up
+  the public engine on Ely's Windows PC; results go under Now, and
+  launcher or docs defects come to you as requests.
+- App (2026-11-09): pybnf 1.8.2 is on PyPI and needs bngsim 0.17 or
+  newer; Ely keeps the lock on 8410f794 with bngsim 0.15.1 (Decided).
+  Nothing changes in the lock or the installers.
+- Model (2026-11-09): this lane now shares Ely's Windows PC with you (12
+  cores, 20 threads). Before a run longer than about an hour, each of us
+  says here and by message what it is and for how long. This PC's global
+  git name is "MAPK Studio": set `user.name` and `user.email` to Ely's in
+  every clone before its first commit.
+- Model (2026-11-09, answering your request of 2026-09-30 on
+  `pf_mean_scale_column`): it goes on the public engine. `lwf.py`
+  refuses it, as it does `pf_shrink`, `pf_forecast_jitter`,
+  `pf_binom_neff_cap`, `pf_state_file` and `pf_continue`, the two-strain
+  model and models that read `time()`. Now that public is becoming the
+  default, such runs need `FLUBNF_ENGINE=private`. Your request on
+  `collect()`'s m_0 is answered here once this lane has checked the
+  public `collect()` on `dev`.
 
 - App (2026-10-29, late, what `engine-public` changed in shared files, so
   the student workspace can merge around it): `pf.py`: the engine checks
@@ -273,8 +349,7 @@ this file here.
   1. The lock: as above, pushed to `engine-public` at the root.
   2. The wheel's URL is
      `https://github.com/elyfmiller/flubnf/releases/download/pybnf-8410f794e3fa4817572fd07fceb043ddec39d77b/pybnf-1.8.1-py3-none-any.whl`
-     (your test's form), sha256 above. It answers 404 until Ely publishes
-     the release.
+     (your test's form), sha256 above. Published 2026-11-09.
   3. `flubnf/settings.py`: `FLUBNF_ENGINE` (private or public, anything
      else warns and means private) and `PY_ENGINE_PUBLIC` from
      `FLUBNF_PY_ENGINE_PUBLIC`, with your two defaults. Coming on
@@ -288,9 +363,10 @@ this file here.
   Superseded: the 2026-10-15 handoff's git install line and
   `bngsim[antimony]`; the wheel and the lock replace them.
 - App (2026-10-29, your protection-audit items 1 to 3, the private
-  engine's pin, update and archive check): taken, after `engine-public`'s
-  stage 1 closes (Tuesday 2026-11-03). The runner cleaning and the student
-  workspace items stay yours, as Ely decided.
+  engine's pin, update and archive check): taken, not started. Whether
+  they are still wanted with the private engine as the fallback, and who
+  edits `engine_build.py` now, is Open. The runner cleaning and the
+  student workspace items stay yours, as Ely decided.
 
 - App (2026-10-15, stage 1 handoff, the engine lane's part is done):
   everything the `engine-public` branch needs, measured on the lab Mac.
@@ -380,7 +456,7 @@ this file here.
   - a statistical-equivalence check against the production record before
     switching, because the numbers will not be byte-identical.
 - Model (2026-10-01; toy SIR, synthetic data, in-house, not peer-reviewed):
-  - The Liu–West filter did not follow a drop in transmission at any jitter
+  - The Liu-West filter did not follow a drop in transmission at any jitter
     up to 0.9 (540 pre-registered runs plus 91 checks). It behaved like a
     sequential fit with nearly fixed parameters: its beta matched a plain
     constant-beta fit of the same rows.
@@ -403,15 +479,6 @@ this file here.
 - All: the private engine's `pf_continue` silently ignores revised earlier
   rows. Production refits every week, so it is safe. Nothing that carries a
   swarm across weeks may rely on it; upstream `lwf` refuses a revised row.
-- Model: planned, not started, after the port groundwork: per-parameter
-  jitters for SIHRS against a single 0.15 on forecasts. The design is a few
-  pre-registered arms, one season held out, confirmed on the full grid. It
-  needs a `pf_parameter_jitter` passthrough in the conf writer, which exists
-  only on a local research branch. Say here if the model lane wants to run
-  it instead.
-- Model: engine tests on the lab Mac are CPU-heavy (the jitter test takes
-  about 81 minutes per arm). Say here if a replay needs the machine at a
-  given time and the engine runs will wait.
 
 ## Plan: FluBNF on public PyBNF (v2, 2026-10-15, after the merge)
 
@@ -427,8 +494,9 @@ Goal: FluBNF stops needing the private fork (PyBNF-Private
 archives and bundles, the collaborator invitations) on every route: the
 weekly forecast run, retro replays, the sandbox, custom datasets, the
 installers (macOS, Windows, students), the doctor, the docs, the tests. The
-2026-27 rounds stay on the private engine until stage 2 passes; nothing in
-production changes before Ely's cutover decision.
+2026-27 rounds stay on the private engine until Ely asks for the `dev` to
+`main` pull request that carries the public default (Decided 2026-11-09,
+which drops this plan's "stage 2 before the cutover" order).
 
 ### The pin
 
@@ -438,8 +506,10 @@ production changes before Ely's cutover decision.
   fine). Provenance: the commit in the installed distribution's
   `direct_url.json`. Preflight: `from pybnf.algorithms.filters.liu_west import
   LiuWestFilter` succeeds and the recorded commit is the pin.
-- After Bill releases (1.9.0?): `pip install "pybnf==<v>" ...`; preflight:
-  `pybnf.__version__` at or above it. Ely asks Bill when.
+- Since 2026-10-29: the lock, `engine-requirements.txt`, with the wheel
+  rebuilt from 8410f794 (published 2026-11-09) in place of the git line.
+- A release exists: 1.8.2 (2026-11-04), which needs bngsim 0.17 or newer.
+  Ely keeps 8410f794 for now (Decided 2026-11-09).
 - bngsim stays 0.15.1 (decision 5).
 
 ### What changes
@@ -521,7 +591,7 @@ App, branch `engine-public` on `dev`, opt-in until stage 3 (about a week):
 
 Model and Submission: nothing runs on the public engine yet.
 
-### Stage 2, acceptance (after `engine-public` runs one week end to end on the lab Mac; one to two weeks, Wednesdays excluded)
+### Stage 2, acceptance (on Ely's Windows PC; no longer before the cutover, Decided 2026-11-09; one to two weeks, Wednesdays excluded)
 
 - Engine and Model: the full grid through the console's public path, three
   seasons, both members, against the private engine's own rerun on identical
@@ -536,7 +606,7 @@ Model and Submission: nothing runs on the public engine yet.
 - Engine: the cost model refitted; the time budget checked on the slowest lab
   machine.
 
-### Stage 3, cutover (Ely's decision after stage 2; a Thursday, never the days before a due date)
+### Stage 3, cutover (Ely's decision of 2026-11-09: the default on `dev` now, on `main` when Ely asks; never the days before a due date)
 
 - App: `FLUBNF_ENGINE` defaults to public; the pin is the public one; the setup
   scripts default to the public route; the private route stays one release as
@@ -580,4 +650,32 @@ Model and Submission: nothing runs on the public engine yet.
    laptop as every round; the files diffed after.
 
 ## Open
+
+- 2026-11-09, for Ely, since the move to the Windows PC:
+  - Decisions 3 and 7 name the lab Mac: where does the research-only
+    private engine live now; who runs the public side of a shadow
+    Wednesday; and does 2026-11-18's still happen?
+  - The Wednesday rule (no heavy engine runs from the target-data update
+    until the hub pull request is open): does it bind this PC? Until you
+    say, this lane keeps heavy runs off those hours (next: 2026-11-11).
+  - Stage 2's seasons and cells: "three seasons, both members" names
+    neither (the 2026-10-13 test pooled 2023-24 and 2024-25). This lane
+    pre-registers seasons, cells, seeds and the gate here after your yes.
+  - Which machine is now "the slowest lab machine" for the time budget?
+  - The protection audit's items 1 to 3 with the private engine as the
+    fallback: still wanted, and who edits `app/core/engine_build.py`?
+  - Does `engine-public` stay a live branch after App's merge?
+  - The fallback engine here: clone PyBNF-Private with your login, or the
+    lab's `pybnf-pf-2fdadee0.tar.gz` (its sha256 checked against the
+    lab's copy first)?
+  - From the lab Mac, on no GitHub repository: the FluBNF-local research
+    tree (this lane's records: `lwf-production-equivalence` with the
+    replay harness that stage 2's 36-cell replay needs,
+    `public-port/fixture-alaska-2025-01-11`, `pf-parameter-jitter`,
+    `lwf-change-tracking`); the private branch `pf/forecast-fixes-noauto`
+    (faccccb3); elyfmiller/PyBNF `feat/particle-filter` if never pushed.
+    Where should they go here (outside Documents, which Controlled Folder
+    Access guards)?
+  - App's, in app.md (2026-11-01): Check files the public engine's model
+    refusals under `KEY_UNKNOWN`.
 
