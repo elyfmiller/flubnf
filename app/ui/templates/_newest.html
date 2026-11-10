@@ -9,6 +9,7 @@
    zero, collapsed or unreported state; the per-state choice is made on
    the Forecast tab (the Data issues box, _data_issues.html).
    head_only=True: the head alone ("All 53 reported") plus the "?".
+   tip=False: no "?" (the Data issues box under the line names each).
 
    row(r): the Data tab's "Newest week" value: the mark and the head, one
    badge per count ("5 read 0"), and a toggletip naming each location,
@@ -34,7 +35,7 @@
 {% if not r.complete %}<span class="ncline{% if link %} uk-tt-line{% endif %}">Runs do this themselves: up to {{ r.max_lag }} unreported weeks, the forecast starts from the latest reported week and keeps the hub's horizons; beyond that the location is skipped.</span>{% endif %}
 {%- endmacro %}
 
-{% macro check(r, short=False, hidden=False, head_only=False) -%}
+{% macro check(r, short=False, hidden=False, head_only=False, tip=True) -%}
 {%- set parts = r.short().split(' · ') -%}
 <p class="newest-check{% if short %} hint{% endif %}" id="newest-check" data-week="{{ r.week }}"
  data-complete="{{ 'yes' if r.complete else 'no' }}"{% if hidden %} hidden{% endif %}>
@@ -44,7 +45,7 @@
 {%- else -%}
 {{ mark(r) }} {{ r.line() }}
 {%- endif %}
-{%- if not r.clean %}
+{%- if tip and not r.clean %}
 {% call tips.tip("newest-gaps", "the jurisdictions to look at for " ~ r.week) -%}
 {{ lines(r) }}
 {%- endcall %}

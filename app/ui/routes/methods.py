@@ -57,6 +57,10 @@ def methods_page(request: Request):
     """Methodology reference: the SIHRS compartment model, the fitting
     machinery, the Oracle step, the Groundhog, the Model settings, and the
     data and verification policies."""
+    from app.core import knobs as K
     return templates.TemplateResponse(request, "methods.html", {
         "active": "Methods", "versions": VERSIONS,
-        "settings_ref": settings_reference()})
+        "settings_ref": settings_reference(),
+        # what the model definition fixes; the panel lists only what a
+        # student can set
+        "settings_fixed": K.panel("forecast")["locked"]})

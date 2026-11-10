@@ -101,7 +101,7 @@ def test_no_row_and_blank_are_told_apart_and_forecast_from_the_week_before(
     assert r.line() == f"3 of {len(LOCS)} reported · 2 not reported"
     assert r.short() == f"3 of {len(LOCS)} reported · 2 not reported"
     assert r.details()[:2] == [
-        f"No row: Nebraska. Forecast from {WEEKS[-2]}.",
+        f"Not reported: Nebraska. Forecast from {WEEKS[-2]}.",
         f"Blank value: Utah. Forecast from {WEEKS[-2]}."]
     assert r.details()[2].startswith("Each is chosen per state in Data issues")
 
@@ -116,7 +116,7 @@ def test_a_location_beyond_the_anchor_lag_is_skipped(tmp_path, monkeypatch):
     last = WEEKS[-(AE.MAX_ANCHOR_LAG + 2)]
     assert last in g.why and f"more than {AE.MAX_ANCHOR_LAG} unreported" in g.why
     assert r.line() == f"4 of {len(LOCS)} reported · 1 not reported"
-    assert r.details()[0].startswith("No row: Wyoming. Skipped: its newest")
+    assert r.details()[0].startswith("Not reported: Wyoming. Skipped: its newest")
     assert reported.recommend(g) == ("carry", g.why)
     # at exactly MAX_ANCHOR_LAG unreported weeks it still forecasts
     _hub(tmp_path / "hub2", monkeypatch,
@@ -218,7 +218,7 @@ def test_the_box_rows_offer_each_state_its_choices(tmp_path, monkeypatch):
     neb = rows["Nebraska"]
     assert neb["issue"] == "no row" and neb["default"] == "carry"
     assert neb["options"] == [("carry", f"From {md}"), ("omit", "Leave out")]
-    assert neb["rec"] == "carry" and neb["flag"] == "no row"
+    assert neb["rec"] == "carry" and neb["flag"] == "not reported"
     assert neb["hint"] == f"forecast from {WEEKS[-2]}"
 
 
@@ -287,7 +287,7 @@ def test_the_line_counts_and_the_tip_names_every_location(tmp_path, monkeypatch)
     r = reported.check()
     assert r.line() == (f"3 of {len(LOCS)} reported · 2 not reported "
                         "· 1 reads 0 · 1 collapsed")
-    assert r.details()[0] == f"No row: Nebraska, Ohio. Forecast from {WEEKS[-2]}."
+    assert r.details()[0] == f"Not reported: Nebraska, Ohio. Forecast from {WEEKS[-2]}."
     assert "Ohio" not in r.line() and "Nebraska" not in r.line()
 
 
@@ -314,7 +314,7 @@ def test_data_tab_card_shows_the_check(tmp_path, monkeypatch):
             in row)
     assert '<span class="uk-badge-t">1 not reported</span>' in row
     assert f"4 of {len(LOCS)} reported" in row
-    assert f"No row: Nebraska. Forecast from {WEEKS[-2]}." in page
+    assert f"Not reported: Nebraska. Forecast from {WEEKS[-2]}." in page
     assert ('<a href="/forecast#data-issues">Data issues on the Forecast '
             'tab</a>') in page
 
@@ -398,5 +398,7 @@ def test_forecast_setting_reaches_the_check(tmp_path, monkeypatch):
     assert f'<span class="nc-head">All {len(LOCS)} reported</span>' in line
     assert '<span class="uk-badge-t">1 reads 0</span>' in line
     assert 'aria-label="Complete, with issues"' in page
-    assert ("0 after 40, 40, 40: Ohio. Recommended: both from the week "
-            "before") in page
+    # the Data issues box under the line names Ohio: the line has no "?"
+    # of its own (FC-26)
+    assert 'id="tip-newest-gaps"' not in page
+    assert '<label for="gap-39">Ohio</label>' in page
