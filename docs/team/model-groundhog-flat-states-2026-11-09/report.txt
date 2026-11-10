@@ -1,0 +1,43 @@
+vintage target-hospital-admissions.csv; aux flusurv weight 0.5 shrink 0.9947; local own_share 0.5 kernel_sd 1.0 ess_floor 30.0
+notes: none
+
+=== Reproduction and decomposition, h3 = 4 weeks past the anchor
+
+Hawaii (FIPS 15): last weeks 09-26 29, 10-03 67, 10-10 78, 10-17 86, 10-24 67, 10-31 54
+  reproduced medians h0-h3: 57.8, 80.4, 103.8, 140.7; submitted: not in the file
+  observed weekly growth, last 3 weeks: 0.885
+  h=1 wk: median ratio 1.071 (x anchor = 57.8); weekly 1.071 | admissions 1.141 [own 1.000 (n=20), rest 1.313 (n=900)] | FluSurv-NET 1.000 (n=829) | admissions weight on rising donors 60%
+  h=4 wk: median ratio 2.606 (x anchor = 140.7); weekly 1.271 | admissions 2.229 [own 1.854 (n=20), rest 3.385 (n=924)] | FluSurv-NET 2.983 (n=899) | admissions weight on rising donors 88%
+    own seasons' 4-week ratios: 2022-23 0.62 1.29 1.71 5.00 3.50; 2023-24 2.00 1.64 2.00 2.23 1.07; 2024-25 2.86 4.67 4.00 15.00 7.00; 2025-26 8.00 4.14 4.20 3.20 1.25
+
+Alaska (FIPS 02): last weeks 09-26 19, 10-03 23, 10-10 13, 10-17 22, 10-24 8, 10-31 12
+  reproduced medians h0-h3: 14.0, 18.7, 26.1, 35.9; submitted: 14.0, 19.0, 26.0, 36.0
+  observed weekly growth, last 3 weeks: 0.974
+  h=1 wk: median ratio 1.167 (x anchor = 14.0); weekly 1.167 | admissions 1.333 [own 1.331 (n=15), rest 1.297 (n=905)] | FluSurv-NET 1.000 (n=829) | admissions weight on rising donors 68%
+  h=4 wk: median ratio 2.991 (x anchor = 35.9); weekly 1.315 | admissions 3.000 [own 2.795 (n=17), rest 3.619 (n=927)] | FluSurv-NET 2.983 (n=899) | admissions weight on rising donors 84%
+    own seasons' 4-week ratios: 2022-23 5.21 3.53 5.91 36.00 2.80; 2023-24 0.36 0.45 0.47 0.81 2.79; 2024-25 3.00 1.25 2.33 9.00 6.00; 2025-26 4.33 3.00
+
+Montana (FIPS 30): last weeks 09-26 29, 10-03 16, 10-10 26, 10-17 20, 10-24 20, 10-31 27
+  reproduced medians h0-h3: 29.5, 48.1, 73.2, 97.0; submitted: 30.0, 48.0, 73.0, 97.0
+  observed weekly growth, last 3 weeks: 1.013
+  h=1 wk: median ratio 1.093 (x anchor = 29.5); weekly 1.093 | admissions 1.186 [own 1.184 (n=10), rest 1.295 (n=910)] | FluSurv-NET 1.000 (n=829) | admissions weight on rising donors 71%
+  h=4 wk: median ratio 3.591 (x anchor = 97.0); weekly 1.377 | admissions 4.200 [own 6.661 (n=12), rest 3.465 (n=932)] | FluSurv-NET 2.983 (n=899) | admissions weight on rising donors 88%
+    own seasons' 4-week ratios: 2022-23 9.09 10.83 14.67; 2023-24 4.20 18.00 3.00; 2024-25 2.00; 2025-26 16.00 13.00 0.67 1.40 0.50
+
+Washington (FIPS 53): last weeks 09-26 108, 10-03 137, 10-10 126, 10-17 158, 10-24 160, 10-31 179
+  reproduced medians h0-h3: 230.1, 355.0, 539.8, 766.3; submitted: 230.0, 355.0, 540.0, 766.0
+  observed weekly growth, last 3 weeks: 1.124
+  h=1 wk: median ratio 1.286 (x anchor = 230.1); weekly 1.286 | admissions 1.571 [own 2.079 (n=20), rest 1.311 (n=900)] | FluSurv-NET 1.000 (n=829) | admissions weight on rising donors 85%
+  h=4 wk: median ratio 4.281 (x anchor = 766.3); weekly 1.438 | admissions 5.579 [own 8.922 (n=20), rest 2.942 (n=924)] | FluSurv-NET 2.983 (n=899) | admissions weight on rising donors 96%
+    own seasons' 4-week ratios: 2022-23 7.65 17.02 16.24 11.38 6.85; 2023-24 4.88 4.35 4.50 3.00 1.31; 2024-25 5.57 23.00 7.25 22.00 2.00; 2025-26 4.69 2.25 3.08 1.73 1.86
+
+=== Every state this round: implied weekly growth to h3 against observed
+states 52; Groundhog weekly growth median 1.336, 10th-90th 1.273-1.384; observed median 1.255, 10th-90th 1.097-1.542
+Spearman(observed, Groundhog) = -0.10; Pearson on log = -0.02
+
+states observed flat or falling (<= 1.05/wk): 4
+  state   last  obs_wk  gh_wk
+ Hawaii 54.000   0.885  1.271
+ Alaska 12.000   0.974  1.315
+Vermont  7.000   1.000  1.315
+Montana 27.000   1.013  1.377

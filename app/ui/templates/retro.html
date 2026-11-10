@@ -31,21 +31,24 @@
 {% if not engine_ok %}{% call tips.alert("warn", "Groundhog only works without it.", title="The Oracle SIHRS needs the particle-filter engine.", id="rt-engine-off", live="") %}To install it, {{ engine_setup_hint() }}{{ engine_fallback if engine_fallback is defined else "" }}.{% endcall %}{% endif %}
 {# the forms beside the seasons; on a phone the seasons (the results)
    come first (tabs/retro.css .rt-cols) #}
+{% set form = form | default({}) %}
 <div class="cols rt-cols">
  <div class="rt-forms"><div class="card rt-runcard"><h2>Settings</h2>
   <form method="post" action="/retro/run">
    <label for="rt-season">Season</label>
-   <select name="season" id="rt-season">{% for s in seasons %}<option>{{ s.name }}</option>{% endfor %}</select>
+   {# the form as last posted (routes/retro._last_retro_form), so a
+      refusal or a run never resets a choice #}
+   <select name="season" id="rt-season">{% for s in seasons %}<option{% if form.season == s.name %} selected{% endif %}>{{ s.name }}</option>{% endfor %}</select>
    {# the options say what each choice costs and does: no "?" per label #}
    <label for="retro-scope">Location scope</label>
    <select name="locations" id="retro-scope">
      <option value="panel6">6-state panel (fast)</option>
-     <option value="all">all 52 jurisdictions</option>
-     <option value="custom">custom selection</option></select>
-   <div class="checklist" id="retro-custom" style="display:none">
+     <option value="all"{% if form.locations == "all" %} selected{% endif %}>all 52 jurisdictions</option>
+     <option value="custom"{% if form.locations == "custom" %} selected{% endif %}>custom selection</option></select>
+   <div class="checklist" id="retro-custom"{% if form.locations != "custom" %} style="display:none"{% endif %}>
      {% for l in state_names %}
      <label class="ck"><input type="checkbox" name="custom_locations"
-       value="{{ l }}"> {{ l }}</label>
+       value="{{ l }}"{% if l in (form.custom_locations or []) %} checked{% endif %}> {{ l }}</label>
      {% endfor %}
    </div>
    {# US national fitted by default, as the Forecast form's default run
@@ -55,26 +58,27 @@
    <label for="rt-national">US national</label>
    <select name="national" id="rt-national">
      <option value="1">fit US national too (default)</option>
-     <option value="0">states only</option></select>
+     <option value="0"{% if form.national == "0" %} selected{% endif %}>states only</option></select>
    <label for="rt-width-in">Shard width</label>
-   <span class="uk-affix"><input type="number" name="width" value="{{ default_width }}" id="rt-width-in" min="1" max="{{ width_cap }}"><span>runners</span></span>
+   <span class="uk-affix"><input type="number" name="width" value="{{ form.width or default_width }}" id="rt-width-in" min="1" max="{{ width_cap }}"><span>runners</span></span>
    <label for="retro-engine">Engine preset</label>
    {# "pf" (internal key) = Oracle SIHRS + Groundhog: hours, needs the engine
       venv. "analogue" = Groundhog alone: minutes, no engine, reproduces its
       published numbers anywhere #}
    <select name="engine" id="retro-engine">
      <option value="pf">Oracle SIHRS + Groundhog (hours)</option>
-     <option value="analogue"{% if not engine_ok %} selected{% endif %}>Groundhog only (minutes)</option></select>
+     <option value="analogue"{% if form.engine == "analogue" or (not engine_ok and form.engine != "pf") %} selected{% endif %}>Groundhog only (minutes)</option></select>
    {# the Groundhog's zero-anchor rule (app/core/missing.py): a data
       decision with no default, asked here rather than in the panel; a
       season replayed before the rule existed resumes as abstain #}
    <label for="rt-zero-anchor">Groundhog when the newest week reads 0</label>
    <select name="knob.groundhog.zero_anchor" id="rt-zero-anchor" required>
      <option value="">Choose…</option>
-     <option value="abstain">abstain: no Groundhog forecast for that state and week</option>
-     <option value="level">level: anchor on the mean of the last 4 weeks</option>
-     <option value="extend">extend: carry the last positive week over 1 or 2 zeros</option>
-     <option value="blend">blend: level and extend averaged</option></select>
+     {% set za = (form.knobs or {}).get("groundhog.zero_anchor", "") %}
+     <option value="abstain"{% if za == "abstain" %} selected{% endif %}>abstain: no Groundhog forecast for that state and week</option>
+     <option value="level"{% if za == "level" %} selected{% endif %}>level: anchor on the mean of the last 4 weeks</option>
+     <option value="extend"{% if za == "extend" %} selected{% endif %}>extend: carry the last positive week over 1 or 2 zeros</option>
+     <option value="blend"{% if za == "blend" %} selected{% endif %}>blend: level and extend averaged</option></select>
    {# particles and replicates live in the panel, under their field names #}
    {% include "_model_settings.html" %}
    {# set by the start-over prompt; defaults to 'resume', so a keyboard submit

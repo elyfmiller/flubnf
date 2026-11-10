@@ -384,12 +384,15 @@ async def upload(request: Request):
     # the counts on the line; the snapshots and any warnings in its tip
     shared._flash((f"This file is already stored as {ds.name}: {counts}"
                    if again else f"Stored {ds.name}: {counts}")
-                  + (f" {len(warn)} warning(s)." if warn else ""),
+                  + (f" {len(warn)} warning{'' if len(warn) == 1 else 's'}."
+                     if warn else ""),
                   "warn" if warn else "ok",
                   detail=" ".join(([snaps] if snaps else []) + warn))
     if nxt == "forecast":
         return RedirectResponse(f"/forecast?source={ds.id}", status_code=303)
-    return RedirectResponse(f"/data?source={ds.id}#datasets", status_code=303)
+    # #main, where the notice is: the form's #datasets, which a redirect
+    # without a fragment keeps, scrolled it out of view
+    return RedirectResponse(f"/data?source={ds.id}#main", status_code=303)
 
 
 def _delete_confirmed(ds_id: str, confirm: str) -> None:
@@ -415,7 +418,9 @@ def _delete_confirmed(ds_id: str, confirm: str) -> None:
 @router.post("/data/datasets/{ds_id}/delete")
 def delete(request: Request, ds_id: str, confirm: str = Form("")):
     _delete_confirmed(ds_id, confirm)
-    return RedirectResponse("/data#datasets", status_code=303)
+    # #main, where the notice is (the delete form's #datasets would keep
+    # it out of view)
+    return RedirectResponse("/data#main", status_code=303)
 
 
 def api_series(ds, locs: str) -> dict:
@@ -1305,7 +1310,13 @@ def replay_page(request: Request, ds_id: str, stamp: str, h: str = "0"):
     ds = get_dataset(ds_id)
     if ds is None or not CX.valid_stamp(stamp) \
             or not CX.replay_dir(ds, stamp).is_dir():
-        return HTMLResponse("<p>No such replay.</p>", status_code=404)
+        # a page of the console (the Retrospective tab lists the replays)
+        from app.ui.routes import output as output_routes
+        return output_routes._notice(
+            request, 404, "empty", "No such replay",
+            action=((f"/retro?dataset={ds.id}" if ds else "/retro"),
+                    "Open Retrospective"),
+            active="Retrospective", heading="Replay")
     meta, fc, cells, cov = CX.load(CX.replay_dir(ds, stamp))
     status = meta.get("status") or "unknown"
     live = _REPLAY.get("stamp") == stamp

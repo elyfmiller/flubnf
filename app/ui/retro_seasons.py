@@ -15,6 +15,7 @@ import time
 from pathlib import Path
 
 from app.core import ttlcache
+from app.core.runs import APP_STATE
 from app.ui.templating import _pf_name
 
 
@@ -32,11 +33,12 @@ def _weeks_done(root: Path) -> int:
 
 
 # === Retrospective core: roots, claims, season status ===
-RETRO_ROOT = Path(__file__).resolve().parents[1] / "state" / "retro"
+# All in the state folder, which FLUBNF_STATE_DIR moves (app/core/runs.py)
+RETRO_ROOT = APP_STATE / "retro"
 # The sealed full-grid records, read only: the reseal (production engine,
 # the Home/Methods figures) first, then v1.0.0's seal (history).
-RETRO_RESEAL = Path(__file__).resolve().parents[1] / "state" / "retro_reseal"
-RETRO_SEAL = Path(__file__).resolve().parents[1] / "state" / "retro_seal"
+RETRO_RESEAL = APP_STATE / "retro_reseal"
+RETRO_SEAL = APP_STATE / "retro_seal"
 
 
 def _sealed_roots() -> tuple:

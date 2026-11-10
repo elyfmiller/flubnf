@@ -170,13 +170,18 @@ def retro_index(request: Request, dataset: str = "", tab: str = ""):
                         "finished_utc": prog["finished_utc"],
                         "scored": (root / "scores.json").exists()})
     from app.core.engines.pf import DEFAULT_SHARD_WIDTH, SHARD_WIDTH_CAP
+    # the form as last posted; its panel opens once after its own refusal
+    form = dict(_last_retro_form)
+    _last_retro_form.pop("ms_refused", None)
     return templates.TemplateResponse(request, "retro.html",
                                       {"active": "Retrospective",
                                        "own_tab": False, "seasons": seasons,
                                        "state_names": _retro_state_names(),
                                        "default_width": DEFAULT_SHARD_WIDTH,
                                        "width_cap": SHARD_WIDTH_CAP,
-                                       "knob_panel": _knob_panel("retro"),
+                                       "form": form,
+                                       "knob_panel": _knob_panel("retro",
+                                                                 form),
                                        # a half-installed engine cannot
                                        # run the Oracle preset either
                                        "engine_ok": pipeline._pf_engine_state()
@@ -369,6 +374,22 @@ def _retro_bg(season: str, locations: list, width: int,
                 pass
 
 
+#: the Settings form as last posted (this console session): the page shows
+#: it again, so a refusal or a run never resets every choice; "ms_refused"
+#: (one-shot) opens the Model settings panel on its own refusal
+_last_retro_form: dict = {}
+
+
+def _remember_retro_form(**fields) -> None:
+    """Keep the posted Settings form for the page (_last_retro_form)."""
+    try:
+        knob_vals = _knob_raw(fields.pop("knob_fields"), fields.pop("knobs"))
+    except ValueError:                   # refused below, with the reason
+        knob_vals = {}
+    _last_retro_form.clear()
+    _last_retro_form.update(fields, knobs=knob_vals)
+
+
 def _refused(msg: str, detail: str = "",
              kind: str = "warn") -> RedirectResponse:
     """Flash why a control request did nothing and go back to the index
@@ -491,6 +512,10 @@ def retro_run(background: BackgroundTasks, season: str = Form(...),
     from app.core import retro
     from app.core.retro import available_seasons
     _invalidate_scans()
+    _remember_retro_form(season=season, locations=locations,
+                         custom_locations=list(custom_locations),
+                         national=national, width=width, engine=engine,
+                         knob_fields=knob_fields, knobs=knobs)
     if not _valid_season(season):
         return _refused("Not started: unrecognized season name.")
     # busy checks, the archive/discard move and the claim all run under
@@ -577,6 +602,7 @@ def retro_run(background: BackgroundTasks, season: str = Form(...),
                         **({"drop_same_day": drop_same_day}
                            if _str_field(drop_same_day).strip() else {})})
         except ValueError as e:              # KnobError is a ValueError
+            _last_retro_form["ms_refused"] = str(e) or True
             return _refused(f"Not started: model settings: {e}.")
         particles = int(nd.get("pf.particles", RunSpec.particles))
         replicates = int(nd.get("pf.replicates", RunSpec.replicates))
@@ -1306,13 +1332,21 @@ def _season_report(season: str, archive: str):
 
 
 @router.get("/retro/{season}/report")
-def retro_season_report(season: str, archive: str = ""):
+def retro_season_report(request: Request, season: str, archive: str = ""):
     """Download the season report (_season_report), under
-    report_season.download_name."""
+    report_season.download_name. A refusal is a page of the console (under
+    Retrospective, with the way to the season), never a bare line."""
     from app.core import report_season
+    from app.ui.routes import output as output_routes
     p = _season_report(season, archive)
     if isinstance(p, PlainTextResponse):
-        return p
+        return output_routes._notice(
+            request, p.status_code,
+            "error" if p.status_code >= 500 else "empty",
+            p.body.decode("utf-8"),
+            action=((f"/retro/{season}" if _valid_season(season) else "/retro"),
+                    "Open the season"),
+            active="Retrospective", heading="Season report")
     return FileResponse(p, filename=report_season.download_name(season,
                                                                 archive),
                         media_type="text/html",

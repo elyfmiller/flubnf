@@ -698,18 +698,27 @@ def _not_found(request: Request):
 
 
 @router.get("/output/download")
-def output_download(request: Request, path: str):
-    """Download a submission CSV. The file must be inside app state, and a
-    submission/ file must sit under a registered hub model's directory (the
-    listings' rule, enforced here for hand-edited URLs)."""
+def output_download(request: Request, path: str = ""):
+    """Download a submission CSV. The file must be inside app state, a CSV
+    in a model's folder under submission/ or a dataset run's export/ (the
+    files the console links; never the ledger, the form memory or a run's
+    results), and a submission/ file must sit under a registered hub
+    model's directory (the listings' rule, enforced here for hand-edited
+    URLs). No path at all is a file that is not there."""
     from fastapi.responses import FileResponse
+    from app.core.custom_run import EXPORT_DIR
     from app.core.runs import APP_STATE
     from app.core import datasets as _datasets
+    if not path:                        # no file named: nothing to serve
+        return _not_found(request)
     try:
         p = Path(path).resolve()
     except (OSError, ValueError):       # a NUL byte or an unusable name
         return _not_found(request)
     if not (p.is_relative_to(APP_STATE.resolve()) and p.is_file()):
+        return _not_found(request)
+    if p.suffix.lower() != ".csv" \
+            or p.parent.parent.name not in ("submission", EXPORT_DIR):
         return _not_found(request)
     if p.is_relative_to(Path(_datasets.ROOT).resolve()):
         # uploaded data is not served here (it may be private)
@@ -749,32 +758,45 @@ def _reveal_command(p: Path, platform: str | None = None):
 
 
 @router.post("/output/reveal")
-def output_reveal(request: Request, path: str = Form(...)):
+def output_reveal(request: Request, path: str = Form("")):
     """Show the file in Finder / Explorer (a local desktop app), then back
     to the page that asked (a run page or Output); a warning there when no
-    file manager could be opened on it."""
+    file manager could be opened on it. A script caller that accepts JSON
+    (the season page's Show in folder) gets {ok, message, detail} instead
+    of the redirect, so it can show the warning itself (the redirect's page
+    would eat the flash)."""
     import subprocess
+    from fastapi.responses import JSONResponse
     from app.core.runs import APP_STATE
+    wants_json = "application/json" in request.headers.get("accept", "")
+
+    def answer(message: str = "", detail: str = ""):
+        if wants_json:
+            return JSONResponse({"ok": not message, "message": message,
+                                 "detail": detail})
+        if message:
+            shared._flash(message, "warn", detail=detail)
+        return shared._back(request, "/output")
     try:
-        p = Path(path).resolve()
+        # no path at all (a hand-made request) is nothing to open, never the
+        # working folder "" would resolve to
+        p = Path(path).resolve() if path else None
     except (OSError, ValueError):       # a NUL byte or an unusable name
         p = None
     # containment via is_relative_to, as in /output/download: a string-prefix
     # test would admit siblings such as app/state_defaults
     if p is None or not (p.is_relative_to(APP_STATE.resolve())
                          and p.exists()):
-        shared._flash("Nothing opened: the file is not in app state any "
-                      "more.", "warn",
-                      detail="It may have been deleted or moved; Storage "
-                             "lists what is on disk.")
-        return shared._back(request, "/output")
+        return answer("Nothing opened: the file is not in app state any "
+                      "more.",
+                      "It may have been deleted or moved; Storage lists "
+                      "what is on disk.")
     try:
         subprocess.Popen(_reveal_command(p))
     except OSError as e:
-        shared._flash("Nothing opened: no file manager could be started.",
-                      "warn", detail=f"{type(e).__name__}: {e}. The file "
-                                     f"is at {p}.")
-    return shared._back(request, "/output")
+        return answer("Nothing opened: no file manager could be started.",
+                      f"{type(e).__name__}: {e}. The file is at {p}.")
+    return answer()
 
 
 #: report path -> builder-sources mtime of a failed rebuild: retry once per
@@ -830,10 +852,16 @@ def _report_for_serving(dirpath: Path) -> str:
 
 
 def _bad_date(date: str, request: Request):
-    """The 400 for a malformed ?date=; None when it is YYYY-MM-DD."""
+    """The 400 for a malformed or impossible ?date= (2026-13-45); None when
+    it is a real YYYY-MM-DD."""
     import re
+    from datetime import date as _date
     if re.fullmatch(r"\d{4}-\d{2}-\d{2}", date):
-        return None
+        try:
+            _date.fromisoformat(date)
+            return None
+        except ValueError:
+            pass
     return _notice(request, 400, "error", "Invalid date. Expected YYYY-MM-DD.")
 
 
@@ -847,7 +875,8 @@ def output_report(request: Request, date: str = ""):
             return bad
         d = APP_STATE / "archive" / date
         if not (d / "report.html").is_file():
-            return _notice(request, 200, "empty",
+            # 404, as the same date's download answers
+            return _notice(request, 404, "empty",
                            f"No archived report for {date}")
         return HTMLResponse(_report_for_serving(d))
     # the shipped rule: Home's report button and its map link come here,

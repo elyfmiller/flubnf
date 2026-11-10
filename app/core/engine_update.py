@@ -32,9 +32,11 @@ import time
 from pathlib import Path
 
 from app.core import engine_build as _eb
+from app.core.runs import APP_STATE
 
-#: where the last outcome is kept (app/state is gitignored)
-STATE_FILE = Path(__file__).resolve().parents[1] / "state" / "engine_update.json"
+#: where the last outcome is kept: the state folder, which FLUBNF_STATE_DIR
+#: moves (app/state is gitignored)
+STATE_FILE = APP_STATE / "engine_update.json"
 
 #: a git call that reads the checkout; a fetch gets FETCH_TIMEOUT_S
 GIT_TIMEOUT_S = 15.0
