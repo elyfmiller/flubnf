@@ -190,6 +190,23 @@ def test_the_new_model_form_suggests_names_no_model_has(box):
     assert "s = free(suggestName(loc.value, date.value));" in js
 
 
+def test_a_long_names_copy_name_fits_the_64_characters(box):
+    # a 60-character model: its copy's name keeps _copy_N and is cut to
+    # fit, as the Oracle start's name is (the field refuses 65 or more)
+    long = "m" + "x" * 59
+    sb.add_example("kinetics_example", as_name=long)
+    sb.add_example("kinetics_example", as_name=long[:57] + "_copy_1")
+    html = client.get("/sandbox").text
+    got = html.split(f'value="copy:{long}"', 1)[1].split(
+        'data-name="', 1)[1].split('"', 1)[0]
+    assert got == long[:57] + "_copy_2"
+    assert sb.check_name(got) == got and len(got) == 64
+    # a short name is as it was
+    assert rs._free_name("kinetics_example", set(), "_copy") == (
+        "kinetics_example_copy_1")
+    assert rs._free_name("sir_example", {"sir_example_1"}) == "sir_example_2"
+
+
 def test_a_refused_new_model_comes_back_as_it_was_posted(box):
     sb.add_example("kinetics_example")
     client.post("/sandbox/new", data={

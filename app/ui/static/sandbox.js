@@ -59,8 +59,15 @@
     return clock(elapsed) + ' so far' + (eta ? ' \u00b7 ' + eta + ' in all' : '');
   }
 
+  // Check's notes whose own words say a run stops on them (their codes
+  // are app/core/problem_codes.py's): above one, the headline promises no run
+  var RUN_STOPS = ['ROW_BEFORE_START', 'KEY_UNKNOWN', 'ONE_ROW'];
+  function stopsRun(codes) {
+    return (codes || []).some(function (c) { return !!c && RUN_STOPS.indexOf(c.code) >= 0; });
+  }
+
   root.SandboxPage = {xsFor: xsFor, clock: clock, fmtEta: fmtEta, fitLine: fitLine,
-                      suggestName: suggestName};
+                      suggestName: suggestName, stopsRun: stopsRun};
   if (typeof document === 'undefined') return;
 
   function $(id) { return document.getElementById(id); }
@@ -501,11 +508,9 @@
             var f = d.facts || {}, rows = scaleRows(f.at_start), html = '';
             var probs = d.problems || [], warns = d.warnings || [];
             var notes = warns.length === 1 ? '1 note' : warns.length + ' notes';
-            // a note whose words say a run stops on it (app/core/problem_codes.py):
-            // the headline then promises no run
-            var stops = (d.codes || []).some(function (c) {
-              return c.code === 'ROW_BEFORE_START' || c.code === 'KEY_UNKNOWN';
-            });
+            // a note whose words say a run stops on it: the headline then
+            // promises no run
+            var stops = stopsRun(d.codes);
             if (probs.length) {
               html += alertHtml('error', probs.length + ' problem' + (probs.length === 1 ? '' : 's') + ':',
                                 'a run would fail.') + listHtml(probs);
