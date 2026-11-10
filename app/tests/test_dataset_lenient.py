@@ -798,6 +798,11 @@ def test_missing_values_quote_the_cell_its_date_and_group():
     assert p.rows == (5, 8)
     assert ("(rows 5, 8; e.g., (blank) (2024-08-10, B), NA (2024-08-24, A))"
             in p.message)
+    # deleting the row was once the advice, and the gap check then refused
+    # the file (SB-27): the advice names a file that loads instead
+    assert "delete rows" not in p.message
+    assert ("a hubverse file (date, location, value) may hold NA for a week "
+            "not reported") in p.message
     assert "row 5; e.g., row 5" not in str(rep.problems)
     p = only(rep, "population_missing")
     assert "(row 8; e.g., (blank) (2024-08-24, A))" in p.message

@@ -197,8 +197,9 @@ def test_a_client_file_name_is_never_a_path(box, tmp_path):
 def test_rates_load_with_a_word_about_the_objective(box):
     rates = HUBVERSE.replace(",8\n", ",0.8\n")
     r = _upload(rates, kind="rate")
-    assert "Rates: set objfunc in priors.conf." in client.get(
-        r.headers["location"]).text
+    # what to do, said plainly (SB-10: no objfunc for rates is named)
+    assert "Rates: a fit reads counts, so load counts to fit this data." \
+        in client.get(r.headers["location"]).text
 
 
 def test_the_stored_dataset_is_offered_to_other_models(box):
