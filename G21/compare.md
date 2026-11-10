@@ -22,3 +22,19 @@ reseal in both places, OU-15, the tests), with A's protected row (the
 entry for the extra root, the Protected tip as it was) and A's rule that
 an unreadable pf_status.json counts as a failure, keeping B's pf2s/ scope.
 The refusal sentence: A decides (B's names the variable).
+
+## After A's compare
+
+A's two findings stand, checked on my own servers: `busy` on a protected
+row also draws runs.html's "running now" badge (a wrong statement, mine);
+and `sealed_root`'s fallback would read the checkout's real records in a
+suite run on Ely's machine and not on CI, and would part from
+site_build.py's `APP_STATE / "retro_seal"`. A's row (the lock badge, no
+words) and A's seal paths are right.
+
+Vote (final): combine: A's patch, with B's pf2s/ scope in the failure
+check (an unreadable status file still keeps the trees) and B's stray-CSV
+assertion in the download test. The refusal sentence stays as it is. B's
+`test_reclaim_protects_the_production_reseal_as_storage_does` can ride
+along if A's test does not already cover reclaim.is_protected on the
+reseal; A's call.
