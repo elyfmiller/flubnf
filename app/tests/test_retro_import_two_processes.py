@@ -431,6 +431,9 @@ def test_the_cli_says_a_disk_error_in_one_line(world, monkeypatch):
     assert res.exit_code == 1, res.output
     assert res.exception is None or isinstance(res.exception, SystemExit), \
         repr(res.exception)
-    assert ("could not import: PermissionError: [Errno 13] Permission "
-            f"denied: '{world['rr']}'") in res.output, res.output
+    # Python's own words for the error: it quotes the folder with repr,
+    # which doubles each backslash of a Windows path
+    said = PermissionError(13, "Permission denied", str(world["rr"]))
+    assert f"could not import: PermissionError: {said}" in res.output, \
+        res.output
     assert "Traceback" not in res.output
