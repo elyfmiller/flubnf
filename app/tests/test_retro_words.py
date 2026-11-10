@@ -69,7 +69,7 @@ def test_the_season_rows_carry_no_tips_of_their_own():
 def test_the_your_data_tab_has_one_explainer(tmp_path, monkeypatch):
     ds = stored()
     page = client.get(f"/retro?dataset={ds.id}").text
-    for gone in ('id="tip-rt-page"', 'id="tip-dsr-src"', 'id="tip-dsr-groups"',
+    for gone in ('id="tt-rt-page"', 'id="tip-dsr-src"', 'id="tip-dsr-groups"',
                  'id="tip-dsr-engine"', 'id="tip-dsr-fs"', 'id="tip-dsr-kind"'):
         assert gone not in page, gone
     tip = page.split('id="tip-rt-ds-about"', 1)[1].split("</span></span>")[0]
