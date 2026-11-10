@@ -345,7 +345,8 @@ def _extract_member(z: zipfile.ZipFile, name: str, dst: Path,
 
 
 def import_bundle(path: Path, retro_root: Path, replace: bool = False,
-                  build: str = "", name: str = "") -> ImportResult:
+                  build: str = "", name: str = "",
+                  removing=None) -> ImportResult:
     """Import a bundle as the read-only archived entry
     <retro_root>/<season>__archived_<export stamp>. Refuses a second import
     of the same bundle ("already imported as <stamp>") unless `replace`.
@@ -356,7 +357,14 @@ def import_bundle(path: Path, retro_root: Path, replace: bool = False,
     them; a bundle without oracle.json lands as it always did (its
     quantiles older than its samples, rebuilt where they are read), each
     such week's quantiles set older outright rather than left to the
-    order of extraction, which a coarse clock (Windows') stamps alike."""
+    order of extraction, which a coarse clock (Windows') stamps alike.
+
+    `removing` (the console passes retro_prep._removing): a Replace
+    deletes the archived tree, so it is entered with the tree's path
+    before anything is extracted and held until the new tree is in place
+    (no finalize starts on the tree meanwhile). It yields a word ("results")
+    while a finalize still runs on the tree: refused, nothing replaced."""
+    from contextlib import nullcontext
     from app.core import retro
     from app.core.retro_store import ORACLE_NAME, samples_file
     path, retro_root = Path(path), Path(retro_root)
@@ -376,51 +384,60 @@ def import_bundle(path: Path, retro_root: Path, replace: bool = False,
                               f"{stamp} in a protected folder, which the "
                               "console never deletes; nothing was "
                               "replaced.")
-    tmp = dst.with_name(dst.name + ".importing")
-    if tmp.exists() or tmp.is_symlink():
-        retro.delete_tree(tmp)
-    files = m["files"]
-    # scores.json last, so it is newer than every sample it scores (the
-    # results page would otherwise rescore on the first visit)
-    order = sorted(files, key=lambda f: (f == "scores.json", f))
-    try:
-        with zipfile.ZipFile(path) as z:
-            for f in order:
-                _extract_member(z, f, tmp / f, files[f]["sha256"],
-                                files[f]["bytes"], name)
-        for f in files:
-            parts = f.split("/")
-            if not (len(parts) == 3 and parts[0] == "weeks"
-                    and parts[2] == retro.QUANTILES_NAME):
-                continue
-            if f"weeks/{parts[1]}/{ORACLE_NAME}" in files:
-                os.utime(tmp / f)
-                continue
-            # 2 s before the samples: older on every file system, FAT's
-            # 2 s steps included
-            sp = samples_file(tmp / "weeks" / parts[1])
-            if sp is not None:
-                t = sp.stat().st_mtime_ns - 2_000_000_000
-                os.utime(tmp / f, ns=(t, t))
-        marker = {"from": str(m.get("exported_by") or ""),
-                  "exported_at": str(m.get("exported_at") or ""),
-                  "imported_at": _utc_iso(), "imported_by": hostname(),
-                  "bundle_sha256": m["bundle_sha256"],
-                  "bundle_name": name, "source": m.get("source"),
-                  "exported_build": str(m.get("flubnf_build") or ""),
-                  "imported_build": build or ""}
-        (tmp / IMPORTED_MARK).write_text(json.dumps(marker, indent=1,
-                                                    sort_keys=True),
-                                         encoding="utf-8")
-        sf = tmp / "scores.json"
-        if sf.is_file():
-            os.utime(sf)
-        if dst.exists() or dst.is_symlink():
-            retro.delete_tree(dst)
-        os.rename(tmp, dst)
-    except BaseException:
-        shutil.rmtree(tmp, ignore_errors=True)
-        raise
+    # a Replace may delete the tree at its name (there now, or by the time
+    # the new one is ready): marked whether or not it is there yet
+    with (removing(dst) if replace and removing is not None
+          else nullcontext("")) as busy:
+        if busy:
+            raise BundleError(f"{season} from this bundle is imported as "
+                              f"{stamp}, and its {busy} are still being "
+                              "prepared; nothing was replaced. Try again "
+                              "in a minute.")
+        tmp = dst.with_name(dst.name + ".importing")
+        if tmp.exists() or tmp.is_symlink():
+            retro.delete_tree(tmp)
+        files = m["files"]
+        # scores.json last, so it is newer than every sample it scores (the
+        # results page would otherwise rescore on the first visit)
+        order = sorted(files, key=lambda f: (f == "scores.json", f))
+        try:
+            with zipfile.ZipFile(path) as z:
+                for f in order:
+                    _extract_member(z, f, tmp / f, files[f]["sha256"],
+                                    files[f]["bytes"], name)
+            for f in files:
+                parts = f.split("/")
+                if not (len(parts) == 3 and parts[0] == "weeks"
+                        and parts[2] == retro.QUANTILES_NAME):
+                    continue
+                if f"weeks/{parts[1]}/{ORACLE_NAME}" in files:
+                    os.utime(tmp / f)
+                    continue
+                # 2 s before the samples: older on every file system, FAT's
+                # 2 s steps included
+                sp = samples_file(tmp / "weeks" / parts[1])
+                if sp is not None:
+                    t = sp.stat().st_mtime_ns - 2_000_000_000
+                    os.utime(tmp / f, ns=(t, t))
+            marker = {"from": str(m.get("exported_by") or ""),
+                      "exported_at": str(m.get("exported_at") or ""),
+                      "imported_at": _utc_iso(), "imported_by": hostname(),
+                      "bundle_sha256": m["bundle_sha256"],
+                      "bundle_name": name, "source": m.get("source"),
+                      "exported_build": str(m.get("flubnf_build") or ""),
+                      "imported_build": build or ""}
+            (tmp / IMPORTED_MARK).write_text(json.dumps(marker, indent=1,
+                                                        sort_keys=True),
+                                             encoding="utf-8")
+            sf = tmp / "scores.json"
+            if sf.is_file():
+                os.utime(sf)
+            if dst.exists() or dst.is_symlink():
+                retro.delete_tree(dst)
+            os.rename(tmp, dst)
+        except BaseException:
+            shutil.rmtree(tmp, ignore_errors=True)
+            raise
     warnings = []
     if "scores.json" not in files:
         warnings.append("the bundle carries no scores; the season page "

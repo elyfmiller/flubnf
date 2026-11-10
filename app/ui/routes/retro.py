@@ -648,6 +648,17 @@ def retro_run(background: BackgroundTasks, season: str = Form(...),
         width = max(1, min(width, 16))
         # start-over handling only AFTER all validation
         live = _live_root(season)
+        # Storage's Delete of this season part way through (another tab):
+        # a Resume would be claimed and its worker start on the tree being
+        # removed, a start over would delete it a second time. Asked
+        # before the tree is read or claimed
+        with retro_prep._results_lock:
+            removing = retro_prep._being_removed(live)
+        if removing:
+            return _refused(
+                f"Not started: the {season} results are being deleted.",
+                "Nothing was started. Start the replay again once the "
+                "delete is done.")
         existing = retro_seasons._weeks_done(live)
         legacy_resume = False
         from app.core import missing as _missing
@@ -861,9 +872,13 @@ def _import_replay_file(src: Path, replace: bool, name: str = ""):
     which the refusals say (never the server's copy)."""
     from app.core import replay_bundle
     try:
+        # a Replace deletes the archived run it replaces: marked, so no
+        # results page starts a finalize on it meanwhile, and refused while
+        # one runs on it (retro_prep._removing)
         r = replay_bundle.import_bundle(src, retro_seasons.RETRO_ROOT,
                                         replace=replace, build=RUNNING_SHA,
-                                        name=name)
+                                        name=name,
+                                        removing=retro_prep._removing)
     except replay_bundle.BundleError as e:
         return (f"Not imported: {e}", "warn", ""), "/retro"
     except OSError as e:
