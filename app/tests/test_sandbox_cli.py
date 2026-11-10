@@ -830,8 +830,19 @@ def test_the_first_ctrl_c_stops_after_the_fits_the_second_at_once(tmp_path,
     assert "Stopping after" in capsys.readouterr().err
 
 
+@pytest.fixture
+def ctrl_c():
+    """Ctrl-C as a terminal gives it. A background job (`&`) starts with
+    it ignored, which the command leaves as it is, so a suite run that
+    way would test that case instead."""
+    old = signal.signal(signal.SIGINT, signal.default_int_handler)
+    yield
+    signal.signal(signal.SIGINT, old)
+
+
 def test_the_handlers_are_installed_for_the_run_and_put_back(planned, here,
-                                                             monkeypatch):
+                                                             monkeypatch,
+                                                             ctrl_c):
     before = signal.getsignal(signal.SIGINT)
     term = signal.getsignal(signal.SIGTERM)
     seen = {}
