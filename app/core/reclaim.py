@@ -377,9 +377,10 @@ def engine_runners_live(registries=None) -> int:
     names the runner script it was recorded with, the pairing the takeover
     sweep uses (flubnf/cli.py), so a recycled pid does not hold the cache
     forever. An entry recorded without its script counts while its pid
-    lives. An unreadable registry holds nothing."""
+    lives. An unreadable registry holds nothing. A runner is counted once
+    however many registries list it (its own and the cache's holders)."""
     from flubnf.cli import _pid_cmdline
-    n = 0
+    seen = set()
     for reg in (runner_registries() if registries is None else registries):
         try:
             entries = json.loads(Path(reg).read_text(encoding="utf-8"))
@@ -392,14 +393,14 @@ def engine_runners_live(registries=None) -> int:
                 pid = int(pid_s)
             except (TypeError, ValueError):
                 continue
-            if pid <= 0:
+            if pid <= 0 or pid in seen:
                 continue
             script = (str(meta.get("runner") or "")
                       if isinstance(meta, dict) else "")
             cmd = _pid_cmdline(pid)
             if cmd and (os.path.basename(script) in cmd if script else True):
-                n += 1
-    return n
+                seen.add(pid)
+    return len(seen)
 
 
 def codegen_cache_refusal(busy: str = "", registries=None) -> str:

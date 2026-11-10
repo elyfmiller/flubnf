@@ -285,6 +285,22 @@ def test_another_checkouts_runner_on_the_same_state_folder_keeps_the_cache(
     assert ui_storage()["engine_cache"]["busy"]
 
 
+def test_a_runner_in_its_registry_and_beside_the_cache_counts_once(
+        state, live_runner):
+    """This console's runner is in its own registry and in the cache's
+    holders: Storage says one runner, not two."""
+    proc, script = live_runner
+    pf.record_runner_pids([types.SimpleNamespace(
+        pid=proc.pid, args=[sys.executable, str(script)])])
+    assert str(proc.pid) in json.loads(
+        Path(pf.RUNNER_PIDS_FILE).read_text())
+    assert str(proc.pid) in json.loads(
+        pf.codegen_holders_file().read_text())
+    assert reclaim.engine_runners_live() == 1
+    assert reclaim.codegen_cache_refusal() == (
+        "1 engine runner is fitting on this computer")
+
+
 def test_the_takeover_registry_stays_with_its_checkouts_app_pid(tmp_path):
     """The sweep (flubnf/cli.py) and the registry agree whatever
     FLUBNF_STATE_DIR says, so one checkout's launch never sweeps another's
