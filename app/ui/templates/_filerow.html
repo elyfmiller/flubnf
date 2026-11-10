@@ -49,10 +49,10 @@ their run folders.{% endcall %}</span>{% endif %}</span>
    <div class="out-file-sub"><code class="out-fname">{{ fname(name) }}</code>{% if run %} {{ run }}{% endif %}</div>
   </div>
   <div class="out-acts">
-   <a class="btn{{ ' gold' if primary }}" href="/output/download?path={{ path | urlencode }}" download="{{ name }}">{{ tips.icon("download") }} Download</a>
+   <a class="btn{{ ' gold' if primary }}" href="/output/download?path={{ path | urlencode }}" download="{{ name }}" aria-label="Download {{ name }}">{{ tips.icon("download") }} Download</a>
    <form method="post" action="/output/reveal">
     <input type="hidden" name="path" value="{{ path }}">
-    <button class="quiet" type="submit">{{ tips.icon("folder") }} Show in folder</button></form>
+    <button class="quiet" type="submit" aria-label="Show {{ name }} in folder">{{ tips.icon("folder") }} Show in folder</button></form>
    <span class="out-copies"><button class="quiet out-copy" type="button" data-copy="{{ path }}" data-copied="Path copied" aria-label="Copy path of {{ name }}" title="Copy path">{{ copy_icon() }}</button>
    {%- if validate %}
    <button class="quiet out-copy" type="button" data-copy="{{ validate }}" data-copied="Validator command copied" aria-label="Copy validator command for {{ name }}" title="Copy validator command">{{ term_icon() }}</button>

@@ -303,7 +303,8 @@ def _date_status(ref: str, today=None, now=None) -> dict:
     "badge": (kit state, words)}; {} when the rules cannot be read. A due or
     coming round also carries "deadline" (the close as ISO UTC, for the
     page to name in the reader's own time) and "deadline_et" (the same
-    close in Eastern words, shown until the page script runs); a due one
+    close in Eastern words, shown until the page script runs), and "flips"
+    (the instants, ISO UTC, at which its badge changes next); a due one
     "left" (time left,
     _time_left; "" when `today` stands in for the clock) and "urgent"
     (under URGENT_HOURS left: the badge turns error)."""
@@ -322,13 +323,23 @@ def _date_status(ref: str, today=None, now=None) -> dict:
         return {}
     kind, words = _WINDOW_BADGE[state]
     out = {"state": state, "text": text, "left": "", "urgent": False,
-           "deadline": "", "deadline_et": ""}
+           "deadline": "", "deadline_et": "", "flips": []}
     if window and state in ("due", "soon"):
         close = _deadline_utc(window[1])
         out["deadline"] = close.strftime("%Y-%m-%dT%H:%M:%SZ")
         out["deadline_et"] = f"{window[1]:%a %Y-%m-%d}, 11 PM ET"
-        if state == "due" and today is None:
+        if today is None:
             clock = now or _dt.datetime.now(_dt.timezone.utc)
+            # when the badge next changes (the window opens at midnight
+            # Eastern on its first day, turns urgent, closes): a page left
+            # open reloads then (output.html)
+            opens = (_deadline_utc(window[0] - _dt.timedelta(days=1))
+                     + _dt.timedelta(hours=24 - HUB_CLOSE_HOUR))
+            urgent_at = close - _dt.timedelta(hours=URGENT_HOURS)
+            out["flips"] = [t.strftime("%Y-%m-%dT%H:%M:%SZ")
+                            for t in ((opens,) if state == "soon"
+                                      else (urgent_at, close)) if t > clock]
+        if state == "due" and today is None:
             out["left"] = _time_left(close, clock)
             out["urgent"] = bool(out["left"]) and (
                 close - clock).total_seconds() < URGENT_HOURS * 3600
@@ -347,13 +358,83 @@ def _date_window(ref: str, today=None, now=None) -> str:
     return _date_status(ref, today=today, now=now).get("text", "")
 
 
-#: (path, mtime_ns, size) -> hubcheck.summary; a file is checked once
+#: (path, mtime_ns, size) -> hubcheck.summary; a file is checked once,
+#: and the result kept on disk (CHECKS_FILE in the state folder) so a
+#: relaunch does not check every listed file again
 _CHECKED: dict = {}
+CHECKS_FILE = "hubcheck_results.json"
+_CHECKS_READ: set = set()
+
+
+def _rules_digest() -> str:
+    """The checks' own version: hubcheck's code and its vendored tasks.json.
+    A result kept on disk holds only while both are the ones that made it."""
+    from app.core import hubcheck
+    h = hashlib.sha256()
+    for p in (Path(hubcheck.__file__), Path(hubcheck.VENDORED_TASKS)):
+        try:
+            h.update(p.read_bytes())
+        except OSError:
+            pass
+    return h.hexdigest()[:16]
+
+
+def _checks_path() -> Path:
+    from app.core.runs import APP_STATE
+    return Path(APP_STATE) / CHECKS_FILE
+
+
+def _read_checks() -> None:
+    """The results kept on disk, once per state folder; "due" is not kept
+    (summary's window for the reference date, rebuilt here)."""
+    import json
+    from app.core import hubcheck
+    p = _checks_path()
+    if str(p) in _CHECKS_READ:
+        return
+    _CHECKS_READ.add(str(p))
+    try:
+        d = json.loads(p.read_text(encoding="utf-8"))
+        if d.get("rules") != _rules_digest():
+            return
+        for path, mtime, size, s in d.get("files") or []:
+            ref = s.get("reference_date") or ""
+            s["due"] = hubcheck.submission_window(ref) if s.get("round") else None
+            _CHECKED.setdefault((path, int(mtime), int(size)), s)
+    except Exception:
+        pass                          # unreadable: the files are checked again
+
+
+def _keepable(s: dict) -> bool:
+    """An unreadable file is a moment's state, not a result to keep."""
+    return not any(str(x).startswith("unreadable:")
+                   for x in s.get("problems") or ())
+
+
+def _keep_checks() -> None:
+    """Write the results to disk (all at once, replaced whole): one entry
+    per file, its newest version."""
+    import json
+    p = _checks_path()
+    newest: dict = {}
+    for k, s in _CHECKED.items():
+        if _keepable(s) and (k[0] not in newest or k[1] > newest[k[0]][0][1]):
+            newest[k[0]] = (k, s)
+    rows = [[k[0], k[1], k[2], {f: v for f, v in s.items() if f != "due"}]
+            for k, s in newest.values()]
+    try:
+        tmp = p.with_name(p.name + ".tmp")
+        tmp.write_text(json.dumps({"rules": _rules_digest(), "files": rows}),
+                       encoding="utf-8")
+        tmp.replace(p)
+    except OSError:
+        pass
 
 
 def _check_summary(path: str) -> dict:
-    """hubcheck.summary of one file, cached per file version."""
+    """hubcheck.summary of one file, cached per file version (on disk too)."""
     from app.core import hubcheck
+    _read_checks()
     try:
         st = Path(path).stat()
         key = (str(path), st.st_mtime_ns, st.st_size)
@@ -366,6 +447,8 @@ def _check_summary(path: str) -> dict:
             if len(_CHECKED) > 512:
                 _CHECKED.clear()
             _CHECKED[key] = s
+            if _keepable(s):
+                _keep_checks()
     return s
 
 
