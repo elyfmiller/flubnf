@@ -65,7 +65,7 @@ def test_each_record_names_its_cell_rule_and_its_comparison():
     assert "under the earlier cell rule" in _record("pf")["lines"][0]
     pf2s = _record("pf2s")
     assert [b["label"] for b in pf2s["bars"]] == [
-        "Two-strain SIHRS", "Blend it was tested in"]
+        "Ensemble with it (equal thirds)", "Ensemble without it (50/50)"]
     assert "full grid" not in pf2s["lines"][0]
 
 

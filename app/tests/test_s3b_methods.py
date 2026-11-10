@@ -4,9 +4,10 @@
     half wherever the blend is stated for the Oracle SIHRS: the Methods
     tile, the pipeline drawing's description and the equation's note (on
     Methods, the Models tab, the Oracle SIHRS page and the public site);
-  * MO-20: the two-strain verdict is worded as on its own page ("worse
-    than the blend it was tested in"), badge included; "the full grid" is
-    said nowhere;
+  * MO-20: the two-strain verdict is worded as on its own page ("as a
+    third equal member scored worse": the ensemble with it against the
+    ensemble without it, never the model alone), badge included; "the
+    full grid" is said nowhere;
   * MO-23: the strain share's Binomial breaks only after "n," on a phone,
     and each half fits the card at 390 px and 160% text;
   * FC-26: a link to a fold (the Forecast tab's /methods#mt-newest) opens
@@ -89,15 +90,20 @@ def test_the_two_strain_verdict_is_worded_as_on_its_own_page():
     methods = _flat(client.get("/methods").text)
     page = _flat(client.get("/model/pf2s").text)
     site = _flat(site_build.harvest_methods(VERSIONS))
-    said = "worse than the blend it was tested in, in the August 2026 evaluation"
+    said = "as a third equal member scored worse"
     for where, t in (("/methods", methods), ("/model/pf2s", page),
                      ("site", site)):
         assert "full grid" not in t, where
         assert said in t, where
+        # 0.719 is the ensemble with it, not the model alone
+        assert "blend it was tested in" not in t, where
     why = methods.split('id="mt-2s-why"', 1)[1].split("</details>", 1)[0]
     summary = why.split("</summary>", 1)[0]
-    assert re.search(r">\s*worse than the blend it was tested in\s*<", summary), summary
-    assert "<p>Stronger at turning points but " + said + "; it stays a research run.</p>" in why
+    assert re.search(r">\s*worse as a third member\s*<", summary), summary
+    assert ("<p>Stronger at turning points, but adding it " + said
+            + " in the August 2026 evaluation (relWIS 0.719 with it against"
+            " 0.704 without, lower is better); it stays a research run.</p>"
+            ) in why
 
 
 # ------------------------------ MO-23: the Binomial on a phone at 160% text
