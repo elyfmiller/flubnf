@@ -37,12 +37,14 @@
    the map, and each step says where this computer stands: the data's
    newest week, and a Groundhog-only forecast when the engine is not
    installed (a broken install is the Setup line's). Ely's weekly view
-   keeps the map first and the steps plain. Not on the cold paint: that
-   page reloads once the map is ready, and the card would jump #}
-{% macro start_here(first=False, newest="", pf_state="") %}
+   keeps the map first and the steps plain. The cold paint (routes/home.py
+   start_first) puts the card before the map too when no run is stored, so
+   the reload leaves it there; its steps stay plain until that reload,
+   which reads the data #}
+{% macro start_here(states=False, newest="", pf_state="") %}
 <div class="card hm-start">
  <h2>Start here</h2>
- {% if first %}
+ {% if states %}
  {% set steps = [{"label": "Data", "href": "/data",
                   "state": "done" if newest else "current",
                   "meta": ("through " ~ newest) if newest else ""},
@@ -63,9 +65,11 @@
  </div>
 </div>
 {% endmacro %}
-{% set start_first = not outlook_date and not (outlook_pending is defined and outlook_pending) %}
-{% if start_first %}{{ start_here(True, start_newest if start_newest is defined else "",
-                                  start_pf_state if start_pf_state is defined else "") }}{% endif %}
+{% set start_top = start_first if start_first is defined
+                   else (not outlook_date and not (outlook_pending is defined and outlook_pending)) %}
+{% set start_said = start_states if start_states is defined else start_top %}
+{% if start_top %}{{ start_here(start_said, start_newest if start_newest is defined else "",
+                                start_pf_state if start_pf_state is defined else "") }}{% endif %}
 
 <div class="card hm-outlook">
  {# the h2 names the payload and its date, like every other card; how to
@@ -245,7 +249,7 @@
  </div>
  {# Start here beside the record, unless a first run put it above the map
     (the record then takes the row: home.css) #}
- {% if not start_first %}{{ start_here() }}{% endif %}
+ {% if not start_top %}{{ start_here() }}{% endif %}
 </div>
 
 <div class="card hm-how">

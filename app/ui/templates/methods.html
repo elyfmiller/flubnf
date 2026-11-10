@@ -208,9 +208,13 @@
   {{ tips.stat("Horizon", "Weeks from the reference date to the week forecast. Horizons 0 to 3 are scored.") }}
   {{ tips.stat("Jurisdiction", "One of the 50 states, DC and Puerto Rico: 52 in all. With the US national total they make 53 locations.") }}
   {% if active is defined %}
-  {{ tips.stat("Modified settings", "A run made with any Model setting changed from its default. A hub run's files are then named <hub id>-modified, a record not for the hub, unless exported under the hub names with a reason.") }}
+  {# what knobs.modified counts: the settings that change a model; an
+     optional output (tagged "optional" in Model settings) adds rows only #}
+  {{ tips.stat("Modified settings", "A run made with a Model setting changed from its default, other than one tagged optional: those only add rows. A hub run's files are then named <hub id>-modified, a record not for the hub, unless exported under the hub names with a reason.") }}
   {{ tips.stat("Workroot", "A run's own folder on this computer, new for each run. Storage lists them under On disk, in Run workroots.") }}
-  {{ tips.stat("Run ledger", "The Storage tab's list of every run on this computer. Each row is a run's record, and the run can be reproduced from it.") }}
+  {# Storage's table holds the newest rows (storage.LEDGER_ROWS) and its
+     clear removes rows, never a workroot (storage.runs_clear) #}
+  {{ tips.stat("Run ledger", "The record of the runs made on this computer, one row per run, and the run can be reproduced from its row. The Storage tab's table shows the newest rows only. Clearing the ledger removes its rows and leaves the runs' workroots on disk.") }}
   {% endif %}
  {% endcall %}
  {% endcall %}

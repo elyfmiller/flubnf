@@ -7,9 +7,9 @@ renders, its markup parsed (served_dom.tree) and its own script run
     steps say where this computer stands: Data done "through <newest
     week>", Forecast current, with "Groundhog only on this computer" when
     the engine is absent (not when it is broken: the Setup line says
-    that), Output to do. Not on the cold paint: that page reloads once
-    the map is ready, and the card would jump. Ely's weekly view keeps
-    the map first and the steps plain.
+    that), Output to do. The cold paint, with no stored run, already
+    puts the card there, its steps plain until the reload reads the
+    data. Ely's weekly view keeps the map first and the steps plain.
   * Start here's extras: the Sandbox, relabelled, and one way into your
     own data, the Forecast tab's Your data.
   * A "Setup incomplete." line under the hero names what is not
@@ -231,18 +231,20 @@ def test_without_the_hub_the_data_step_is_current(empty, monkeypatch,
     assert "FluSight data" in _line(p)[1]
 
 
-def test_the_cold_paint_keeps_start_here_below_the_map(empty, monkeypatch):
+def test_the_cold_paint_puts_start_here_where_the_reload_will(empty,
+                                                             monkeypatch):
     """outlook_pending paints the silhouette and reloads once the map is
-    ready: Start here stays where that page will have it, and the cold
-    paint never reads the data (the import it exists to avoid)."""
+    ready. With no stored run that page has no forecast, so Start here is
+    already before the map, its steps plain, and the cold paint never
+    reads the data (the import it exists to avoid)."""
     monkeypatch.setattr(ui_state, "_WARM_DONE", _ColdStart())
     monkeypatch.setattr(H, "_outlook_ready", lambda: False)
     p = _get()
     assert p.by_id("hm-prep")                         # the preparing card
     start, outlook = p.card("hm-start"), p.card("hm-outlook")
-    assert p.at(outlook) < p.at(start)
+    assert p.at(start) < p.at(outlook)
     grid = p.one(lambda e: "homeperf" in _cls(e))
-    assert start in _walk(grid, [])
+    assert start not in _walk(grid, [])
     assert [s[2:5] for s in _steps(p)] == [("todo", None, "")] * 3
     assert empty.calls == 0
 
