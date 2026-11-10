@@ -26,6 +26,7 @@ sys.path.insert(0, str(state.REPO))
 state._trace("import begin (fastapi + app.core next)")
 
 from fastapi import FastAPI                                     # noqa: E402
+from starlette.exceptions import HTTPException as _HTTPException  # noqa: E402
 
 from app.ui import perflog, shared, templating, versions        # noqa: E402
 from app.ui.routes import data as data_routes                   # noqa: E402
@@ -54,6 +55,9 @@ app.middleware("http")(sandbox_routes._sandbox_engine_guard)
 app.middleware("http")(shared._no_store)
 # outermost: the slow-request log times everything, guards included
 app.middleware("http")(perflog.slow_request_log)
+# an unknown page is a page of the console (routes/shell.not_found_page),
+# never bare JSON
+app.add_exception_handler(_HTTPException, shell_routes.not_found_page)
 # the tab routers. Order matters only where one path reaches two routes:
 # storage before forecast, so POST /runs/clear precedes GET /runs/{run_id}
 # (the first route a path matches names the Allow header of a wrong-method

@@ -1305,7 +1305,13 @@ def replay_page(request: Request, ds_id: str, stamp: str, h: str = "0"):
     ds = get_dataset(ds_id)
     if ds is None or not CX.valid_stamp(stamp) \
             or not CX.replay_dir(ds, stamp).is_dir():
-        return HTMLResponse("<p>No such replay.</p>", status_code=404)
+        # a page of the console (the Retrospective tab lists the replays)
+        from app.ui.routes import output as output_routes
+        return output_routes._notice(
+            request, 404, "empty", "No such replay",
+            action=((f"/retro?dataset={ds.id}" if ds else "/retro"),
+                    "Open Retrospective"),
+            active="Retrospective", heading="Replay")
     meta, fc, cells, cov = CX.load(CX.replay_dir(ds, stamp))
     status = meta.get("status") or "unknown"
     live = _REPLAY.get("stamp") == stamp

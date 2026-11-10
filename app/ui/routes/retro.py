@@ -1288,13 +1288,21 @@ def _season_report(season: str, archive: str):
 
 
 @router.get("/retro/{season}/report")
-def retro_season_report(season: str, archive: str = ""):
+def retro_season_report(request: Request, season: str, archive: str = ""):
     """Download the season report (_season_report), under
-    report_season.download_name."""
+    report_season.download_name. A refusal is a page of the console (under
+    Retrospective, with the way to the season), never a bare line."""
     from app.core import report_season
+    from app.ui.routes import output as output_routes
     p = _season_report(season, archive)
     if isinstance(p, PlainTextResponse):
-        return p
+        return output_routes._notice(
+            request, p.status_code,
+            "error" if p.status_code >= 500 else "empty",
+            p.body.decode("utf-8"),
+            action=((f"/retro/{season}" if _valid_season(season) else "/retro"),
+                    "Open the season"),
+            active="Retrospective", heading="Season report")
     return FileResponse(p, filename=report_season.download_name(season,
                                                                 archive),
                         media_type="text/html",

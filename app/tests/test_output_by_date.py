@@ -330,9 +330,12 @@ def test_refusals_and_missing_reports_are_console_pages(root):
     assert 'aria-current="page">Output</a>' in r.text
     r = client.get("/output/report/download?date=nope")
     assert r.status_code == 400 and 'role="alert"' in r.text
+    # a missing archive: 404 on the view as on its download (OU-16)
     r = client.get("/output/report?date=2098-01-03")
-    assert r.status_code == 200
+    assert r.status_code == 404
     assert "No archived report for 2098-01-03" in r.text
+    r = client.get("/output/report/download?date=2098-01-03")
+    assert r.status_code == 404
     r = client.get("/output/report")
     assert r.status_code == 200 and "No report yet" in r.text
     assert 'href="/forecast"' in r.text and "Run the models first." in r.text
