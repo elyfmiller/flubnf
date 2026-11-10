@@ -1,19 +1,24 @@
-"""The public engine's route on macOS and Linux (opt-in until the cutover;
-docs/ENGINE.md): public PyBNF's Liu-West filter and bngsim from one lock,
-engine-requirements.txt, into a venv of their own.
+"""The public engine's route on macOS and Linux, the default
+(docs/ENGINE.md): public PyBNF's Liu-West filter and bngsim from one lock,
+engine-requirements.txt, into a venv of their own; the private engine, the
+lab's fork, is the fallback, chosen only by name.
 
-The lock is the engine lane's and not in the repository yet, so these tests
-write sample locks of its shape (pip-compile's: a backslash continues a
-line, "# via" lines under each pin) with made-up hashes, and stand-in venvs:
-nothing here downloads or installs. Pinned: the wheel's URL and sha256 are
-read from the lock (scripts/engine_lock.py) and nowhere else; a missing or
-unusable lock stops the route before any venv is made; the public venv is
-never one of the private engine's; the route is recorded only when asked for,
-and the private record never takes the public one with it; the launcher
-reinstalls only when the lock changed; a public reinstall needs no engine
-file and leaves the private engine where it is; the private route's bngsim
-comes from PyPI or not at all. Executing tests are POSIX-only; FluBNF.bat
-and setup.ps1, the Windows twins, are pinned in test_windows_*.py.
+These tests write sample locks of the lock's shape (pip-compile's: a
+backslash continues a line, "# via" lines under each pin) with made-up
+hashes, and stand-in venvs: nothing here downloads or installs. Pinned: the
+wheel's URL and sha256 are read from the lock (scripts/engine_lock.py) and
+nowhere else; a missing or unusable lock stops the route before any venv is
+made; a platform the lock has no wheels for stops it with exit 3; the public
+venv is never one of the private engine's; no option, no environment and no
+record take the public route; --public and --private record the route,
+--private first and, when the private engine already loads, with no
+install at all; a plain run keeps the record; an unknown value is refused;
+the launcher passes the route to setup_engine.sh and records none, stamps an
+exit 3 so the Dock stops handing over, and reinstalls only when the lock
+changed; a reinstall needs no engine file on the default route and leaves
+the private engine where it is; the private route's bngsim comes from PyPI
+or not at all. Executing tests are POSIX-only; FluBNF.bat and setup.ps1,
+the Windows twins, are pinned in test_windows_*.py.
 """
 from __future__ import annotations
 
@@ -226,15 +231,21 @@ def test_the_public_venv_is_never_one_of_the_private_engines(tmp_path, venv):
 
 
 @posix_only
-@pytest.mark.parametrize("args, env, says", [
-    (("--pubic",), {}, "unknown option: --pubic"),
-    ((), {"FLUBNF_ENGINE": "lwf"}, 'FLUBNF_ENGINE is "lwf"'),
+@pytest.mark.parametrize("args, env, record, says", [
+    (("--pubic",), {}, None, "unknown option: --pubic"),
+    ((), {"FLUBNF_ENGINE": "lwf"}, None, 'FLUBNF_ENGINE is "lwf"'),
+    # the record's value, read when the shell names none
+    ((), {}, "export FLUBNF_ENGINE=pubic\n", 'FLUBNF_ENGINE is "pubic"'),
 ])
-def test_an_unknown_route_or_option_is_refused(tmp_path, args, env, says):
+def test_an_unknown_route_or_option_is_refused(tmp_path, args, env, record, says):
     repo, home = _engine_repo(tmp_path), tmp_path / "home"
     home.mkdir()
+    if record:
+        (repo / ".flubnf.env").write_text(record)
     out = _setup(repo, home, *args, **env)
     assert out.returncode == 2 and says in out.stdout, out.stdout + out.stderr
+    assert "it must be private or public" in out.stdout or args
+    assert not (home / ".venvs").exists()
 
 
 @posix_only
@@ -268,6 +279,162 @@ def test_the_route_is_recorded_only_when_asked_and_keeps_the_private_record(tmp_
     assert text.count("export FLUBNF_ENGINE=public") == 1, text
     assert text.count("FLUBNF_PY_ENGINE_PUBLIC=") == 1, text
     assert 'export FLUBNF_PY_ENGINE="/x/engine/bin/python"' in text
+
+
+def _private_engine(tmp_path: Path, *, loads: bool = True) -> dict:
+    """A private engine stand-in: a venv whose python records each call and
+    passes setup_engine.sh's verify (or fails it), and a fork checkout with
+    pybnf/pf.py. Returns setup_engine.sh's variables for it."""
+    venv, fork = tmp_path / "private-venv", tmp_path / "PyBNF-pf"
+    calls = tmp_path / "private-calls"
+    (venv / "bin").mkdir(parents=True)
+    (fork / "pybnf").mkdir(parents=True)
+    (fork / "pybnf" / "pf.py").write_text("# the filter\n")
+    py = venv / "bin" / "python"
+    py.write_text(f'#!/bin/sh\necho "$*" >> "{calls}"\n'
+                  + ('echo "  + pybnf with fit_type=pf -- engine ready"\nexit 0\n'
+                     if loads else "exit 1\n"))
+    py.chmod(0o755)
+    return {"FLUBNF_ENGINE_VENV": venv, "FLUBNF_PYBNF": fork, "calls": calls}
+
+
+@posix_only
+def test_private_records_first_and_switches_with_no_install_when_it_loads(tmp_path):
+    repo, home = _engine_repo(tmp_path), tmp_path / "home"
+    home.mkdir()
+    envf = repo / ".flubnf.env"
+    envf.write_text('export FLUBNF_HUB="/x/hub"\n'
+                    'export FLUBNF_PY_ENGINE_PUBLIC="/p/bin/python"\n'
+                    "export FLUBNF_ENGINE=public\n")
+    eng = _private_engine(tmp_path)
+    calls = eng.pop("calls")
+    for _ in range(2):
+        out = _setup(repo, home, "--private", **eng)
+        assert out.returncode == 0, out.stdout + out.stderr
+        assert ("the private engine is installed and works: this copy runs it "
+                "now (the fallback). ./setup_engine.sh --public goes back to "
+                "the default.") in out.stdout
+    text = envf.read_text()
+    assert text.count("FLUBNF_ENGINE=") == 1, text
+    assert "export FLUBNF_ENGINE=private" in text and "=public" not in text
+    # the public engine's lines stay, the private engine's are recorded
+    assert 'export FLUBNF_HUB="/x/hub"' in text
+    assert 'export FLUBNF_PY_ENGINE_PUBLIC="/p/bin/python"' in text
+    assert f'export FLUBNF_PY_ENGINE="{eng["FLUBNF_ENGINE_VENV"]}/bin/python"' in text
+    assert f'export FLUBNF_PYBNF="{eng["FLUBNF_PYBNF"]}"' in text
+    # the verify only: no pip, no venv, nothing fetched
+    asked = calls.read_text().splitlines()
+    assert asked and all(a == f"- {eng['FLUBNF_PYBNF']}" for a in asked), asked
+    assert not (home / ".venvs").exists()
+
+    # a plain run keeps the record (here the shell names public for once)
+    lock = _lock(repo / "engine-requirements.txt")
+    py = _ready_venv(home / ".venvs" / "flubnf-public", _site(tmp_path))
+    out = _setup(repo, home, FLUBNF_ENGINE="public")
+    assert out.returncode == 0, out.stdout + out.stderr
+    text = envf.read_text()
+    assert "export FLUBNF_ENGINE=private" in text, text
+    assert f'export FLUBNF_PY_ENGINE_PUBLIC="{py}"' in text
+    assert lock.is_file()
+    # --public goes back to the default
+    out = _setup(repo, home, "--public")
+    assert out.returncode == 0, out.stdout + out.stderr
+    text = envf.read_text()
+    assert text.count("FLUBNF_ENGINE=") == 1 and "export FLUBNF_ENGINE=public" in text
+
+
+@posix_only
+def test_private_is_recorded_even_when_its_install_fails(tmp_path):
+    """--private records the choice before it installs, so a failed
+    install is tried again as private, never quietly public."""
+    repo, home = _engine_repo(tmp_path), tmp_path / "home"
+    home.mkdir()
+    eng = _private_engine(tmp_path, loads=False)
+    eng.pop("calls")
+    # a real repository without the branch: the install stops at the
+    # checkout (exit 1), before any venv, pip or network
+    fork = eng["FLUBNF_PYBNF"]
+    subprocess.run(["git", "init", "-q", str(fork)], check=True)
+    stub = tmp_path / "stub-bin"
+    stub.mkdir()
+    (stub / "python3.12").write_text("#!/bin/sh\nexit 0\n")   # passes the version test
+    (stub / "python3.12").chmod(0o755)
+    out = _setup(repo, home, "--private", **eng,
+                 PATH=f"{stub}{os.pathsep}{os.environ['PATH']}")
+    assert out.returncode == 1, out.stdout + out.stderr
+    assert "branch feature/particle-filter not found" in out.stdout
+    assert (repo / ".flubnf.env").read_text().splitlines() == [
+        "export FLUBNF_ENGINE=private"]
+    assert not eng["FLUBNF_ENGINE_VENV"].joinpath("pyvenv.cfg").exists()
+
+
+@posix_only
+def test_no_option_no_environment_and_no_record_take_the_public_route(tmp_path):
+    repo, home = _engine_repo(tmp_path), tmp_path / "home"
+    _lock(repo / "engine-requirements.txt")
+    py = _ready_venv(home / ".venvs" / "flubnf-public", _site(tmp_path))
+    eng = _private_engine(tmp_path)          # installed, and left alone
+    calls = eng.pop("calls")
+    out = _setup(repo, home, **eng)
+    assert out.returncode == 0, out.stdout + out.stderr
+    assert "public engine ready" in out.stdout
+    assert (repo / ".flubnf.env").read_text().splitlines() == [
+        f'export FLUBNF_PY_ENGINE_PUBLIC="{py}"']
+    assert not calls.exists()
+
+
+def _platform_bin(tmp_path: Path, system: str, machine: str,
+                  version: str = "") -> str:
+    """PATH under which uname and sw_vers answer as another machine."""
+    b = tmp_path / "platform-bin"
+    b.mkdir()
+    (b / "uname").write_text(
+        '#!/bin/sh\ncase "$1" in\n'
+        f'  -s) echo {system} ;;\n  -m) echo {machine} ;;\n'
+        f'  -sm) echo "{system} {machine}" ;;\n  *) echo {system} ;;\nesac\n')
+    (b / "sw_vers").write_text(f"#!/bin/sh\necho {version}\n")
+    for f in b.iterdir():
+        f.chmod(0o755)
+    return f"{b}{os.pathsep}{os.environ['PATH']}"
+
+
+@posix_only
+@pytest.mark.parametrize("system, machine, version, says", [
+    ("Darwin", "x86_64", "14.6.1", "this Mac runs macOS 14.6.1 on Intel; the "
+     "public engine's libroadrunner needs macOS 15 there."),
+    ("Linux", "aarch64", "", "the public engine's lock has Linux wheels for "
+     "x86_64 only."),
+])
+@pytest.mark.parametrize("private", [True, False])
+def test_a_platform_the_lock_has_no_wheels_for_exits_3(tmp_path, system, machine,
+                                                       version, says, private):
+    repo, home = _engine_repo(tmp_path), tmp_path / "home"
+    home.mkdir()
+    _lock(repo / "engine-requirements.txt")
+    env = {"PATH": _platform_bin(tmp_path, system, machine, version)}
+    if private:
+        eng = _private_engine(tmp_path)
+        eng.pop("calls")
+        env.update(eng)
+    out = _setup(repo, home, **env)
+    assert out.returncode == 3, out.stdout + out.stderr
+    assert says in out.stdout
+    fallback = ("The private engine is installed here: ./setup_engine.sh "
+                "--private switches this copy to it (the fallback).")
+    assert (fallback in out.stdout) is private
+    assert not (home / ".venvs").exists()
+    assert not (repo / ".flubnf.env").exists()
+    # Intel on macOS 15 and Apple silicon go on to the lock (removed here,
+    # so the route stops there, before any venv)
+    if system == "Darwin":
+        (repo / "engine-requirements.txt").unlink()
+        for m, v in (("x86_64", "15.0"), ("arm64", "14.6")):
+            shutil.rmtree(tmp_path / "platform-bin")
+            env["PATH"] = _platform_bin(tmp_path, system, m, v)
+            out = _setup(repo, home, **env)
+            assert out.returncode == 1, (m, v, out.stdout + out.stderr)
+            assert "lock file is not here" in out.stderr
+            assert not (home / ".venvs").exists()
 
 
 @posix_only
@@ -311,17 +478,20 @@ def test_the_private_route_takes_bngsim_from_pypi_or_not_at_all():
     assert '"bngsim==0.15.1"' in src
     assert "git+" not in src and "FLUBNF_BNGSIM_REMOTE" not in src
     # and the private pins stay on the private route
-    private = src.split("# ===== the private engine (the default)", 1)[1]
+    private = src.split("# ===== the private engine (the fallback)", 1)[1]
     assert '"numpy<2"' in private and '"dask==2022.12.1"' in private
-    assert "numpy<2" not in src.split("# ===== the private engine (the default)", 1)[0]
+    assert "numpy<2" not in src.split("# ===== the private engine (the fallback)", 1)[0]
+    assert "# ===== the public engine (the default) =====" in src
 
 
 # --- FluBNF.command -------------------------------------------------------------
 
-def _command_repo(tmp_path: Path) -> tuple[Path, Path]:
-    """A clone for the real FluBNF.command (no .git: no update), set to the
-    public engine, its console and setup_engine.sh stand-ins that record
-    each call."""
+def _command_repo(tmp_path: Path, record: str | None = "public",
+                  setup_rc: int = 0) -> tuple[Path, Path]:
+    """A clone for the real FluBNF.command (no .git: no update) that records
+    `record` as its engine (None: no record, the default), its console and
+    setup_engine.sh stand-ins that record each call; the stand-in installer
+    exits `setup_rc`."""
     repo, rec = tmp_path / "clone", tmp_path / "rec"
     rec.mkdir()
     (repo / "scripts").mkdir(parents=True)
@@ -337,22 +507,24 @@ def _command_repo(tmp_path: Path) -> tuple[Path, Path]:
         (bin_ / name).write_text("#!/bin/bash\n" + body)
         (bin_ / name).chmod(0o755)
     setup = repo / "setup_engine.sh"
-    setup.write_text(f'#!/bin/bash\necho "$* engine=$FLUBNF_ENGINE" >> "{rec}/setup"\nexit 0\n')
+    setup.write_text(f'#!/bin/bash\necho "$* engine=$FLUBNF_ENGINE" >> "{rec}/setup"\n'
+                     f'[ "${{1:-}}" = --print-bundle ] && exit 0\nexit {setup_rc}\n')
     setup.chmod(0o755)
     venv = tmp_path / "public"
     (venv / "bin").mkdir(parents=True)
     (venv / "bin" / "python").write_text("#!/bin/sh\nexit 0\n")
     (venv / "bin" / "python").chmod(0o755)
     (repo / ".flubnf.env").write_text(
-        "export FLUBNF_ENGINE=public\n"
-        f'export FLUBNF_PY_ENGINE_PUBLIC="{venv}/bin/python"\n')
+        (f"export FLUBNF_ENGINE={record}\n" if record else "")
+        + f'export FLUBNF_PY_ENGINE_PUBLIC="{venv}/bin/python"\n')
     return repo, rec
 
 
-def _command(repo: Path, tmp_path: Path) -> subprocess.CompletedProcess:
+def _command(repo: Path, tmp_path: Path, **extra) -> subprocess.CompletedProcess:
     env = {k: v for k, v in os.environ.items()
            if not k.startswith("FLUBNF_") and k != "TERM_PROGRAM"}
     env.update({"HOME": str(tmp_path), "TMPDIR": str(tmp_path)})
+    env.update({k: str(v) for k, v in extra.items()})
     return subprocess.run([BASH, str(repo / "FluBNF.command")], env=env,
                           stdin=subprocess.DEVNULL, capture_output=True,
                           text=True, timeout=60)
@@ -387,12 +559,118 @@ def test_the_launcher_reinstalls_the_public_engine_only_when_the_lock_changed(tm
     assert "lock file is not here" in out.stderr
 
 
+@posix_only
+@pytest.mark.parametrize("record, says", [
+    (None, ""),
+    ("pubic", '· FLUBNF_ENGINE is "pubic", which is neither private nor '
+              "public: the public engine, the default, is checked")])
+def test_a_copy_with_no_record_installs_the_public_engine(tmp_path, record, says):
+    """No record (or one naming no engine): the public engine, the default.
+    The route reaches setup_engine.sh in FLUBNF_ENGINE and is not recorded;
+    the private engine's search is never run."""
+    repo, rec = _command_repo(tmp_path, record=record)
+    _lock(repo / "engine-requirements.txt")
+    out = _command(repo, tmp_path)
+    assert out.returncode == 0, out.stdout + out.stderr
+    assert (rec / "setup").read_text().splitlines() == [" engine=public"]
+    assert "· public engine ready" in out.stdout
+    assert says in out.stdout
+    assert "PF engine" not in out.stdout
+    assert "FLUBNF_ENGINE" not in (repo / ".flubnf.env").read_text().replace(
+        "FLUBNF_ENGINE=pubic", "")
+
+
+@posix_only
+def test_a_copy_that_records_private_installs_the_private_engine(tmp_path):
+    """A private record: the private branch, as before, with the route
+    passed explicitly so the installer's default cannot reach it."""
+    repo, rec = _command_repo(tmp_path, record="private")
+    _lock(repo / "engine-requirements.txt")
+    out = _command(repo, tmp_path)
+    assert out.returncode == 0, out.stdout + out.stderr
+    calls = (rec / "setup").read_text().splitlines()
+    assert calls == ["--print-bundle engine=private", " engine=private"], calls
+    assert "· PF engine ready" in out.stdout
+    assert "public engine" not in out.stdout
+    # a failure names the way back to the default
+    (tmp_path / "again").mkdir()
+    repo, rec = _command_repo(tmp_path / "again", record="private", setup_rc=1)
+    out = _command(repo, tmp_path / "again")
+    assert ("  This copy is set to the private engine (the fallback); "
+            "./setup_engine.sh --public goes back to the default, which needs "
+            "no file.") in out.stdout
+
+
+def _private_ready(tmp_path: Path) -> dict:
+    py = tmp_path / "private" / "bin" / "python"
+    py.parent.mkdir(parents=True)
+    py.write_text("#!/bin/sh\nexit 0\n")
+    py.chmod(0o755)
+    fork = tmp_path / "PyBNF-pf"
+    (fork / "pybnf").mkdir(parents=True)
+    (fork / "pybnf" / "pf.py").write_text("")
+    return {"FLUBNF_PY_ENGINE": py, "FLUBNF_PYBNF": fork}
+
+
+FALLBACK = ("  The private engine is installed here: ./setup_engine.sh --private "
+            "switches this copy to it (the fallback).")
+CANNOT = ("· this machine cannot run the public engine (the reason is above, "
+          "or double-click SetupEngine.command to see it); FluBNF tries again "
+          "when the lock, the script or this Mac's system changes.")
+
+
+@posix_only
+@pytest.mark.parametrize("private", [True, False])
+def test_an_exit_3_is_stamped_and_not_handed_over_again(tmp_path, private):
+    """The public engine cannot run here (exit 3): said once, stamped, and
+    while the stamp holds no open hands over to Terminal or runs the
+    installer again. A changed lock earns a new try."""
+    repo, rec = _command_repo(tmp_path, record=None, setup_rc=3)
+    lock = _lock(repo / "engine-requirements.txt")
+    env = _private_ready(tmp_path) if private else {}
+    out = _command(repo, tmp_path, **env)
+    assert out.returncode == 0, out.stdout + out.stderr
+    assert CANNOT in out.stdout
+    assert (FALLBACK in out.stdout) is private
+    stamp = repo / ".venv" / ".public-engine-attempt"
+    assert stamp.is_file()
+    # headless, as the Dock opens it: no handover while the stamp holds
+    out = _command(repo, tmp_path, FLUBNF_PREPARE_ONLY="1", **env)
+    assert out.returncode == 0, out.stdout + out.stderr
+    assert "handing over to Terminal" not in out.stdout
+    assert CANNOT in out.stdout and (FALLBACK in out.stdout) is private
+    assert len((rec / "setup").read_text().splitlines()) == 1
+    # the lock changed: tried again (headless: in Terminal)
+    _lock(lock, bngsim="0.15.2")
+    out = _command(repo, tmp_path, FLUBNF_PREPARE_ONLY="1", **env)
+    assert out.returncode == 75, out.stdout + out.stderr
+    assert "public engine install: handing over to Terminal" in out.stdout
+
+
+@posix_only
+def test_a_failed_public_install_is_never_stamped(tmp_path):
+    """Exit 1 (network, pip): the next open tries again."""
+    repo, rec = _command_repo(tmp_path, record=None, setup_rc=1)
+    _lock(repo / "engine-requirements.txt")
+    env = _private_ready(tmp_path)
+    for n in (1, 2):
+        out = _command(repo, tmp_path, **env)
+        assert out.returncode == 0, out.stdout + out.stderr
+        assert ("· public engine setup did not finish (see above). The console "
+                "still starts, and the next open tries again.") in out.stdout
+        assert FALLBACK in out.stdout
+        assert len((rec / "setup").read_text().splitlines()) == n
+    assert not (repo / ".venv" / ".public-engine-attempt").exists()
+
+
 # --- reinstall.sh ---------------------------------------------------------------
 
 @posix_only
 @pytest.mark.skipif(hasattr(os, "geteuid") and os.geteuid() == 0,
                     reason="reinstall.sh refuses to run as root")
-def test_a_public_reinstall_needs_no_engine_file_and_leaves_the_private_engine(tmp_path):
+@pytest.mark.parametrize("route", [None, "public"], ids=["default", "public"])
+def test_a_public_reinstall_needs_no_engine_file_and_leaves_the_private_engine(
+        tmp_path, route):
     git = {"GIT_AUTHOR_NAME": "T", "GIT_AUTHOR_EMAIL": "t@example.invalid",
            "GIT_COMMITTER_NAME": "T", "GIT_COMMITTER_EMAIL": "t@example.invalid"}
     src = tmp_path / "src"
@@ -413,8 +691,10 @@ def test_a_public_reinstall_needs_no_engine_file_and_leaves_the_private_engine(t
     archive = home / "Downloads" / "pybnf-pf-2fdadee0.tar.gz"
     archive.write_bytes(b"the private engine's file")
     env = {k: v for k, v in os.environ.items() if not k.startswith("FLUBNF_")}
+    if route:
+        env["FLUBNF_ENGINE"] = route
     env.update({"HOME": str(home), "FLUBNF_REPO": str(origin),
-                "FLUBNF_ENGINE": "public", "FLUBNF_REINSTALL_YES": "1",
+                "FLUBNF_REINSTALL_YES": "1",
                 "FLUBNF_REINSTALL_NO_OPEN": "1", "FLUBNF_REINSTALL_NO_INSTALL": "1",
                 "FLUBNF_REINSTALL_IGNORE_RUNNING": "1", "GIT_TERMINAL_PROMPT": "0",
                 **git})
@@ -428,3 +708,122 @@ def test_a_public_reinstall_needs_no_engine_file_and_leaves_the_private_engine(t
     assert (home / ".venvs/flubnf-engine").is_dir()
     assert (home / "GitHub/PyBNF-Private").is_dir()
     assert archive.exists() and not (home / "Downloads/old-engine-files").exists()
+
+
+# --- SetupEngine.command, install.sh, setup.sh -----------------------------------
+
+def _stand_in_installer(repo: Path, rec: Path) -> None:
+    """setup_engine.sh as a stand-in that records its arguments, route and
+    checkout, and finds no bundle."""
+    setup = repo / "setup_engine.sh"
+    setup.write_text(
+        "#!/bin/bash\n"
+        f'echo "$* engine=${{FLUBNF_ENGINE:-}} pybnf=${{FLUBNF_PYBNF:-}}" >> "{rec}"\n'
+        "exit 0\n")
+    setup.chmod(0o755)
+
+
+def _clean_env(home: Path, **extra) -> dict:
+    env = {k: v for k, v in os.environ.items() if not k.startswith("FLUBNF_")}
+    env.update({"HOME": str(home), "GIT_TERMINAL_PROMPT": "0"})
+    env.update({k: str(v) for k, v in extra.items()})
+    return env
+
+
+@posix_only
+@pytest.mark.parametrize("record", [None, "public", "pubic"])
+def test_setup_engine_command_runs_the_public_engine_unless_private_is_recorded(
+        tmp_path, record):
+    repo, home, rec = tmp_path / "flubnf", tmp_path / "home", tmp_path / "rec"
+    repo.mkdir()
+    home.mkdir()
+    shutil.copy(REPO / "SetupEngine.command", repo / "SetupEngine.command")
+    _stand_in_installer(repo, rec)
+    if record:
+        (repo / ".flubnf.env").write_text(f"export FLUBNF_ENGINE={record}\n")
+    out = subprocess.run([BASH, str(repo / "SetupEngine.command")],
+                         env=_clean_env(home), stdin=subprocess.DEVNULL,
+                         capture_output=True, text=True, timeout=60)
+    assert out.returncode == 0, out.stdout + out.stderr
+    assert rec.read_text().splitlines() == [" engine=public pybnf="]
+    assert ("This copy runs the public engine, the default: public PyBNF from "
+            "engine-requirements.txt, no GitHub account or engine file "
+            "needed.") in out.stdout
+    assert ('FLUBNF_ENGINE is "pubic"' in out.stdout) is (record == "pubic")
+
+
+@posix_only
+def test_setup_engine_command_finds_the_fork_for_a_private_record(tmp_path):
+    repo, home, rec = tmp_path / "flubnf", tmp_path / "home", tmp_path / "rec"
+    repo.mkdir()
+    fork = home / "GitHub" / "PyBNF-pf"
+    (fork / ".git").mkdir(parents=True)
+    shutil.copy(REPO / "SetupEngine.command", repo / "SetupEngine.command")
+    _stand_in_installer(repo, rec)
+    (repo / ".flubnf.env").write_text("export FLUBNF_ENGINE=private\n")
+    out = subprocess.run([BASH, str(repo / "SetupEngine.command")],
+                         env=_clean_env(home), stdin=subprocess.DEVNULL,
+                         capture_output=True, text=True, timeout=60)
+    # (its last step waits for Enter; with no input it ends 1, as before)
+    assert "This copy is set to the private engine (the fallback)." in out.stdout
+    assert f"Using PyBNF checkout: {fork}" in out.stdout
+    assert rec.read_text().splitlines() == [f" engine=private pybnf={fork}"]
+
+
+def _install(tmp_path: Path, route: str | None) -> tuple:
+    """install.sh on a folder that is already a clone (nothing is cloned),
+    with setup.sh and setup_engine.sh stand-ins."""
+    dest, home, rec = tmp_path / "flubnf", tmp_path / "home", tmp_path / "rec"
+    (dest / ".git").mkdir(parents=True)
+    home.mkdir()
+    (dest / "setup.sh").write_text(f'#!/bin/bash\necho setup.sh >> "{rec}"\n')
+    (dest / "setup.sh").chmod(0o755)
+    _stand_in_installer(dest, rec)
+    extra = {"FLUBNF_DIR": dest}
+    if route is not None:
+        extra["FLUBNF_ENGINE"] = route
+    out = subprocess.run([BASH, str(REPO / "install.sh")],
+                         env=_clean_env(home, **extra), stdin=subprocess.DEVNULL,
+                         capture_output=True, text=True, timeout=60)
+    calls = rec.read_text().splitlines() if rec.exists() else []
+    return out, calls
+
+
+@posix_only
+@pytest.mark.parametrize("route, flag", [
+    (None, "--public"), ("public", "--public"), ("private", "--private"),
+    (' "Private" ', "--private")])
+def test_install_records_the_route_it_installs(tmp_path, route, flag):
+    out, calls = _install(tmp_path, route)
+    assert out.returncode == 0, out.stdout + out.stderr
+    assert calls[0] == "setup.sh" and calls[1].startswith(f"{flag} engine="), calls
+    # the engine file paragraph is the private route's only
+    assert ("engine file" in out.stdout) is (flag == "--private")
+
+
+@posix_only
+def test_install_refuses_an_unknown_route_before_anything_is_cloned(tmp_path):
+    out, calls = _install(tmp_path, "pubic")
+    assert out.returncode == 2, out.stdout + out.stderr
+    assert 'FLUBNF_ENGINE is "pubic"' in out.stdout
+    assert "Nothing was installed." in out.stdout
+    assert calls == []
+
+
+@posix_only
+@pytest.mark.parametrize("line", ["export FLUBNF_ENGINE=private",
+                                  "export FLUBNF_ENGINE=public"])
+def test_setup_sh_keeps_the_engine_record(tmp_path, line):
+    """setup.sh rewrites .flubnf.env; its KEPT line carries the engine
+    record (and the public venv's path) through."""
+    src = (REPO / "setup.sh").read_text(encoding="utf-8")
+    kept = next(ln for ln in src.splitlines() if ln.startswith("KEPT="))
+    (tmp_path / ".flubnf.env").write_text(
+        'export FLUBNF_HUB="/x/hub"\n'
+        f"{line}\n"
+        'export FLUBNF_PY_ENGINE_PUBLIC="/p/bin/python"\n')
+    out = subprocess.run([BASH, "-c", f'HERE="$1"; {kept}; printf "%s" "$KEPT"',
+                          "-", str(tmp_path)],
+                         capture_output=True, text=True, timeout=30)
+    assert out.stdout.splitlines() == [
+        line, 'export FLUBNF_PY_ENGINE_PUBLIC="/p/bin/python"'], out.stdout

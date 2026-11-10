@@ -1,5 +1,7 @@
 """setup.ps1's engine section must agree with FluBNF.bat, which installs it.
 
+The public engine is the default, which the launcher installs from the lock
+with no file; -Engine private records the private engine, the fallback.
 The launcher installs the private PyBNF fork from an engine file (no GitHub
 account) or from a checkout already on disk, and looks past a FLUBNF_PYBNF
 that holds no engine. setup.ps1 used to probe GitHub whatever was on disk,
@@ -396,8 +398,9 @@ def _public_commands() -> list[str]:
 def test_setup_takes_an_engine_and_otherwise_keeps_the_choice_made():
     """-Engine private|public; without it the record in .flubnf.env.cmd,
     which FluBNF.bat reads on every open and so outranks the account's
-    variable, then FLUBNF_ENGINE, then private. A value that is neither is
-    said and read as private, as the launcher reads it."""
+    variable, then FLUBNF_ENGINE, then public, the default. The value is
+    read as the launcher reads it (quotes dropped, trimmed, any case); one
+    that is neither is said and read as public."""
     head = PS1[:PS1.index("function Say")]
     assert '[ValidateSet("private", "public")][string]$Engine = ""' in head
     assert "-Engine private|public" in head
@@ -405,11 +408,17 @@ def test_setup_takes_an_engine_and_otherwise_keeps_the_choice_made():
     order = [route.index(s) for s in (
         "if ($Engine) { $Engine }", "elseif ($EngineRecord) { $EngineRecord }",
         "elseif ($env:FLUBNF_ENGINE) { $env:FLUBNF_ENGINE }",
-        'else { "private" }')]
+        'else { "public" }')]
     assert order == sorted(order), order
     assert PS1.index('$EngineRecord = Get-EnvCmdValue "FLUBNF_ENGINE"') \
         < PS1.index("$EngineRoute = if ($Engine)")
-    assert '$EngineRoute = "private"' in route[:route.index('Say "plan')]
+    before_plan = route[:route.index('Say "plan')]
+    assert ("$EngineRoute = \"$EngineRoute\".Replace('\"', '').Trim()"
+            ".ToLowerInvariant()") in before_plan
+    bad = before_plan[before_plan.index("$EngineRouteBad = $null"):]
+    assert bad.index("$EngineRouteBad = $EngineRoute") \
+        < bad.index('$EngineRoute = "public"', bad.index("$EngineRouteBad = $EngineRoute"))
+    assert '$EngineRoute = "private"' not in before_plan
     assert "neither private nor public" in PS1[:PS1.index('Say "controlled')]
 
 
@@ -439,12 +448,10 @@ def test_setup_reads_flubnf_env_cmd_as_cmd_does():
 def test_setup_keeps_the_public_lines_it_did_not_change():
     """.flubnf.env.cmd is rewritten whole, so the switch and the public
     engine's Python are carried over unless this run changed them: -Engine
-    public writes FLUBNF_ENGINE, -Engine private drops it, and nothing else
-    touches it. It is never the account's variable; -Engine private clears
-    one set there by hand."""
-    assert ('$EngineLine = if ($Engine -eq "public") { "public" }' in ENV
-            and 'elseif ($Engine -eq "private") { $null }' in ENV
-            and "else { $EngineRecord }" in ENV)
+    public and -Engine private each write FLUBNF_ENGINE, and nothing else
+    touches it. It is never the account's variable; -Engine clears one set
+    there by hand that names the other engine."""
+    assert "$EngineLine = if ($Engine) { $Engine } else { $EngineRecord }" in ENV
     assert 'if ($EngineLine) { $EnvLines += "set `"FLUBNF_ENGINE=$EngineLine`"" }' in ENV
     assert "$PublicLine = if ($PublicReady) { $PublicPy }" in ENV
     assert 'else { Get-EnvCmdValue "FLUBNF_PY_ENGINE_PUBLIC" }' in ENV
@@ -454,8 +461,15 @@ def test_setup_keeps_the_public_lines_it_did_not_change():
     assert ENV.index("$EnvLines += \"set `\"FLUBNF_ENGINE=") < write
     sets = re.findall(r'SetEnvironmentVariable\("FLUBNF_ENGINE", ([^,]+),', PS1)
     assert sets == ["$null"], sets
-    clear = _block(ENV, ENV.index('if ($Engine -eq "private") {'))
+    # (its '"' is a quote in a single-quoted string, which _block's counter
+    # cannot read: the block ends at its own closing line instead)
+    start = ENV.index("\nif ($Engine) {\n")
+    clear = ENV[start:ENV.index("\n}\n", start) + 3]
     assert 'GetEnvironmentVariable("FLUBNF_ENGINE", "User")' in clear
+    assert 'SetEnvironmentVariable("FLUBNF_ENGINE", $null, "User")' in clear
+    # only a value that names another engine goes, read as the route is
+    assert ('if ($acct -and ("$acct".Replace(\'"\', \'\').Trim()'
+            '.ToLowerInvariant() -ne $Engine)) {') in clear
     record = _block(ENV, ENV.index("if ($PublicReady) {"))
     assert 'SetEnvironmentVariable("FLUBNF_PY_ENGINE_PUBLIC", $PublicPy, "User")' in record
     assert PS1.count('$EnvCmd = Join-Path $Here ".flubnf.env.cmd"') == 1

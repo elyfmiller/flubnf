@@ -11,7 +11,11 @@ Two pytest suites: `tests/` covers the `flubnf` package and the root scripts, `a
 | The same, plus the checks against a hub clone | `FLUBNF_TEST_HUB=~/GitHub/FluSight-forecast-hub .venv/bin/python -m pytest` |
 | One file | `.venv/bin/python -m pytest app/tests/test_oracle_step.py` |
 
-CI (`.github/workflows/tests.yml`) installs `pip install -e ".[app,dev]" bionetgen ruff` and runs the first line on Ubuntu and Windows (Python 3.11 and 3.12); a third job runs `setup.ps1` five ways, and `public-engine-install` installs the public engine for real on Windows and macOS from a wheel and lock CI builds (`public-engine-wheel`), then on macOS fits one cell in it through FluBNF's own run path (`app/tests/test_engine_lwf.py`, `FLUBNF_TEST_PUBLIC_PYTHON`). All of them are required. `.githooks/pre-push` runs the same command before a push to main.
+CI (`.github/workflows/tests.yml`) installs `pip install -e ".[app,dev]" bionetgen ruff` and runs the first line on Ubuntu and Windows (Python 3.11 and 3.12); a third job runs `setup.ps1` five ways (the default first, then `-Engine private`, whose record two runs keep, then `-Engine public`), and `public-engine-install` installs the public engine for real on Windows and macOS from a wheel and lock CI builds (`public-engine-wheel`), on the default route with no engine named, checks on macOS that the private route leaves its venv alone, then on macOS fits one cell in it through FluBNF's own run path (`app/tests/test_engine_lwf.py`, `FLUBNF_TEST_PUBLIC_PYTHON`). All of them are required. `.githooks/pre-push` runs the same command before a push to main.
+
+## The engine the suite runs
+
+The public engine (lanl/PyBNF's Liu-West filter, `job_type = lwf`) is FluBNF's default; the private engine (the lab's PyBNF fork, `fit_type = pf`) is the fallback. Both suites pin the private engine: an autouse fixture in each `conftest.py` sets `FLUBNF_ENGINE=private` (whatever the shell exports), because about 90 test files encode its stub fork, and points `flubnf.settings.INSTALL_ROOT` at an empty folder, so the checkout's own `.flubnf.env` record never picks the engine. Tests of the default set `FLUBNF_ENGINE` themselves, or unset it with an install folder of their own (`default_engine` in `app/tests/test_engine_lwf.py`). The launcher tests strip `FLUBNF_*` from the scripts' environment and give each stand-in clone its record: `export FLUBNF_ENGINE=private` where they test the private route, none where they test the default.
 
 ## What skips, and why
 

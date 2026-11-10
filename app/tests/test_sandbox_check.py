@@ -145,6 +145,17 @@ def test_warnings(box, tmp_path, monkeypatch):
     assert "one data row" in text
 
 
+def test_one_data_row_is_the_private_engines_matter_only(box, monkeypatch):
+    """The public engine, the default, writes its own data rows
+    (lwf.translate_cell): one row is no warning there."""
+    files = _files()
+    files["data.exp"] = "# time T_weekly\n0 5\n"
+    monkeypatch.setenv("FLUBNF_ENGINE", "public")
+    r = sb.check(files)
+    assert r["ok"], r["problems"]
+    assert not any("one data row" in w for w in r["warnings"]), r["warnings"]
+
+
 def test_a_row_at_or_before_the_start_time_is_named(box):
     files = _files()
     files["data.exp"] = "# time T_weekly\n-1 3\n0 5\n1 8\n"

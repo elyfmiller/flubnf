@@ -392,11 +392,13 @@ def test_the_engine_an_install_records(tmp_path, monkeypatch):
             ('export FLUBNF_ENGINE=" public"\n', "public"),
             ("export FLUBNF_ENGINE='public' # by hand\n", "public"),
             ("FLUBNF_ENGINE=public; export FLUBNF_ENGINE\n", "public"),
-            ("export FLUBNF_ENGINE= public\n", "private"),
-            ("export FLUBNF_ENGINE=public#x\n", "private"),
+            # anything but exactly private is the public engine, the default
+            ("export FLUBNF_ENGINE= public\n", "public"),
+            ("export FLUBNF_ENGINE=public#x\n", "public"),
             ("# export FLUBNF_ENGINE=public\n", None),
             ("export FLUBNF_ENGINE_LOCK=/l\n", None),
-            ("export FLUBNF_ENGINE=lwf\n", "private")):
+            ("export FLUBNF_ENGINE=lwf\n", "public"),
+            ('export FLUBNF_ENGINE="PRIVATE"\n', "private")):
         env.write_text(text, encoding="utf-8")
         assert runner._recorded_engine() == got, text
     env.write_text("export FLUBNF_ENGINE=public\n", encoding="utf-8")
@@ -406,7 +408,10 @@ def test_the_engine_an_install_records(tmp_path, monkeypatch):
         "clone first")
     monkeypatch.setenv("FLUBNF_ENGINE", "public")
     assert runner._engine_record_problem() == ""
+    # unset, settings reads the record itself: the two agree
     monkeypatch.delenv("FLUBNF_ENGINE")
+    assert runner._engine_record_problem() == ""
+    monkeypatch.setenv("FLUBNF_ENGINE", "private")
     env.unlink()
     env.mkdir()                                  # not a file: unreadable
     assert runner._recorded_engine() is None
@@ -463,7 +468,7 @@ def test_a_terminal_without_the_installs_engine_is_not_started(
     monkeypatch.setattr(runner, "_stopping", False)
     monkeypatch.setattr(runner, "_dispatch",
                         lambda sv: setattr(runner, "_stopping", True))
-    assert "FLUBNF_ENGINE" not in os.environ
+    assert os.environ["FLUBNF_ENGINE"] == "private"     # the suite's pin
     assert runner.serve() == 1
     assert capsys.readouterr().err.strip() == (
         "Not started: this install records FLUBNF_ENGINE=public "
@@ -479,6 +484,73 @@ def test_a_terminal_without_the_installs_engine_is_not_started(
     # one that read it starts
     monkeypatch.setenv("FLUBNF_ENGINE", "public")
     assert runner._start_problem() == ""
+
+
+def _private_install(tmp_path, monkeypatch):
+    """An install that records the private engine (setup_engine.sh
+    --private), which both the runner's check and settings read."""
+    from flubnf import settings
+    monkeypatch.setattr(runner, "_recorded_engine", _RECORDED_ENGINE)
+    monkeypatch.setattr(settings, "_windows", lambda: False)
+    install = tmp_path / "install"
+    install.mkdir()
+    (install / ".flubnf.env").write_text(
+        'export FLUBNF_PY_ENGINE="/e/bin/python"\n'
+        "export FLUBNF_ENGINE=private\n", encoding="utf-8")
+    monkeypatch.setattr(sb, "REPO", install)
+    monkeypatch.setattr(settings, "INSTALL_ROOT", install)
+    settings.forget_record()
+    return install
+
+
+def test_a_private_record_starts_from_a_terminal_that_names_no_engine(
+        tmp_path, monkeypatch):
+    from flubnf import settings
+    _private_install(tmp_path, monkeypatch)
+    monkeypatch.delenv("FLUBNF_ENGINE")
+    assert settings.engine_choice() == "private"
+    assert runner._engine_record_problem() == ""
+    # one whose environment names the other engine is refused, as before
+    monkeypatch.setenv("FLUBNF_ENGINE", "public")
+    assert runner._engine_record_problem() == (
+        "this install records FLUBNF_ENGINE=private (.flubnf.env) but this "
+        "Terminal runs the public engine: run `. ./.flubnf.env` in the "
+        "clone first")
+
+
+@POSIX
+@pytest.mark.parametrize("recorded", [{"engine": "private"}, {}],
+                         ids=["private", "main-wrote-none"])
+def test_a_reexec_onto_another_engine_stops_and_says_why(
+        world, monkeypatch, capsys, recorded):
+    # the runner ran the private engine (main's runner records none, and
+    # ran only it); the update made this install's default the public one.
+    # Its re-execution (the same pid) stops instead of refusing every job
+    # begun on the private engine, and takes no lock.
+    monkeypatch.setenv("FLUBNF_ENGINE", "public")
+    _job(world.alice)
+    state(world.students, **recorded)
+    before = (runner.state_dir() / runner.STATE_FILE).read_text()
+    monkeypatch.setattr(runner, "_stopping", False)
+    monkeypatch.setattr(runner, "_dispatch",
+                        lambda sv: setattr(runner, "_stopping", True))
+    assert runner.serve() == 1
+    assert capsys.readouterr().err.strip() == (
+        "Not started again: this runner ran the private engine and, after "
+        "the update to aaaaaaa, this install runs the public one. Jobs begun "
+        "on the private engine would be refused and leave the queue. To keep "
+        "the private engine, run ./setup_engine.sh --private in the FluBNF "
+        "folder; to go on with the public one, start the runner again.")
+    assert world.children == []
+    assert (runner.state_dir() / runner.STATE_FILE).read_text() == before
+    # the same engine goes on
+    monkeypatch.setenv("FLUBNF_ENGINE", "private")
+    assert runner._engine_changed_on_reexec() == ""
+    # a start by hand (another pid) goes on with the engine selected
+    monkeypatch.setenv("FLUBNF_ENGINE", "public")
+    state(world.students, pid=DEAD, **recorded)
+    assert runner._engine_changed_on_reexec() == ""
+    assert runner.serve() == 0
 
 
 @POSIX

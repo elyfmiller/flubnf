@@ -1,5 +1,5 @@
-"""The public engine (FLUBNF_ENGINE=public, app/core/engines/lwf.py): the
-switch, the translation of a prepared cell into lanl/PyBNF's job_type = lwf,
+"""The public engine, the default (app/core/engines/lwf.py): the switch
+and the install's record of it, the translation of a prepared cell into lanl/PyBNF's job_type = lwf,
 the runners, reading Results/LWF back, and the build record.
 
 The fixture (fixtures/lwf_alaska) is one production cell, Alaska as of
@@ -73,17 +73,103 @@ def _with_results(d: Path) -> Path:
 
 # --- the switch -------------------------------------------------------------
 
-@pytest.mark.parametrize("value,want", [
-    (None, "private"), ("", "private"), ("private", "private"),
-    ("public", "public"), (" Public ", "public"), ("lwf", "private")])
-def test_engine_choice(monkeypatch, value, want):
+@pytest.fixture
+def default_engine(monkeypatch, tmp_path):
+    """FLUBNF_ENGINE unset, and an install folder with no record yet:
+    settings reads the folder's .flubnf.env afresh. Yields the folder."""
     from flubnf import settings
-    if value is None:
-        monkeypatch.delenv("FLUBNF_ENGINE", raising=False)
-    else:
+    root = tmp_path / "install"
+    root.mkdir()
+    monkeypatch.delenv("FLUBNF_ENGINE", raising=False)
+    monkeypatch.setattr(settings, "INSTALL_ROOT", root)
+    monkeypatch.setattr(settings, "_windows", lambda: False)
+    settings.forget_record()
+    yield root
+    settings.forget_record()
+
+
+@pytest.mark.parametrize("value,want", [
+    (None, "public"), ("", "public"), ("private", "private"),
+    ("public", "public"), (" Public ", "public"), ("lwf", "public"),
+    ("PRIVATE", "private"), ('"private"', "private")])
+def test_engine_choice(default_engine, monkeypatch, value, want):
+    from flubnf import settings
+    if value is not None:
         monkeypatch.setenv("FLUBNF_ENGINE", value)
     assert settings.engine_choice() == want
     assert settings.engine_public() is (want == "public")
+    assert settings.engine_value_unknown(value) is (value == "lwf")
+
+
+def test_a_private_record_is_read_when_the_variable_is_unset(default_engine):
+    from flubnf import settings
+    (default_engine / ".flubnf.env").write_text(
+        'export FLUBNF_PY_ENGINE="/x/bin/python"\n'
+        "export FLUBNF_ENGINE=private\n", encoding="utf-8")
+    assert settings.engine_choice() == "private"
+    assert settings.engine_source() == (".flubnf.env", "private")
+
+
+def test_the_environment_beats_the_record(default_engine, monkeypatch):
+    from flubnf import settings
+    (default_engine / ".flubnf.env").write_text(
+        "export FLUBNF_ENGINE=private\n", encoding="utf-8")
+    monkeypatch.setenv("FLUBNF_ENGINE", "public")
+    assert settings.engine_choice() == "public"
+    assert settings.engine_source() == ("environment", "public")
+    monkeypatch.setenv("FLUBNF_ENGINE", " ")        # blank: the record
+    assert settings.engine_choice() == "private"
+
+
+def test_no_record_and_an_unknown_record_mean_public(default_engine):
+    from flubnf import settings
+    assert settings.engine_choice() == "public"
+    assert settings.engine_source() == ("default", None)
+    settings.forget_record()
+    (default_engine / ".flubnf.env").write_text(
+        "export FLUBNF_ENGINE=lwf\n", encoding="utf-8")
+    assert settings.engine_choice() == "public"
+    assert settings.engine_source() == (".flubnf.env", "lwf")
+    assert settings.engine_value_unknown("lwf")
+
+
+def test_the_record_is_read_once_per_process(default_engine):
+    """A running console never changes engine because someone edited the
+    record; recorded_engine itself reads the file every time."""
+    from flubnf import settings
+    envf = default_engine / ".flubnf.env"
+    envf.write_text("export FLUBNF_ENGINE=private\n", encoding="utf-8")
+    assert settings.engine_choice() == "private"
+    envf.write_text("export FLUBNF_ENGINE=public\n", encoding="utf-8")
+    assert settings.engine_choice() == "private"
+    assert settings.recorded_engine(default_engine) == "public"
+    settings.forget_record()
+    assert settings.engine_choice() == "public"
+
+
+def test_the_windows_record(default_engine, monkeypatch):
+    from flubnf import settings
+    monkeypatch.setattr(settings, "_windows", lambda: True)
+    (default_engine / ".flubnf.env").write_text(
+        "export FLUBNF_ENGINE=public\n", encoding="utf-8")   # not cmd's
+    (default_engine / ".flubnf.env.cmd").write_bytes(
+        b'@echo off\r\nset "FLUBNF_HUB=C:\\hub"\r\n'
+        b'set "FLUBNF_ENGINE=private"\r\n')
+    assert settings.engine_choice() == "private"
+    assert settings.engine_source() == (".flubnf.env.cmd", "private")
+
+
+def test_the_private_engine_installed_is_two_files(monkeypatch, tmp_path):
+    from flubnf import settings
+    py, fork = tmp_path / "py", tmp_path / "fork"
+    monkeypatch.setattr(settings, "PY_ENGINE", py)
+    monkeypatch.setattr(settings, "PYBNF", fork)
+    assert settings.private_engine_installed() is False
+    py.write_text("")
+    assert settings.private_engine_installed() is False
+    (fork / "pybnf").mkdir(parents=True)
+    (fork / "pybnf" / "pf.py").write_text("")
+    assert settings.private_engine_installed() is True
 
 
 def test_public_python_paths(monkeypatch, tmp_path):
@@ -106,13 +192,34 @@ def test_settings_check_names_the_public_venv(public):
     assert "FLUBNF_PYBNF" not in names and "FLUBNF_PY_ENGINE" not in names
 
 
-def test_engine_checks_hand_over(public):
+def test_engine_checks_hand_over(public, monkeypatch, tmp_path):
+    from flubnf import settings
     assert pf_engine.engine_available() is False
+    # the private engine installed here: the message names the fallback
+    fork = tmp_path / "fork"
+    (fork / "pybnf").mkdir(parents=True)
+    (fork / "pybnf" / "pf.py").write_text("")
+    private_py = tmp_path / "private" / "python"
+    private_py.parent.mkdir()
+    private_py.write_text("")
+    monkeypatch.setattr(settings, "PY_ENGINE", private_py)
+    monkeypatch.setattr(settings, "PYBNF", fork)
     msg = pf_engine.engine_missing_message("darwin")
-    assert "public engine is not installed" in msg
+    assert "public engine (the default) is not installed" in msg
     assert "setup_engine.sh --public" in msg
+    assert "setup_engine.sh --private" in msg
     assert "FLUBNF_ENGINE=private" in msg
-    assert "FluBNF.bat" in pf_engine.engine_missing_message("win32")
+    assert "or leave it unset" not in msg
+    win = pf_engine.engine_missing_message("win32")
+    assert "FluBNF.bat" in win and "setup.ps1 -Engine private" in win
+    # not installed: no step that would fail, the doc instead
+    monkeypatch.setattr(settings, "PYBNF", tmp_path / "no-fork")
+    msg = pf_engine.engine_missing_message("darwin")
+    assert "public engine (the default) is not installed" in msg
+    assert "setup_engine.sh --public" in msg
+    assert msg.endswith("The private engine, the fallback, is not installed "
+                        "here (docs/ENGINE.md).")
+    assert "--private" not in msg
     assert pf_engine.engine_current() is False
     assert "does not match engine-requirements.txt" in pf_engine.engine_stale_message()
     cmd = pf_engine.runner_cmd("r.py")
@@ -120,7 +227,7 @@ def test_engine_checks_hand_over(public):
 
 
 def test_private_is_untouched(monkeypatch):
-    monkeypatch.delenv("FLUBNF_ENGINE", raising=False)
+    monkeypatch.setenv("FLUBNF_ENGINE", "private")
     cmd = pf_engine.runner_cmd("r.py")
     assert cmd[0] == str(pf_engine.PY310) and "-I" not in cmd
 
@@ -197,6 +304,26 @@ def test_every_action_is_removed(model):
 def test_rows_refused(text, why):
     with pytest.raises(lwf.Untranslatable, match=why):
         lwf.lwf_rows(text)
+
+
+@pytest.mark.parametrize("platform", ["darwin", "win32"])
+@pytest.mark.parametrize("key", sorted(lwf._NO_COUNTERPART))
+def test_every_refusal_fits_its_line_and_names_the_switch(tmp_path, monkeypatch,
+                                                        platform, key):
+    """What the cell's failure line carries (FAIL: public engine: ...,
+    cut at 200 characters) is the whole refusal, its step included."""
+    from app.core.engine_build import switch_step
+    from flubnf import settings
+    monkeypatch.setattr(settings, "_windows", lambda: platform == "win32")
+    d = _cell(tmp_path)
+    with open(d / "pf.conf", "a", encoding="utf-8") as f:
+        f.write(f"{key} = 1\n")
+    with pytest.raises(lwf.Untranslatable) as e:
+        lwf.translate_cell(_record(d))
+    line = f"FAIL: public engine: {e.value}"
+    assert len(line) <= 200, (len(line), line)
+    step = switch_step("private", platform, short=True)
+    assert str(e.value).endswith(f"the private engine runs it ({step})")
 
 
 @pytest.mark.parametrize("line,why", [
@@ -616,7 +743,7 @@ def test_readiness_gate_on_the_public_engine(public, monkeypatch, tmp_path):
 def test_cost_model_follows_the_engine(public, monkeypatch):
     cell = {"n_obs": 20, "particles": 10000}
     pub = pf_engine.cell_seconds(cell)
-    monkeypatch.delenv("FLUBNF_ENGINE")
+    monkeypatch.setenv("FLUBNF_ENGINE", "private")
     assert pub == pytest.approx(pf_engine.cell_seconds(cell) * pf_engine.PUBLIC_COST_RATIO)
 
 

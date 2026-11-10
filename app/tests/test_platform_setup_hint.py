@@ -47,10 +47,39 @@ def test_the_windows_hint_is_the_lab_file_and_needs_no_github_account(
             "and open <code>FluBNF.bat</code> again") in hint
     assert "no GitHub account is needed" in hint
     assert "docs\\ENGINE.md" in hint
-    # setup.ps1 reports what is missing and installs no engine; bash
-    # scripts do not run there
-    for gone in ("setup.ps1", "setup_engine.sh", "WINDOWS.md"):
+    # setup.ps1 installs no engine: it is named only as the switch back to
+    # the default; bash scripts do not run there
+    assert hint.count("setup.ps1") == 1
+    assert ("(this copy is set to the private engine, the fallback; "
+            "setup.ps1 -Engine public goes back to the default)") in hint
+    for gone in ("setup_engine.sh", "WINDOWS.md"):
         assert gone not in hint, gone
+
+
+def test_on_the_public_engine_the_hint_is_its_install_step(monkeypatch):
+    """The default engine installs with no lab file on every platform: the
+    hint is lwf's step, and the private engine's switch comes after it only
+    where that engine is installed (engine_fallback)."""
+    from app.core.engines import lwf
+    monkeypatch.setenv("FLUBNF_ENGINE", "public")
+    for platform in ("darwin", "win32", "linux"):
+        monkeypatch.setattr(ui_templating, "_platform", lambda p=platform: p)
+        hint = str(ui_templating._engine_setup_hint())
+        assert hint == str(lwf._setup_step(platform)), (platform, hint)
+        assert "engine file" not in hint and "--private" not in hint
+    monkeypatch.setattr(ui_templating, "_platform", lambda: "darwin")
+    monkeypatch.setattr(fs, "private_engine_installed", lambda: False)
+    assert str(ui_templating._engine_fallback_hint()) == ""
+    monkeypatch.setattr(fs, "private_engine_installed", lambda: True)
+    assert str(ui_templating._engine_fallback_hint()) == (
+        "; the private engine installed here runs instead after "
+        "./setup_engine.sh --private in the FluBNF folder")
+    monkeypatch.setattr(ui_templating, "_platform", lambda: "win32")
+    assert "setup.ps1 -Engine private, then open FluBNF.bat again" in str(
+        ui_templating._engine_fallback_hint())
+    # on the private engine nothing comes after the hint
+    monkeypatch.setenv("FLUBNF_ENGINE", "private")
+    assert str(ui_templating._engine_fallback_hint()) == ""
 
 
 def test_no_console_page_names_a_mac_only_script_by_itself_on_windows(

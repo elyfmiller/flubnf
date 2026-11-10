@@ -496,7 +496,7 @@ def test_a_start_on_the_public_engine_needs_its_venv_alone(here, tmp_path,
     assert CS._local_refusal(SMOKE) is None
     assert here.calls == ["console", "busy", "sweep", "elsewhere"]
     # the private engine, which this computer lacks, is refused there
-    monkeypatch.delenv("FLUBNF_ENGINE")
+    monkeypatch.setenv("FLUBNF_ENGINE", "private")
     assert CS._local_refusal(SMOKE) == finding(
         "MACHINE", "an experiment needs the particle-filter engine, which is "
         "not ready on this computer (flubnf doctor says why)")
@@ -533,6 +533,15 @@ def test_a_start_from_a_terminal_without_the_clones_engine_is_refused(
     monkeypatch.delenv("FLUBNF_ENGINE")
     (clone / ".flubnf.env").unlink()
     assert CS._local_refusal(SMOKE) is None
+    # the clone records the private engine (setup_engine.sh --private) and
+    # this terminal names the public one: refused the same way
+    (clone / ".flubnf.env").write_text("export FLUBNF_ENGINE=private\n",
+                                       encoding="utf-8")
+    monkeypatch.setenv("FLUBNF_ENGINE", "public")
+    words = ("this install records FLUBNF_ENGINE=private (.flubnf.env) but "
+             "this Terminal runs the public engine: run `. ./.flubnf.env` "
+             "in the clone first")
+    assert CS._local_refusal(SMOKE) == finding("MACHINE", words)
 
 
 def test_start_refuses_the_settings_and_answers_complete(here, monkeypatch):

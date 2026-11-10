@@ -931,24 +931,30 @@ def _public_gate() -> str:
     return line[len(head):-1]
 
 
-def test_the_engine_switch_is_private_unless_it_says_public():
-    """FLUBNF_ENGINE picks the route, private by default; a value that is
-    neither is said, and the private engine runs. The branch comes after
-    the private checkout's update, which runs on either route (the
-    fallback stays current), and after the private venv's name is cleaned,
-    so the public route can refuse it."""
+def test_the_engine_switch_is_public_unless_it_says_private():
+    """FLUBNF_ENGINE picks the route, public by default; only private, which
+    setup.ps1 -Engine private records, stays on the private block (the
+    fallback); a value that is neither is said, and the public engine runs.
+    The branch comes after the private checkout's update, which runs on
+    either route (the fallback stays current), and after the private venv's
+    name is cleaned and kept as PRIVATEPY, so the public route can refuse
+    it and say whether it is there to switch to."""
     order = [LINES.index(ln) for ln in (
         ":engineupdated",
         'set "ENGINEPY=%ENGINEVENV%\\Scripts\\python.exe"',
-        'set "ENGINEROUTE=private"',
+        'set "PRIVATEPY=%ENGINEPY%"',
+        'set "ENGINEROUTE=public"',
         'if defined FLUBNF_ENGINE set "ENGINEROUTE=%FLUBNF_ENGINE%"',
         'set "ENGINEROUTE=%ENGINEROUTE:"=%"',
-        'if /I "%ENGINEROUTE%"=="public" goto :publicengine',
+        'if not defined ENGINEROUTE set "ENGINEROUTE=public"',
+        'if /I not "%ENGINEROUTE%"=="private" goto :publicengine',
         'if not exist "%ENGINEPY%" goto :engineabsent')]
     assert order == sorted(order), order
-    other = LINES[order[5] + 1]
-    assert other.startswith('if /I not "%ENGINEROUTE%"=="private" echo ')
-    assert "the private engine" in other
+    other = LINES[order[7] - 1]
+    assert other == (
+        'if /I not "%ENGINEROUTE%"=="private" if /I not "%ENGINEROUTE%"=='
+        '"public" echo   FLUBNF_ENGINE is "%ENGINEROUTE%", which is neither '
+        'private nor public: the public engine, the default, it is.')
     assert sum("goto :publicengine" in ln for ln in _code(LINES)) == 1
     # nothing falls into the public block: the line above it ends the console
     above = _code(LINES[:_label_at("publicengine")])
@@ -1017,6 +1023,50 @@ def test_the_lock_is_read_only_through_engine_lock_py():
     nolock = " ".join(_after_label("\r\n".join(block), "publicnolock",
                                    "goto :").split())
     assert "setup.ps1 -Engine private" in nolock
+    assert ("The public engine, the default, cannot be installed: its lock "
+            "file cannot be used yet (the reason is above). The console "
+            "starts without it.") in nolock
+
+
+# W12: after a public failure, the switch to the private engine when it is
+# installed here, else what it needs; never taken here (no fallback runs
+# by itself)
+READY_LINE = ("The private engine is installed on this PC: to run it instead "
+              "(the fallback), run setup.ps1 -Engine private, then open FluBNF "
+              "again.")
+NOT_READY_LINE = ("The private engine, the fallback, needs the lab's engine "
+                  "file: run setup.ps1 -Engine private, then open FluBNF with "
+                  "the file in Downloads.")
+
+
+def test_a_public_failure_names_the_fallback_and_never_takes_it():
+    block = "\r\n".join(_public_block())
+    probe = _code(_public_block())
+    i = probe.index("call :perlblock")
+    assert probe[i + 1:i + 3] == [
+        'set "PRIVATEREADY="',
+        'if exist "%PRIVATEPY%" if exist "%PYBNFDIR%\\pybnf\\pf.py" '
+        'set "PRIVATEREADY=1"']
+    for label, first in (
+            ("publicnolock", "The public engine, the default, cannot be "
+             "installed: its lock file cannot be used yet (the reason is "
+             "above). The console starts without it."),
+            ("publicfailed", "The public engine did not install (see above). "
+             "The console starts without it, and the next open tries "
+             "again.")):
+        code = _code(_after_label(block, label, "goto :").splitlines())
+        assert code == [f"echo   {first}",
+                        f"if defined PRIVATEREADY echo   {READY_LINE}",
+                        f"if not defined PRIVATEREADY echo   {NOT_READY_LINE}"], label
+    for ln in _code(_public_block()):
+        assert "FLUBNF_ENGINE=" not in ln, ln
+    # the private route's failures name the way back to the default
+    back = ("echo   This copy is set to the private engine (the fallback); "
+            "setup.ps1 -Engine public goes back to the default, which needs "
+            "no file.")
+    for label in ("enginefailed", "engineskipped"):
+        assert back in _code(_after_label(BAT, label, "goto :startconsole")
+                             .splitlines()), label
 
 
 def test_the_public_install_is_hash_checked_and_its_python_is_3_12():
@@ -2216,7 +2266,9 @@ def _run_engine_venv(pc: SimpleNamespace, **env) -> subprocess.CompletedProcess:
         "ATTEMPT": str(pc.folder / ".venv" / "engine-attempt.txt"),
         "PROCESSOR_ARCHITECTURE": "AMD64", "PROCESSOR_ARCHITEW6432": None,
         "CONDA_EXE": None, "CONDA_SUBDIR": None, "FLUBNF_ENGINE_VENV": None,
-        "FLUBNF_ENGINE": None, **env}
+        # the private engine's route, these tests' subject: the default
+        # route (no value) goes to :publicengine, outside this slice
+        "FLUBNF_ENGINE": "private", **env}
     r = _cmd(pc.folder.parent / "engine-venv.bat", _engine_venv_slice(),
              pc.folder, **settings)
     assert "REACHED-" in r.stdout, _said(r)
@@ -2579,9 +2631,9 @@ pybnf @ https://github.com/elyfmiller/flubnf/releases/download/pybnf-x/pybnf-1.8
 
 
 def _route_slice() -> str:
-    """The engine switch, from the private venv's name to the private
-    route's first test; the labels it ends at say which route."""
-    start = BAT.index('\r\nset "ENGINEROUTE=private"\r\n') + 2
+    """The engine switch, from its default to the private route's first
+    test; the labels it ends at say which route."""
+    start = BAT.index('\r\nset "ENGINEROUTE=public"\r\n') + 2
     end = BAT.index("\r\nrem Installed? Cheap file tests first") + 2
     return ("@echo off\nsetlocal\n" + BAT[start:end]
             + "echo REACHED-PRIVATE\nexit /b 0\n"
@@ -2590,8 +2642,8 @@ def _route_slice() -> str:
 
 @windows_only
 @pytest.mark.parametrize("value, route", [
-    (None, "PRIVATE"), ("private", "PRIVATE"), ("public", "PUBLIC"),
-    ("Public", "PUBLIC"), ("pubic", "PRIVATE")])
+    (None, "PUBLIC"), ("private", "PRIVATE"), ("Private", "PRIVATE"),
+    ("public", "PUBLIC"), ("Public", "PUBLIC"), ("pubic", "PUBLIC")])
 def test_windows_the_engine_switch_picks_the_route(tmp_path, value, route):
     r = _cmd(tmp_path / "route.bat", _route_slice(), tmp_path,
              FLUBNF_ENGINE=value)
@@ -2647,6 +2699,27 @@ def test_windows_a_missing_lock_costs_one_line_and_starts_the_console(tmp_path):
     assert "REACHED-CONSOLE" in r.stdout and "REACHED-VENV" not in r.stdout, _said(r)
     assert "lock file is not here" in out, _said(r)
     assert "setup.ps1 -Engine private" in " ".join(r.stdout.split()), _said(r)
+
+
+@windows_only
+@pytest.mark.parametrize("ready", [True, False])
+def test_windows_the_fallback_line_says_whether_the_private_engine_is_here(
+        tmp_path, ready):
+    pc = _public_pc(tmp_path, lock=False)
+    py = pc.home / ".venvs" / "flubnf-engine" / "Scripts" / "python.exe"
+    fork = pc.home / "GitHub" / "PyBNF-Private"
+    if ready:
+        py.parent.mkdir(parents=True)
+        py.write_bytes(b"")
+        (fork / "pybnf").mkdir(parents=True)
+        (fork / "pybnf" / "pf.py").write_text("")
+
+    r = _run_public(pc, PRIVATEPY=str(py), PYBNFDIR=str(fork))
+
+    said = " ".join(r.stdout.split())
+    assert "REACHED-CONSOLE" in r.stdout, _said(r)
+    assert (READY_LINE in said) is ready, _said(r)
+    assert (NOT_READY_LINE in said) is (not ready), _said(r)
 
 
 @windows_only

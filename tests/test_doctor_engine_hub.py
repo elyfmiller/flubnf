@@ -119,17 +119,112 @@ def test_numpy2_check_leaves_the_fork_alone_on_the_public_engine(
         monkeypatch.setattr(settings, "PYBNF", fork)
         res = doctor._check_numpy2_pybnf()
         assert res.status is doctor.Status.OK, res
-        assert res.detail == ("not used: FLUBNF_ENGINE=public runs "
+        assert res.detail == ("not used: the public engine runs "
                               "lanl/PyBNF's job_type = lwf")
-        assert res.detail == doctor._check_pf_engine().detail
+        row = doctor._check_pf_engine()
+        assert row.status is doctor.Status.OK, row
+        said = (f"installed at {fork}" if fork == engine.fork else
+                "not installed (needed only after ./setup_engine.sh "
+                "--private)")
+        assert row.detail == ("the private engine (the fallback), not used "
+                              f"here: {said}")
     # the private engine's check is as before
-    monkeypatch.delenv("FLUBNF_ENGINE")
+    monkeypatch.setenv("FLUBNF_ENGINE", "private")
     monkeypatch.setattr(settings, "PYBNF", tmp_path / "no-fork")
     assert doctor._check_numpy2_pybnf().status is doctor.Status.WARN
     import numpy as np
     if int(np.__version__.split(".")[0]) >= 2:
         monkeypatch.setattr(settings, "PYBNF", engine.fork)
         assert doctor._check_numpy2_pybnf().status is doctor.Status.FAIL
+
+
+# --- the engine row (W8): which engine runs, and where the choice comes from
+
+@pytest.fixture
+def install(tmp_path, monkeypatch):
+    """An install folder with no record, FLUBNF_ENGINE unset, POSIX; the
+    runner's check reads the same folder's record."""
+    from app.core import runner
+    from app.core import sandbox as sb
+    root = tmp_path / "install"
+    root.mkdir()
+    monkeypatch.delenv("FLUBNF_ENGINE", raising=False)
+    monkeypatch.setattr(settings, "INSTALL_ROOT", root)
+    monkeypatch.setattr(settings, "_windows", lambda: False)
+    monkeypatch.setattr(sb, "REPO", root)
+    monkeypatch.setattr(runner, "_recorded_engine",
+                        lambda: settings.recorded_engine(root))
+    settings.forget_record()
+    yield root
+    settings.forget_record()
+
+
+def test_the_engine_row_says_the_default(install):
+    res = doctor._check_engine_choice()
+    assert (res.status, res.detail) == (
+        doctor.Status.OK, "public (the default): lanl/PyBNF's job_type = lwf")
+
+
+def test_the_engine_row_names_where_private_comes_from(install, monkeypatch):
+    (install / ".flubnf.env").write_text("export FLUBNF_ENGINE=private\n")
+    res = doctor._check_engine_choice()
+    assert (res.status, res.detail) == (
+        doctor.Status.OK, "private (the fallback, FLUBNF_ENGINE=private from "
+        ".flubnf.env): the lab's PyBNF fork, fit_type = pf")
+    settings.forget_record()
+    (install / ".flubnf.env").unlink()
+    monkeypatch.setenv("FLUBNF_ENGINE", "private")
+    res = doctor._check_engine_choice()
+    assert (res.status, res.detail) == (
+        doctor.Status.OK, "private (the fallback, FLUBNF_ENGINE=private from "
+        "the environment): the lab's PyBNF fork, fit_type = pf")
+    # Windows: setup.ps1 -Engine private's record
+    monkeypatch.delenv("FLUBNF_ENGINE")
+    monkeypatch.setattr(settings, "_windows", lambda: True)
+    settings.forget_record()
+    (install / ".flubnf.env.cmd").write_bytes(
+        b'@echo off\r\nset "FLUBNF_ENGINE=private"\r\n')
+    assert "from .flubnf.env.cmd)" in doctor._check_engine_choice().detail
+
+
+@pytest.mark.parametrize("where", ["environment", "record"])
+def test_an_unknown_engine_value_is_a_warn_and_runs_public(install,
+                                                           monkeypatch, where):
+    if where == "environment":
+        monkeypatch.setenv("FLUBNF_ENGINE", "pubic")
+    else:
+        (install / ".flubnf.env").write_text("export FLUBNF_ENGINE=pubic\n")
+    res = doctor._check_engine_choice()
+    assert res.status is doctor.Status.WARN, res
+    assert res.detail == ('FLUBNF_ENGINE is "pubic", which names no engine: '
+                          "the public engine, the default, runs")
+    assert "./setup_engine.sh --public" in res.hint
+    assert "./setup_engine.sh --private" in res.hint
+    assert settings.engine_choice() == "public"
+
+
+def test_an_environment_that_names_the_other_engine_is_a_warn(install,
+                                                              monkeypatch):
+    (install / ".flubnf.env").write_text("export FLUBNF_ENGINE=private\n")
+    monkeypatch.setenv("FLUBNF_ENGINE", "public")
+    res = doctor._check_engine_choice()
+    assert res.status is doctor.Status.WARN, res
+    assert res.detail == (
+        "this install records FLUBNF_ENGINE=private (.flubnf.env) but this "
+        "Terminal runs the public engine: run `. ./.flubnf.env` in the clone "
+        "first")
+
+
+def test_the_engine_row_comes_first(install, monkeypatch):
+    for name in dir(doctor):                 # every other check a stand-in
+        if name.startswith("_check_") and name != "_check_engine_choice":
+            monkeypatch.setattr(
+                doctor, name, lambda *a, _n=name, **k: doctor.CheckResult(
+                    _n, doctor.Status.OK, ""))
+    monkeypatch.setattr(doctor, "_check_imports", lambda: [])
+    rep = doctor.run_doctor()
+    assert rep.checks[0].name == "engine"
+    assert rep.checks[0].detail.startswith("public (the default)")
 
 
 def _hub(tmp_path, *dirs):

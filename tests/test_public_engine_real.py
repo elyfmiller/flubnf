@@ -1,15 +1,18 @@
 """The public engine's install for real, as an open does it: FluBNF.bat's
-public block run by cmd.exe on Windows, setup_engine.sh --public elsewhere,
-with real pip, real PyPI and a real Python 3.12, into a venv under a
-folder named with a space, an apostrophe and parentheses. The PyBNF wheel
-and its lock come from the public-engine-wheel CI job
-(scripts/make_test_lock.py), served here over https on localhost, so this
-runs before the engine lane's lock exists.
+public block run by cmd.exe on Windows, setup_engine.sh elsewhere, with
+real pip, real PyPI and a real Python 3.12, into a venv under a folder
+named with a space, an apostrophe and parentheses. The PyBNF wheel and its
+lock come from the public-engine-wheel CI job (scripts/make_test_lock.py),
+served here over https on localhost, never the engine lane's lock.
 
-Five steps, in order: a fresh install; an open with nothing to do; a new
-lock (the wheel at another address), which puts the lock's wheel back
-without reinstalling everything; a wheel whose sha256 does not match,
-refused; then PyBNF's own lesson 50 (job_type = lwf) in the venv.
+Six steps, in order: a fresh install on the default route (FLUBNF_ENGINE
+unset: FluBNF.bat from :engineupdated, setup_engine.sh with no option),
+which records no route; an open on the private route (the fallback), which
+leaves the public venv alone (macOS and Linux); an open with nothing to do
+(--public from here on); a new lock (the wheel at another address), which
+puts the lock's wheel back without reinstalling everything; a wheel whose
+sha256 does not match, refused; then PyBNF's own lesson 50 (job_type =
+lwf) in the venv.
 
 Only in the public-engine-install CI job: FLUBNF_PUBLIC_REAL names the
 wheel job's folder. tests/test_engine_public.py and
@@ -84,14 +87,21 @@ def pc(tmp_path_factory):
     return folder, home / "venv-public"
 
 
-def _open(pc, lock: str, venv: Path | None = None):
+def _open(pc, lock: str, venv: Path | None = None, route: str | None = "public",
+          **extra):
+    """One open on `route`: "public" (FLUBNF_ENGINE=public, and --public on
+    macOS and Linux), None (the default: FLUBNF_ENGINE unset, no option) or
+    "private" (FLUBNF_ENGINE=private, no option)."""
     folder, default = pc
-    env = {**os.environ, "FLUBNF_ENGINE": "public",
-           "FLUBNF_ENGINE_LOCK": str(PUB / lock),
-           "FLUBNF_PUBLIC_VENV": str(venv or default),
-           "PIP_TRUSTED_HOST": "localhost"}
+    env = {k: v for k, v in os.environ.items() if k != "FLUBNF_ENGINE"}
+    env.update({"FLUBNF_ENGINE_LOCK": str(PUB / lock),
+                "FLUBNF_PUBLIC_VENV": str(venv or default),
+                "PIP_TRUSTED_HOST": "localhost", **extra})
+    if route:
+        env["FLUBNF_ENGINE"] = route
+    opt = ["--public"] if route == "public" else []
     cmd = (["cmd", "/d", "/c", str(folder / "FluBNF.bat")] if WIN
-           else ["bash", str(folder / "setup_engine.sh"), "--public"])
+           else ["bash", str(folder / "setup_engine.sh"), *opt])
     t0 = time.monotonic()
     r = subprocess.run(cmd, cwd=folder, env=env, stdin=subprocess.DEVNULL,
                        stdout=subprocess.PIPE, stderr=subprocess.STDOUT,
@@ -123,8 +133,15 @@ def _installs(out: str) -> bool:
             else "public engine packages") in out
 
 
+def _record(pc) -> str:
+    """The install's record (.flubnf.env, or .flubnf.env.cmd on Windows)."""
+    f = pc[0] / (".flubnf.env.cmd" if WIN else ".flubnf.env")
+    return f.read_text(errors="replace") if f.is_file() else ""
+
+
 def test_a_fresh_install(pc):
-    r, _ = _open(pc, "engine-requirements.txt")
+    """The default route: nothing names an engine."""
+    r, _ = _open(pc, "engine-requirements.txt", route=None)
     assert r.returncode == 0, r.stdout
     assert _installs(r.stdout)
     assert f"public engine ready: pybnf 1.8.1 from {WHEEL}, bngsim 0.15.1" in r.stdout
@@ -132,6 +149,37 @@ def test_a_fresh_install(pc):
         assert "THE CONSOLE STARTS HERE" in r.stdout
     assert _check(pc[1], "engine-requirements.txt").returncode == 0
     assert _wheel_url(pc[1]) == f"https://localhost:8443/{WHEEL}"
+    # the venv is recorded, the route is not: no record means the default
+    assert "FLUBNF_ENGINE=" not in _record(pc), _record(pc)
+
+
+@pytest.mark.skipif(WIN, reason="FluBNF.bat's private block installs from the "
+                    "lab's file, which CI does not hold")
+def test_a_private_open_leaves_the_public_venv_alone(pc, tmp_path):
+    """FLUBNF_ENGINE=private is the private engine's install (here it stops
+    at a checkout without its branch, before any venv or network): the
+    public venv is not touched, and no route is recorded."""
+    before = sorted((p.relative_to(pc[1]).as_posix(), p.stat().st_mtime_ns)
+                    for p in pc[1].rglob("*") if p.is_file())
+    fork = tmp_path / "PyBNF-Private"
+    subprocess.run(["git", "init", "-q", str(fork)], check=True)
+    stub = tmp_path / "bin"
+    stub.mkdir()
+    (stub / "python3.12").write_text("#!/bin/sh\nexit 0\n")
+    (stub / "python3.12").chmod(0o755)
+    r, _ = _open(pc, "engine-requirements.txt", route="private",
+                 FLUBNF_PYBNF=str(fork),
+                 FLUBNF_ENGINE_VENV=str(tmp_path / "private-venv"),
+                 GIT_TERMINAL_PROMPT="0",
+                 PATH=f"{stub}{os.pathsep}{os.environ['PATH']}")
+    assert r.returncode == 1, r.stdout
+    assert "the private engine (the fallback)" in r.stdout
+    assert "branch feature/particle-filter not found" in r.stdout
+    assert not _installs(r.stdout)
+    after = sorted((p.relative_to(pc[1]).as_posix(), p.stat().st_mtime_ns)
+                   for p in pc[1].rglob("*") if p.is_file())
+    assert after == before
+    assert "FLUBNF_ENGINE=" not in _record(pc), _record(pc)
 
 
 def test_an_open_with_nothing_to_do(pc):

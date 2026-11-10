@@ -374,7 +374,7 @@ def test_a_launch_interrupted_part_way_kills_the_runners_it_started(
     """A second Ctrl-C while retro is still starting its shards: the runners
     already started lead their own sessions (no Ctrl-C reaches them) and are
     not yet in the registry, so the launch itself must stop them."""
-    monkeypatch.delenv("FLUBNF_ENGINE", raising=False)
+    monkeypatch.setenv("FLUBNF_ENGINE", "private")
 
     class Runner:
         killed = False

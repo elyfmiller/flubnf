@@ -1075,6 +1075,56 @@ def test_start_says_when_the_shipped_replay_ran_on_the_other_engine(
         "private engine, the shipped replay ran on the public one.")
 
 
+def test_on_the_default_engine_start_says_the_replay_ran_on_the_other(
+        season, monkeypatch, tmp_path):
+    # nothing names an engine (no FLUBNF_ENGINE, no record): the public
+    # engine, the default, and the shipped replays recorded none (private)
+    from app.core.engines import lwf
+    s = {"model": "sihrs", "season": "2024-25"}
+    _replay(season / "2024-25", weeks=SMOKE_WEEKS)
+    monkeypatch.delenv("FLUBNF_ENGINE")
+    monkeypatch.setenv("FLUBNF_PY_ENGINE_PUBLIC",
+                       str(tmp_path / "nopy" / "python"))
+    monkeypatch.setattr(lwf, "_CHECK", {})
+    monkeypatch.setattr(lwf, "_BUILD", {})
+    a = X.started(X.preflight(s, retro_root=season))
+    assert a["detail"].endswith(
+        " Compared across engines: this experiment runs on the public "
+        "engine, the shipped replay ran on the private one."), a
+
+
+def test_a_resume_on_the_other_engines_build_names_the_step_back(
+        season, monkeypatch, tmp_path):
+    from app.core import engine_build as EB
+    from flubnf import settings
+    s = {"model": "sihrs", "season": "2024-25"}
+    eid = "sihrs_2024-25_smoke_oracle"
+    # weeks stored on the private engine's build (a record of it names no
+    # engine), a resume on the public engine's
+    build = {"branch": "feature/particle-filter", "commit": "2fdadee0",
+             "dirty": False, "source": "git", "path": ""}
+    monkeypatch.setattr(EB, "engine_build", lambda path=None: dict(build))
+    _weeks_run(monkeypatch, lambda root, asof: retro.request_stop(root))
+    with pytest.raises(retro.SeasonStopped):
+        X.replay(s, retro_root=season)
+    build.clear()
+    build.update({"engine": "public", "commit": "8410f794", "dirty": False,
+                  "source": "lock", "path": ""})
+    monkeypatch.setattr(settings, "_windows", lambda: False)
+    before = _tree(tmp_path)
+    said = _refused("MACHINE", X.preflight, s, retro_root=season)
+    assert said.startswith(f"{eid} has weeks that ")
+    assert said.endswith(
+        "Resuming would mix two engine builds in one season. To finish it "
+        "on the private engine it began on: ./setup_engine.sh --private in "
+        "the FluBNF folder; or archive or discard the existing results to "
+        "replay it on this one."), said
+    assert _tree(tmp_path) == before
+    monkeypatch.setattr(settings, "_windows", lambda: True)
+    assert ("it began on: setup.ps1 -Engine private, then open FluBNF.bat "
+            "again;") in _refused("MACHINE", X.preflight, s, retro_root=season)
+
+
 def test_a_resume_names_the_replay_its_summary_was_compared_with(
         season, truth, monkeypatch):
     s = {"model": "sihrs", "season": "2024-25"}

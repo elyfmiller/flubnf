@@ -509,8 +509,13 @@ def test_the_fit_time_writers_are_on_the_allow_list():
         assert token in PS1, f"{token} is not offered to remedy 2"
     allow = PS1.index("Allow the specific programs through")
     tail = PS1[allow:allow + 3000]
-    for token in ("$PerlExe", "$RunNetExe", "$GitExe", "$EnginePy", "$VenvPy"):
+    for token in ("$PerlExe", "$RunNetExe", "$GitExe", "$EnginePy", "$VenvPy",
+                  "$PublicPy"):
         assert token in tail, f"{token} is not printed under remedy 2"
+    # the public engine's Python writes lwf\out under app\state\workroots: on
+    # the allow-list on its route (the default), or wherever it is installed
+    assert ('if (($EngineRoute -eq "public") -or (Test-Path -LiteralPath '
+            '$PublicPy)) {') in tail
     for needle in ("perl.exe", "run_network.exe", "app\\state\\workroots"):
         assert needle in DOC, f"docs/WINDOWS.md never mentions {needle}"
 

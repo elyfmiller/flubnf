@@ -71,14 +71,14 @@ jobs:
       # here, not on a student's PC. The PyBNF wheel's line is left out (pure
       # Python, on a release page; the installers' check covers it). pip
       # reads environment markers on this runner, so a Windows-only
-      # dependency missing from the lock is not caught here. Until the engine
-      # lane posts the lock there is nothing to check, and the step says so.
+      # dependency missing from the lock is not caught here. The public
+      # engine is the default, so a branch without its lock is an error.
       - name: the engine's pins have Windows wheels
         if: ${{ !cancelled() && matrix.python-version == '3.12' }}
         run: |
           if [ ! -f engine-requirements.txt ]; then
-            echo "::notice::engine-requirements.txt is not on this branch yet: no engine pins to check"
-            exit 0
+            echo "::error::engine-requirements.txt is missing: the public engine, the default, has nothing to install from"
+            exit 1
           fi
           python scripts/engine_lock.py deps engine-requirements.txt > "$RUNNER_TEMP/engine-pins.txt"
           cat "$RUNNER_TEMP/engine-pins.txt"
@@ -91,8 +91,8 @@ jobs:
       # for the engine venv's Python: a pin that loses its win_amd64 wheel
       # fails here, not on a student's PC. pip reads environment markers on
       # this runner, so a Windows-only dependency is not fetched.
-      # The private engine's, every Windows student's default: this step
-      # goes when the private route retires.
+      # The private engine's, the fallback (FLUBNF_ENGINE=private): this step
+      # goes at stage 4, when the private route retires.
       - name: the private engine's pins have Windows wheels
         if: ${{ !cancelled() && matrix.python-version == '3.12' }}
         run: |
@@ -333,6 +333,9 @@ jobs:
           Write-Host "setup.ps1 parsed clean"
           exit 0
 
+      # Run 1 has no -Engine and no record: the public engine, the default.
+      # Run 2 records the private engine (-Engine private), the fallback;
+      # runs 3 and 4 keep that record; run 5 goes back with -Engine public.
       - name: "run 1 of 5: no data fetch, no fork probe"
         shell: cmd
         timeout-minutes: 10
@@ -363,15 +366,17 @@ jobs:
           function Has($needle) { $flat.Contains(($needle -replace '\s', '')) }
           $must = @(
             "data skipped (FLUBNF_NO_DATA=1)",
-            "access probe skipped (FLUBNF_NO_PROBE=1)",
             # the default data location is under %LOCALAPPDATA%, not Documents
             "AppData\Local\FluBNF\FluSight-forecast-hub",
             "controlled folder access",
             "flubnf installed editable",
             "(read by FluBNF.bat on every launch)",
-            "engine venv not ready",
-            "PRIVATE repository",
-            "Without the engine: the console, analogue engine, and reports all work.",
+            # no -Engine and no record: the public engine, the default
+            "Engine: public PyBNF, the default.",
+            "lock:",
+            "PyBNF wheel:",
+            "FluBNF.bat installs it",
+            "the private engine is not installed here",
             "some externals missing"
           )
           $mustNot = @(
@@ -380,16 +385,24 @@ jobs:
             "hub data ready",
             # nothing at the old location, so no Documents path may appear
             "Documents\GitHub\FluSight-forecast-hub",
-            "Reusing folders that are already on this machine"
+            "Reusing folders that are already on this machine",
+            # the private engine is the fallback: not diagnosed on this route
+            "PRIVATE repository",
+            "engine venv not ready"
           )
           $bad = @()
           foreach ($n in $must)    { if (-not (Has $n)) { $bad += "MISSING from the transcript: $n" } }
           foreach ($n in $mustNot) { if (Has $n)        { $bad += "PRESENT but must not be: $n" } }
+          # the default is recorded by no one: no FLUBNF_ENGINE line
+          $envCmd = if (Test-Path ".flubnf.env.cmd") { Get-Content ".flubnf.env.cmd" -Raw } else { "" }
+          if ($envCmd -match 'FLUBNF_ENGINE=') {
+            $bad += ".flubnf.env.cmd records FLUBNF_ENGINE, but no -Engine was given: the default must be left unrecorded"
+          }
           if ($bad.Count -gt 0) {
             foreach ($b in $bad) { Write-Host "::error::run 1: $b" }
             exit 1
           }
-          Write-Host "run 1 transcript: all $($must.Count + $mustNot.Count) checks passed"
+          Write-Host "run 1 transcript: all $($must.Count + $mustNot.Count + 1) checks passed"
           exit 0
 
       - name: "run 1: the launcher configuration is written and callable from cmd"
@@ -417,8 +430,9 @@ jobs:
           # no FLUBNF_NO_DATA / FLUBNF_NO_PROBE: the real fetch and the real probe
         run: |
           rem no -NoPrompt: the script must detect the non-interactive session itself
+          rem -Engine private: the fallback is recorded, and its fork probed
           set "LOG=%RUNNER_TEMP%\setup-run2.log"
-          powershell -NoProfile -ExecutionPolicy Bypass -File setup.ps1 > "%LOG%" 2>&1
+          powershell -NoProfile -ExecutionPolicy Bypass -File setup.ps1 -Engine private > "%LOG%" 2>&1
           set CODE=%ERRORLEVEL%
           type "%LOG%"
           echo ---- setup.ps1 exit code: %CODE% ----
@@ -465,6 +479,7 @@ jobs:
             "hub data ready (sparse)",
             "engine venv not ready",
             "PRIVATE repository",
+            "this copy runs the private engine now, the fallback (FLUBNF_ENGINE=private)",
             "some externals missing"
           )
           $mustNot = @(
@@ -472,10 +487,16 @@ jobs:
             "all externals present",
             "access probe skipped",
             # the "yes" branch: this job holds no credentials
-            "no invitation needed"
+            "no invitation needed",
+            "Engine: public PyBNF, the default."
           )
           foreach ($n in $must)    { if (-not (Has $n)) { $bad += "MISSING from the transcript: $n" } }
           foreach ($n in $mustNot) { if (Has $n)        { $bad += "PRESENT but must not be: $n" } }
+          # -Engine private is recorded for FluBNF.bat
+          $envCmd = if (Test-Path ".flubnf.env.cmd") { Get-Content ".flubnf.env.cmd" -Raw } else { "" }
+          if (-not $envCmd.Contains('set "FLUBNF_ENGINE=private"')) {
+            $bad += '.flubnf.env.cmd does not record set "FLUBNF_ENGINE=private" after -Engine private'
+          }
           # the probe must say "refused" or "undetermined", never nothing
           if (-not ((Has "this machine cannot read") -or
                     (Has "access to the fork was not checked"))) {
@@ -527,16 +548,24 @@ jobs:
           $bad = @()
           $must = @(
             "hub present:",
+            # no -Engine: run 2's record stands, so the private engine's
+            # section runs, its probe skipped here
             "engine venv not ready",
+            "access probe skipped (FLUBNF_NO_PROBE=1)",
             "some externals missing"
           )
           $mustNot = @(
             "git clone failed",
             "exists but is not a git clone",
-            "all externals present"
+            "all externals present",
+            "Engine: public PyBNF, the default."
           )
           foreach ($n in $must)    { if (-not (Has $n)) { $bad += "MISSING from the transcript: $n" } }
           foreach ($n in $mustNot) { if (Has $n)        { $bad += "PRESENT but must not be: $n" } }
+          $envCmd = if (Test-Path ".flubnf.env.cmd") { Get-Content ".flubnf.env.cmd" -Raw } else { "" }
+          if (-not $envCmd.Contains('set "FLUBNF_ENGINE=private"')) {
+            $bad += 'a run with no -Engine dropped the record set "FLUBNF_ENGINE=private"'
+          }
           # pull --ff-only on a shallow blobless sparse clone: a failure is only a warning.
           if (Has "hub updated (git pull --ff-only)") {
             Write-Host "run 3: the shallow blobless sparse clone updates cleanly"
@@ -645,7 +674,8 @@ jobs:
           if errorlevel 1 exit /b 1
           exit /b 0
 
-      # a pre-existing Documents checkout (no FLUBNF_HUB, no fetch): resolution only
+      # a pre-existing Documents checkout (no FLUBNF_HUB, no fetch): resolution
+      # only; -Engine public takes this copy back to the default
       - name: "run 5 of 5: an existing checkout at the old Documents path"
         shell: cmd
         timeout-minutes: 10
@@ -657,7 +687,7 @@ jobs:
           if not exist "%USERPROFILE%\Documents\GitHub\FluSight-forecast-hub\." echo ::error::run 5: could not create the old-location directory, so nothing below was tested
           if not exist "%USERPROFILE%\Documents\GitHub\FluSight-forecast-hub\." exit /b 1
           set "LOG=%RUNNER_TEMP%\setup-run5.log"
-          powershell -NoProfile -ExecutionPolicy Bypass -File setup.ps1 -NoPrompt > "%LOG%" 2>&1
+          powershell -NoProfile -ExecutionPolicy Bypass -File setup.ps1 -NoPrompt -Engine public > "%LOG%" 2>&1
           set CODE=%ERRORLEVEL%
           type "%LOG%"
           echo ---- setup.ps1 exit code: %CODE% ----
@@ -677,13 +707,24 @@ jobs:
           $must = @(
             "Reusing folders that are already on this machine",
             "Documents\GitHub\FluSight-forecast-hub",
-            "Controlled Folder"
+            "Controlled Folder",
+            # -Engine public: back to the default, with its own section
+            "Engine: public PyBNF, the default.",
+            "lock:",
+            "this copy runs the public engine now, the default (FLUBNF_ENGINE=public)"
           )
           foreach ($n in $must) { if (-not (Has $n)) { $bad += "MISSING from the transcript: $n" } }
+          if (Has "PRIVATE repository") { $bad += "PRESENT but must not be: PRIVATE repository" }
           # what the next launch will read
           $envCmd = Get-Content ".flubnf.env.cmd" -Raw
           if ($envCmd -notmatch [regex]::Escape("Documents\GitHub\FluSight-forecast-hub")) {
             $bad += ".flubnf.env.cmd does not point at the existing checkout, so a machine that worked before this change would stop finding its data"
+          }
+          if (-not $envCmd.Contains('set "FLUBNF_ENGINE=public"')) {
+            $bad += '.flubnf.env.cmd does not record set "FLUBNF_ENGINE=public" after -Engine public'
+          }
+          if ($envCmd.Contains('set "FLUBNF_ENGINE=private"')) {
+            $bad += '.flubnf.env.cmd still records the private engine after -Engine public'
           }
           if ($bad.Count -gt 0) {
             foreach ($b in $bad) { Write-Host "::error::run 5: $b" }
@@ -692,10 +733,12 @@ jobs:
           Write-Host "run 5: an existing checkout under Documents is reused where it stands"
           exit 0
 
-  # The public engine's real install, ahead of the engine lane's lock: the
-  # PyBNF wheel built here from lanl/PyBNF at the pinned commit, and a lock
-  # written for it (scripts/make_test_lock.py), resolved on macOS as the lab
-  # Mac's will be. The install jobs then run the public route for real.
+  # The public engine's real install, the default route: the PyBNF wheel
+  # built here from lanl/PyBNF at the pinned commit, and a lock written for
+  # it (scripts/make_test_lock.py; never the engine lane's lock), resolved
+  # on macOS as the lab Mac's is. The install jobs then run the public
+  # route for real: an open with no route named and, on macOS, one on the
+  # private route (the fallback), which must leave the public venv alone.
   public-engine-wheel:
     name: "public-engine-wheel"
     runs-on: macos-latest
