@@ -411,7 +411,10 @@ def _delete_confirmed(ds_id: str, confirm: str) -> None:
         shared._flash(f"Not deleted: the confirmation did not name {ds.name}.",
                       "warn")
         return
-    msg, kind, detail = deleted_message(ds, *delete_everything(ds))
+    from app.core import custom_retro as _cx
+    replays = len(_cx.list_replays(ds))       # counted before they go
+    msg, kind, detail = deleted_message(ds, *delete_everything(ds),
+                                        replays=replays)
     shared._flash(msg, kind, detail=detail)
 
 
@@ -1029,12 +1032,16 @@ def delete_everything(ds) -> tuple:
     return freed, gone, kept
 
 
-def deleted_message(ds, freed: int, gone: int, kept: int) -> tuple:
-    """(message, kind, detail) of a dataset delete's notice."""
+def deleted_message(ds, freed: int, gone: int, kept: int,
+                    replays: int = 0) -> tuple:
+    """(message, kind, detail) of a dataset delete's notice; the detail
+    names only what the dataset had (its replays, its runs' workroots)."""
     from app.core import retro
-    s = "" if gone == 1 else "s"
-    detail = (f"Its replays and {gone} run workroot{s} went with it; the "
-              "runs' ledger rows are kept.")
+    went = [f"{n} {w}{'' if n == 1 else 's'}" for n, w in
+            ((replays, "replay"), (gone, "run workroot")) if n]
+    detail = f"Its {' and '.join(went)} went with it" if went else ""
+    detail += ("; the runs' ledger rows are kept." if gone else
+               "." if detail else "")
     if kept:
         return ((f"Deleted {ds.name}, but {kept} run workroot"
                  f"{'' if kept == 1 else 's'} could not be deleted."), "warn",

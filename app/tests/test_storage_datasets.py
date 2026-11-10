@@ -104,9 +104,9 @@ def test_the_total_counts_every_byte_once(state):
     html = client.get("/storage").text
     assert f'<span class="big">{inv["total_h"]}</span>' in html
     joined = " ".join(html.split())
-    # a dataset's runs count once: the Your datasets section says so (the
-    # protected trees' "not in the total" tag: test_storage)
-    assert "listed under Run workroots and counted once in the total" in joined
+    # a dataset's runs count once (the total above); the section's "?" that
+    # said so went with the other headings' (bug hunt G29, ST-08)
+    assert 'id="tip-st-datasets"' not in html
 
 
 def test_the_page_lists_it_with_a_name_confirmed_delete(state):
@@ -174,7 +174,8 @@ def test_delete_needs_the_name_and_takes_everything_it_counts(state):
     assert not ds.path.exists() and not (wr / state["ds_run"]).exists()
     assert (wr / state["hub_run"]).is_dir()             # a hub run stays
     assert f"Deleted Template: {size} freed." in ui_state._status["flash"]
-    assert ("Its replays and 1 run workroot went with it; the runs' ledger "
+    # what it had, counted (ST-15): one replay and one run here
+    assert ("Its 1 replay and 1 run workroot went with it; the runs' ledger "
             "rows are kept.") in ui_state._status["flash_detail"]
     # the ledger rows stand, the run's with a dash for disk use
     ids = {r["run_id"] for r in Ledger().rows(10)}
@@ -193,7 +194,7 @@ def test_the_data_tab_delete_frees_what_storage_counts(state):
     assert r.status_code == 303
     assert not ds.path.exists() and not (wr / state["ds_run"]).exists()
     assert (wr / state["hub_run"]).is_dir()
-    assert "its replays and 1 run workroot" in ui_state._status[
+    assert "its 1 replay and 1 run workroot" in ui_state._status[
         "flash_detail"].lower()
     assert ui_state._status["flash_kind"] == "ok"
     assert state["ds_run"] in {r["run_id"] for r in Ledger().rows(10)}
