@@ -6,6 +6,65 @@ repositories outside this one; it pushes only this file here.
 
 ## Now
 
+- 2026-11-10 (afternoon): **THE 11-07 GATE (version 2, approved): PASS.**
+  All seven criteria hold on the first runs, so retry rule (b) was not
+  needed. The verdict decides only whether the 11-11 round runs on the
+  public engine; stage 2 still runs.
+  - **The runs.** Each ran on a console at 127.0.0.1:8790, from the
+    fresh clone at 26acbadf, through the Forecast page's POST `/run`
+    with the round's settings. All 159 cells were "ok" in each run, with
+    no preparation failure.
+    - P1, private: 13:30:55 to 13:37:34 (399 s).
+    - P2, private, seed date `2026-10-31#gate-2026-11-10-p2`: 369 s.
+    - L1, public: 820 s, the same `pf_seed`s as P1. That is 2.14 times
+      the private runs' mean, against `PUBLIC_COST_RATIO` 2.4.
+  - **Reproduction.** P1 reproduces the submitted file exactly: 0 of its
+    4,692 values differ over its 51 locations. So R is P0, and this PC's
+    private engine gives the laptop's numbers to the count.
+  - **The measures, L1 against R, with P2 against R (the noise floor)
+    after each:**
+    - D_mean: 0.0222 against 0.0194 (1.15x).
+    - D_90: 0.0397 against 0.0368 (1.08x).
+    - C50: 1.00 against 1.00.
+    - W95: 1.000 against 1.000.
+    - B: +0.0025 against +0.0001.
+    - S: +0.0005 against +0.0025.
+    - No zero-width blocks in R or in either run.
+  - **The criteria:**
+    1. L1 has no failed cell. A degenerate update fails a public cell,
+       so it had none.
+    2. Passed on the ratios, not the floors, so no note.
+    3. C50: passed.
+    4. W95: passed.
+    5. The largest d(L1) in each third against its cap (3 times the
+       third's largest d(P2)): 0.248 against 0.449 (Alaska h3, the
+       low-count third), 0.066 against 0.158, and 0.051 against 0.111.
+    6. B passed on its 0.01 floor, not on 3 x |B(P2)| (0.0004). The
+       public medians sit 0.25% higher on average, while the reseeded
+       private ones sit 0.01% higher. This is reported, though the gate
+       defines no note for B.
+    7. S: passed.
+  - **Read with them:**
+    - C50 and W95 cannot separate the runs this week. Every median sits
+      inside R's 50% interval in both runs. The 10x tail cap pins the
+      97.5% quantile in about a third of the blocks, so 37 (P2) and 43
+      (L1) of the 204 blocks have exactly R's 95% width, and the median
+      ratio lands on 1. B, S and D carry the comparison.
+    - The 95% width ratios range from 0.938 to 1.151 for P2 and from
+      0.902 to 1.210 for L1. The per-block median shifts have a
+      standard deviation of 0.027 (P2) and 0.035 (L1).
+    - Alaska is the largest d in both runs: 0.150 at h2 for P2, and
+      0.248 at h3 for L1.
+  - **Not gated, against P1:**
+    - Delaware: L1's medians are 77/108/156/222 against 77/109/156/225,
+      with d 0.004 to 0.019.
+    - Hawaii: L1's are 44/46/50/53 against 44/47/51/57, with d up to
+      0.088 at h3, and P2's is 0.087 there.
+  - **Kept:** the runs' state folders, P0's copy (sha256 9402fb92...) and
+    `gate-measures.json` are in `%USERPROFILE%\flubnf-gate-2026-11-10`,
+    with the three scripts that ran and measured the gate in `scripts\`
+    there.
+
 - 2026-11-10 (afternoon): the public engine from a fresh clone of `dev`,
   as a stranger would, on Ely's Windows PC. Task 2 is done:
   - `git clone -b dev` (26acbadf) to `%USERPROFILE%\GitHub\flubnf-stranger`,
