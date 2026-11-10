@@ -615,8 +615,9 @@
  {% call tips.fold("The particle-filter engine", id="mt-engine", cls="mt-fold") %}
  <p>The Liu-West filter (<code>job_type = lwf</code> in public
  <a href="https://github.com/lanl/PyBNF" target="_blank" rel="noopener">PyBNF</a>,
- lanl/PyBNF at 8410f794 with bngsim 0.15.1, from the engine switch of
- 2026-11-09; before it the lab's fork, <code>fit_type = pf</code>, which
+ lanl/PyBNF at 8410f794 with bngsim 0.15.1, from the round of 2026-11-14,
+ the first after the engine switch decided on 2026-11-09; before that
+ round the lab's fork, <code>fit_type = pf</code>, which
  stays installed as the fallback). BNG2.pl expands the BNGL model into a
  reaction network once per state when a run is prepared; the filter then
  integrates it in process with
