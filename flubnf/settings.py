@@ -8,12 +8,16 @@ configures the system by exporting a handful of variables (or editing a
 
     FLUBNF_HUB        path to a clone of cdcepi/FluSight-forecast-hub
     FLUBNF_BNG        path to BioNetGen's BNG2.pl
-    FLUBNF_PY_ENGINE  python of the engine venv (pybnf + bngsim installed)
-    FLUBNF_PYBNF      checkout of the PyBNF fork providing fit_type=pf
-    FLUBNF_ENGINE     which engine runs the fits: private (the default, the
-                      fork above) or public (lanl/PyBNF's job_type = lwf)
+    FLUBNF_ENGINE     which engine runs the fits: public (lanl/PyBNF's
+                      job_type = lwf) is the default; private (the lab's
+                      PyBNF fork, fit_type = pf) is the fallback, named
+                      explicitly. Unset, the install's record decides
+                      (.flubnf.env, or .flubnf.env.cmd on Windows)
     FLUBNF_PY_ENGINE_PUBLIC  python of the public engine's venv, kept apart
                       from the private one (engine-requirements.txt)
+    FLUBNF_PY_ENGINE  python of the private engine's venv (pybnf + bngsim)
+    FLUBNF_PYBNF      the private engine's checkout of the PyBNF fork,
+                      which provides fit_type=pf
 
 Defaults are conventional locations (~/GitHub on POSIX; see _checkout),
 so a conventionally laid-out machine needs none.
@@ -21,6 +25,7 @@ so a conventionally laid-out machine needs none.
 from __future__ import annotations
 
 import os
+import re
 import shutil
 import subprocess
 import sys
@@ -134,12 +139,12 @@ BNG = _path(
 
 
 def _engine_python_candidates(windows: bool | None = None) -> tuple:
-    """Where the engine venv's Python is looked for when FLUBNF_PY_ENGINE
-    is unset; the first that exists wins, and with none the first is the
-    path messages name.
+    """Where the private engine venv's Python is looked for when
+    FLUBNF_PY_ENGINE is unset; the first that exists wins, and with none
+    the first is the path messages name.
 
     macOS and Linux, as always: ~/.venvs/flubnf (the development host,
-    where sealed results were made), then setup_engine.sh's
+    where sealed results were made), then setup_engine.sh --private's
     ~/.venvs/flubnf-engine (the Scripts forms never exist there).
 
     Windows: the venv FluBNF.bat and setup.ps1 build first,
@@ -161,31 +166,176 @@ def _engine_python_candidates(windows: bool | None = None) -> tuple:
 PY_ENGINE = _path("FLUBNF_PY_ENGINE", *_engine_python_candidates())
 
 
-#: The two engines FLUBNF_ENGINE may name; anything else means private.
+#: The two engines FLUBNF_ENGINE may name. Exactly private selects the
+#: fallback; empty, public and any other value select the public engine
+#: (engine_name).
 ENGINES = ("private", "public")
+#: the engine that runs when nothing names one: lanl/PyBNF's job_type = lwf
+DEFAULT_ENGINE = "public"
+
+
+def _engine_text(raw) -> str:
+    """A FLUBNF_ENGINE value as every reader compares it: double quotes
+    removed, surrounding whitespace trimmed, lowercased."""
+    return str(raw or "").replace('"', "").strip().lower()
+
+
+def engine_name(raw) -> str:
+    """The engine a FLUBNF_ENGINE value selects: private for exactly
+    `private` (after _engine_text), else public. Empty, public and any
+    other value select the public engine; the launchers, setup.ps1 and
+    doctor apply the same rule (an unknown value is reported, see
+    engine_value_unknown)."""
+    return "private" if _engine_text(raw) == "private" else "public"
+
+
+def engine_value_unknown(raw) -> bool:
+    """Whether a FLUBNF_ENGINE value names no engine: not empty, not
+    public and not private. It selects the public engine all the same."""
+    v = _engine_text(raw)
+    return bool(v) and v not in ENGINES
+
+
+# --- the install's record of its engine ---------------------------------------
+# setup_engine.sh --public and --private write `export FLUBNF_ENGINE=<engine>`
+# to .flubnf.env (FluBNF.command sources it on every open); setup.ps1
+# -Engine public and -Engine private write `set "FLUBNF_ENGINE=<engine>"` to
+# .flubnf.env.cmd (FluBNF.bat calls it). Read here so a Terminal start
+# (flubnf app, retro, doctor, experiment, runner) runs the engine the
+# install records, as an open from the launcher does.
+
+#: the record's file in the install's folder: sh's, then cmd's
+ENV_FILE, ENV_FILE_WIN = ".flubnf.env", ".flubnf.env.cmd"
+_ENGINE_LINE = re.compile(r"\s*(?:export\s+)?FLUBNF_ENGINE=(.*)")
+_ENGINE_LINE_WIN = re.compile(r'\s*set\s+"?FLUBNF_ENGINE=(.*?)"?\s*',
+                              re.IGNORECASE)
+#: the install this module belongs to, whose record engine_choice reads
+INSTALL_ROOT = Path(__file__).resolve().parents[1]
+#: (root, windows) -> the record's raw value or None, read once per process
+_RECORD: dict = {}
+
+
+def _sh_value(value: str) -> str:
+    """What sh assigns from the text after `FLUBNF_ENGINE=`: a quoted
+    value whole, else up to a blank or a ; (a comment after it dropped)."""
+    if value[:1] in ("'", '"'):
+        end = value.find(value[0], 1)
+        if end > 0:
+            return value[1:end]
+    return re.split(r"[\s;]", value, maxsplit=1)[0].strip("\"'")
+
+
+def record_file(root) -> Path:
+    """The record's file in `root`: .flubnf.env, or .flubnf.env.cmd on
+    Windows."""
+    return Path(root) / (ENV_FILE_WIN if _windows() else ENV_FILE)
+
+
+def recorded_engine_raw(root) -> str | None:
+    """The value the last FLUBNF_ENGINE line of `root`'s record assigns,
+    as sh (or cmd on Windows) assigns it; None when the record sets none,
+    or the file is not a regular file (FluBNF.command's `[ -f ]` skips
+    one) or cannot be read."""
+    win = _windows()
+    line = _ENGINE_LINE_WIN if win else _ENGINE_LINE
+    f = record_file(root)
+    if not os.path.isfile(f):             # never a pipe's endless wait
+        return None
+    try:
+        text = f.read_text(encoding="utf-8", errors="replace")
+    except OSError:
+        return None
+    value = None
+    for ln in text.splitlines():
+        m = line.fullmatch(ln)
+        if m:
+            value = m.group(1)
+    if value is None:
+        return None
+    if win:                               # cmd's quotes are the pattern's
+        words = value.split()
+        return words[0].strip("\"'") if words else ""
+    return _sh_value(value)
+
+
+def recorded_engine(root) -> str | None:
+    """The engine `root`'s record selects (engine_name), or None when it
+    records none. Read from disk on every call."""
+    raw = recorded_engine_raw(root)
+    return None if raw is None else engine_name(raw)
+
+
+def _install_record_raw() -> str | None:
+    """INSTALL_ROOT's record (recorded_engine_raw), read once per process:
+    a running console or retro never changes engine because someone
+    edited the record."""
+    key = (str(INSTALL_ROOT), _windows())
+    if key not in _RECORD:
+        _RECORD[key] = recorded_engine_raw(INSTALL_ROOT)
+    return _RECORD[key]
+
+
+def forget_record() -> None:
+    """Drop the cached record, so the next engine_choice reads it again (a
+    seam for tests)."""
+    _RECORD.clear()
 
 
 def engine_choice() -> str:
-    """Which engine runs the fits: FLUBNF_ENGINE, read on every call so a
-    test or a launcher's export takes effect without a reload. private, the
-    default, is the PyBNF fork (fit_type = pf); public is lanl/PyBNF's
-    job_type = lwf from the venv engine-requirements.txt pins. An unknown
-    value means private: the launchers warn about it and do the same."""
-    v = os.environ.get("FLUBNF_ENGINE", "").strip().lower()
-    return v if v in ENGINES else "private"
+    """Which engine runs the fits: "public" (lanl/PyBNF's job_type = lwf,
+    from the venv engine-requirements.txt pins), the default, or "private"
+    (the lab's PyBNF fork, fit_type = pf), the fallback.
+
+    FLUBNF_ENGINE decides when it is set and not empty (read on every call,
+    so a test or a launcher's export takes effect without a reload); else
+    this install's record (.flubnf.env, or .flubnf.env.cmd on Windows),
+    read once per process; else the public engine. Each value is read by
+    engine_name: exactly private selects the fallback, anything else the
+    public engine."""
+    env = os.environ.get("FLUBNF_ENGINE", "")
+    if _engine_text(env):
+        return engine_name(env)
+    raw = _install_record_raw()
+    return DEFAULT_ENGINE if raw is None else engine_name(raw)
+
+
+def engine_source() -> tuple:
+    """(where, raw): where engine_choice took the engine from, and the
+    value it read there. where is "environment", the record's file name
+    (.flubnf.env or .flubnf.env.cmd) or "default" (raw None then). For
+    doctor."""
+    env = os.environ.get("FLUBNF_ENGINE", "")
+    if _engine_text(env):
+        return "environment", env
+    raw = _install_record_raw()
+    if raw is not None:
+        return record_file(INSTALL_ROOT).name, raw
+    return "default", None
 
 
 def engine_public() -> bool:
-    """Whether FLUBNF_ENGINE asks for the public engine."""
+    """Whether the public engine runs (engine_choice)."""
     return engine_choice() == "public"
 
 
+def private_engine_installed() -> bool:
+    """Whether the private engine, the fallback, is installed here: its
+    venv's Python and the fork's pybnf/pf.py are files. Files only, no
+    import, so it costs two stat calls."""
+    try:
+        return (Path(PY_ENGINE).is_file()
+                and (Path(PYBNF) / "pybnf" / "pf.py").is_file())
+    except OSError:
+        return False
+
+
 def _public_python_candidates(windows: bool | None = None) -> tuple:
-    """Where the public engine's Python is looked for when
-    FLUBNF_PY_ENGINE_PUBLIC is unset: setup_engine.sh --public's
-    ~/.venvs/flubnf-public, FluBNF.bat's %LOCALAPPDATA%\\FluBNF\\venv-public.
-    Never a private engine's venv: the two need different numpy, dask and
-    Python. `windows` is injectable for tests."""
+    """Where the public engine's Python (the default engine's) is looked
+    for when FLUBNF_PY_ENGINE_PUBLIC is unset: setup_engine.sh's
+    ~/.venvs/flubnf-public (its default route, or --public), FluBNF.bat's
+    %LOCALAPPDATA%\\FluBNF\\venv-public. Never the private engine's venv,
+    the fallback's: the two need different numpy, dask and Python.
+    `windows` is injectable for tests."""
     if not (_windows() if windows is None else windows):
         return ("~/.venvs/flubnf-public/bin/python",)
     local = os.environ.get("LOCALAPPDATA")

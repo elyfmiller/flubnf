@@ -485,8 +485,9 @@
  {{ oracle_text.cells(rec["2025-26"].cells) }};
  {{ oracle_text.cells(rec.three.cells) }} pooled, where the plain filter
  scores {{ oracle_text.fmt(rec.three.filter) }}), not the Groundhog's. The
- particle filter alone, the production engine's replay (reseal of
- 2026-09-07, 15,460 cells): 0.840, 0.797 and 0.846.</p>
+ particle filter alone, the private engine's replay (2fdadee0, production
+ before the switch; reseal of 2026-09-07, 15,460 cells): 0.840, 0.797 and
+ 0.846.</p>
  <p>The Groundhog row is its shipped form, on 17,116 cells under
  FluSight's cell rule; the form it replaced scores 0.660 on the same cells,
  the pooled form before that 0.670. The other rows use the earlier rule. Under it the pooled form
@@ -502,7 +503,11 @@
   <tr><th>Component</th><th>Role</th><th>Version</th></tr>
   <tr><td><a href="https://github.com/lanl/PyBNF" target="_blank" rel="noopener">PyBNF</a></td>
       <td>Fitting suite</td>
-      <td>{{ version("pybnf", versions.pybnf) }}</td></tr>
+      {# the public engine, the default, self-reports 1.8.1, the August
+         release, which has no lwf: its build commit says which one runs.
+         The console's only (the site drops this column) #}
+      {% set ebv = engine_build_view() if active is defined else {} %}
+      <td>{{ version("pybnf", versions.pybnf) }}{% if ebv.engine == "public" and ebv.known and versions.pybnf != "not installed" and "resolving" not in versions.pybnf %}, build {{ ebv.commit }}{% endif %}</td></tr>
   <tr><td><a href="https://pypi.org/project/bngsim/" target="_blank" rel="noopener">bngsim</a></td>
       <td>Simulator</td>
       {# the self-reported bngsim string can mislead (the seal-era build said
@@ -529,12 +534,15 @@
  </table></div>
  <div class="mt-folds">
  {% call tips.fold("The particle-filter engine", id="mt-engine", cls="mt-fold") %}
- <p>A particle filter (<code>fit_type=pf</code> in a fork of
- <a href="https://github.com/lanl/PyBNF" target="_blank" rel="noopener">PyBNF</a>).
- BNG2.pl expands the BNGL model into a reaction network once per state when
- a run is prepared; the filter then integrates it in process with
+ <p>The Liu-West filter (<code>job_type = lwf</code> in public
+ <a href="https://github.com/lanl/PyBNF" target="_blank" rel="noopener">PyBNF</a>,
+ lanl/PyBNF at 8410f794 with bngsim 0.15.1, from the engine switch of
+ 2026-11-09; before it the lab's fork, <code>fit_type = pf</code>, which
+ stays installed as the fallback). BNG2.pl expands the BNGL model into a
+ reaction network once per state when a run is prepared; the filter then
+ integrates it in process with
  <a href="https://pypi.org/project/bngsim/" target="_blank" rel="noopener">bngsim</a>,
- so a state-season fit takes seconds.</p>
+ so a state-season fit takes under a minute.</p>
  <p>Reproducing the sealed record needs bngsim 0.15.1 (pinned by every
  engine installer), whatever version a build reports.</p>
  {# platform-NEUTRAL: site_build publishes this page, so name all three.

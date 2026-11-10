@@ -396,7 +396,9 @@
   {{ tips.alert("warn", fix, id="hm-fix-data", live="") }}
   {% endif %}
   {% if "FLUBNF_PY_ENGINE" in missing_names or "FLUBNF_PYBNF" in missing_names or "FLUBNF_PY_ENGINE_PUBLIC" in missing_names %}
-  {% set fix %}To add the particle-filter engine, {{ engine_setup_hint() }}.{% endset %}
+  {# with the switch to the private engine, the fallback, when the
+     default is missing and that one is installed here #}
+  {% set fix %}To add the particle-filter engine, {{ engine_setup_hint() }}{{ engine_fallback if engine_fallback is defined else "" }}.{% endset %}
   {{ tips.alert("warn", fix, id="hm-fix", live="") }}
   {% elif "perl" in missing_names %}
   {{ tips.alert("warn", perl_missing_hint(), id="hm-fix", live="") }}
@@ -414,6 +416,10 @@
  {% endif %}
  {# the engine build when it is not production (the fix in its tip) #}
  {% with eb_id = "home" %}{% include "_engine_build.html" %}{% endwith %}
+ {# the engine this copy runs, in words (engine_build.engine_words):
+    the public engine, the default, or the private one, the
+    fallback, which this copy records #}
+ {% if engine_words is defined and engine_words %}<p class="hint" id="hm-engine">This copy runs {{ engine_words }}.</p>{% endif %}
  {# one labelled value per component. Self-reported bngsim strings can
     mislead; the pin of record is stated (same note on Methods) in a tip
     shown only when the reported version is known and is not the pin (a

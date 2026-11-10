@@ -1153,6 +1153,12 @@ def prepare(name: str, *, particles: int = DRY_RUN_PARTICLES,
             "digests": digests(files),
             "origin": str(info.get("origin", "")),
             "status": "prepared"}
+    # the engine the run is fitted by (its build is recorded when it
+    # starts, off the request: run): two runs on different engines are
+    # told apart, and each is timed on its own engine's cost model
+    # (_run_ratio)
+    from flubnf.settings import engine_choice
+    meta["engine"] = engine_choice()
     if fill:
         meta["placeholders"] = fill             # how this run filled them
     if shipped["shipped"]:
@@ -1185,6 +1191,15 @@ def run(workroot: Path, width: int = 1) -> dict:
     workroot = Path(workroot)
     meta = json.loads((workroot / "meta.json").read_text(encoding="utf-8"))
     meta["status"] = "running"
+    # the build the fit runs on (a few git calls, or pip's record of the
+    # public engine's wheel), beside the engine prepare recorded
+    from app.core import engine_build as _eb
+    try:
+        build = _eb.record(_eb.engine_build())
+    except Exception:
+        build = {}
+    if build:
+        meta["engine_build"] = build
     _write_meta(workroot, meta)
     t0 = time.monotonic()
     try:
@@ -1367,11 +1382,13 @@ def store_view(name: str, kind: str, bngl: str, payload: dict) -> None:
         pass
 
 
-def eta_seconds(n_obs: int, particles: int) -> float:
+def eta_seconds(n_obs: int, particles: int,
+                engine: str | None = None) -> float:
     """The engine's own cost model (pf.cell_seconds), calibrated on the
-    production cell: approximate for any other model."""
+    production cell: approximate for any other model. On `engine`
+    ("public" or "private"), the one this process runs by default."""
     return pf_engine.cell_seconds({"n_obs": int(n_obs),
-                                   "particles": int(particles)})
+                                   "particles": int(particles)}, engine)
 
 
 # --------------------------------------------------- the time a fit takes
@@ -1397,13 +1414,16 @@ ETA_SLOW_FLOOR_S = 30.0
 
 def _run_ratio(meta: dict) -> float | None:
     """A finished run's seconds over what the cost model predicts for its
-    own rows and particles, or None for a run that cannot say."""
+    own rows and particles on its own engine (a run that records none ran
+    on the private engine), or None for a run that cannot say. The ratio
+    is this computer's speed, so it carries over to either engine."""
     if meta.get("status") != "ok":
         return None
+    engine = "public" if meta.get("engine") == "public" else "private"
     try:
         seconds = float(meta["seconds"])
         n_obs = int(meta.get("n_obs") or len(meta.get("observed") or []))
-        predicted = eta_seconds(n_obs, int(meta["particles"]))
+        predicted = eta_seconds(n_obs, int(meta["particles"]), engine)
     except (KeyError, TypeError, ValueError):
         return None
     if not (0 < seconds < float("inf")) or predicted <= 0:

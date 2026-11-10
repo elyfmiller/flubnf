@@ -1,18 +1,21 @@
 """Which particle-filter engine build this machine runs.
 
-The engine is a checkout of the private PyBNF fork at flubnf.settings.PYBNF.
-engine_build() names its branch and commit (from git, or from the VERSION
-stamp an archive install carries), and whether tracked files have local
-edits. is_production() compares it with the season's production build,
-defined once here, and fix() says how to reach it with this machine's
-launcher. archive_step() is the one wording for installing the engine from
-its archive, shared by the run errors and doctor. Every function is cheap
-to call wrong: none raises.
-
-With FLUBNF_ENGINE=public the engine is lanl/PyBNF in its own venv
-(app/core/engines/lwf.py): engine_build() then reads pip's record of the
+The default engine is the public one, lanl/PyBNF in its own venv
+(app/core/engines/lwf.py): engine_build() reads pip's record of the
 installed wheel (lwf.public_build, "engine": "public"), and the functions
-below judge it against the pin in engine-requirements.txt instead.
+below judge it against the pin in engine-requirements.txt.
+
+With FLUBNF_ENGINE=private (the fallback) the engine is a checkout of the
+lab's PyBNF fork at flubnf.settings.PYBNF. engine_build() then names its
+branch and commit (from git, or from the VERSION stamp an archive install
+carries), and whether tracked files have local edits. is_production()
+compares it with the private engine's pin, defined once here, and fix()
+says how to reach it with this machine's launcher. archive_step() is the
+one wording for installing the private engine from its archive, shared by
+the run errors and doctor. switch_step() is the one wording for switching
+this copy to an engine, engine_of() names the engine of a recorded build,
+and engine_words() names the active engine in words. Every function is
+cheap to call wrong: none raises.
 """
 from __future__ import annotations
 
@@ -20,8 +23,14 @@ import subprocess
 import sys
 from pathlib import Path
 
-#: the production engine for the 2026-27 season (docs/ORACLE-SIHRS.md,
-#: "Engine line-up"); the commit decides, the branch is informative
+#: the private engine's pin, the fallback (docs/ORACLE-SIHRS.md, "Engine
+#: line-up"): engine_update fast-forwards the fork to it, archive_name
+#: names the lab's file after it, and recorded private seasons are judged
+#: by it. The commit decides, the branch is informative. Never set it to
+#: the public engine's commit: every open would try to fetch that commit
+#: into the fork, and every sealed season would read "not the production
+#: build". The public engine's pin is lwf.PUBLIC_ENGINE_COMMIT and the
+#: lock. The name goes when the private engine does.
 PRODUCTION_ENGINE_COMMIT = "2fdadee0"
 PRODUCTION_ENGINE_BRANCH = "feature/particle-filter"
 
@@ -248,18 +257,71 @@ def archive_name() -> str:
 
 
 def setup_step(platform: str | None = None) -> str:
-    """This machine's engine installer, as a clause: FluBNF.bat on Windows
-    (no bash there, and setup.ps1 only diagnoses), SetupEngine.command
-    beside the script on macOS, the script elsewhere; the folder is named
-    so no full stop lands on the command. `platform` is sys.platform by
-    default; tests pass one."""
+    """This machine's installer for the private engine, as a clause (the
+    private remedies only; the public engine's is lwf._setup_step):
+    FluBNF.bat on Windows (no bash there, and setup.ps1 only diagnoses),
+    SetupEngine.command beside the script on macOS, the script elsewhere,
+    each naming the private route, since a bare ./setup_engine.sh installs
+    the public engine on a copy with no record. The folder is named so no
+    full stop lands on the command. `platform` is sys.platform by default;
+    tests pass one."""
     plat = platform or sys.platform
     if plat == "win32":
         return "open FluBNF.bat again"
     if plat == "darwin":
         return ("double-click SetupEngine.command in the FluBNF folder (or "
-                "run ./setup_engine.sh there)")
-    return "run ./setup_engine.sh in the FluBNF folder"
+                "run ./setup_engine.sh --private there)")
+    return "run ./setup_engine.sh --private in the FluBNF folder"
+
+
+def _win(platform: str | None) -> bool:
+    """Windows: the platform given, else this machine (settings._windows,
+    the seam the tests patch)."""
+    if platform:
+        return platform == "win32"
+    try:
+        from flubnf import settings
+        return settings._windows()
+    except Exception:
+        return sys.platform == "win32"
+
+
+def switch_step(engine: str, platform: str | None = None,
+                short: bool = False) -> str:
+    """The step that switches this copy to `engine` ("public" or
+    "private"): the installer option that records it, which every open
+    reads (and which a Terminal start reads too, settings.engine_choice).
+    The short form is the command alone. `platform` is this machine's by
+    default; tests pass one."""
+    if _win(platform):
+        return (f"setup.ps1 -Engine {engine}" if short else
+                f"setup.ps1 -Engine {engine}, then open FluBNF.bat again")
+    return (f"./setup_engine.sh --{engine}" if short else
+            f"./setup_engine.sh --{engine} in the FluBNF folder")
+
+
+def engine_of(build) -> str:
+    """The engine a recorded build names: public when it says so, else
+    private (a build recorded without one, or none recorded: seasons
+    before the public engine ran on the private one)."""
+    from collections.abc import Mapping
+    named = build.get("engine") if isinstance(build, Mapping) else None
+    return "public" if named == "public" else "private"
+
+
+def engine_words(engine: str | None = None) -> str:
+    """The engine in words, for doctor and Home's Setup card: `engine`, or
+    the one this process runs (settings.engine_choice)."""
+    if engine is None:
+        try:
+            from flubnf import settings
+            engine = settings.engine_choice()
+        except Exception:
+            engine = "public"
+    if engine == "private":
+        return ("the private engine (the lab's PyBNF fork), the fallback: "
+                "FLUBNF_ENGINE=private")
+    return "the public engine (lanl/PyBNF's Liu–West filter), the default"
 
 
 def archive_step(platform: str | None = None) -> str:

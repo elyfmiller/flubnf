@@ -23,8 +23,10 @@ before.
 A student's console queues (enqueue), dequeues or stops (stop), and
 reads where its jobs stand (position, refusal, read_state); it reads no
 other student's folder. The supervisor (serve) runs the engine its
-install records (it refuses to start from a Terminal that runs the
-other); takes the queue first in, first out; holds it while the install
+install records, which settings reads as the launchers do (it refuses to
+start from a Terminal whose environment names the other, and stops at a
+re-execution that would change its engine); takes the queue first in,
+first out; holds it while the install
 is not a clean main, the engine is missing or out of date, or a replay
 runs elsewhere on this computer; keeps FREE_FLOOR free on the disk;
 kills a job at its limits (LIMITS); and tidies idle folders (their
@@ -38,10 +40,11 @@ in a student folder is trusted: check refuses a link, a pipe, a hard
 link, a giant file or a strange entry anywhere on the way, with the
 words MACHINE carries.
 
-Module imports are the standard library's only: the core modules load
-pandas, which a console's import must not, and fcntl, resource and
-os.killpg are POSIX's, imported where they are used, so the module
-imports on Windows (where serve refuses to start).
+Module imports are the standard library's and flubnf.settings' (itself
+the standard library's only) only: the core modules load pandas, which a
+console's import must not, and fcntl, resource and os.killpg are POSIX's,
+imported where they are used, so the module imports on Windows (where
+serve refuses to start).
 """
 from __future__ import annotations
 
@@ -62,6 +65,9 @@ from dataclasses import dataclass, replace
 from datetime import date, datetime, timezone
 from pathlib import Path
 from typing import Callable, Mapping, Sequence
+
+#: the install's record of its engine (settings.recorded_engine), re-exported
+from flubnf.settings import ENV_FILE, ENV_FILE_WIN
 
 #: the students' clones, one folder each (~/Students/<name>): a preset
 STUDENTS = Path.home() / "Students"
@@ -1257,76 +1263,57 @@ def _engine_why() -> str:
     probe that raises counts as that, so the poll still writes
     runner.json), or older than this console (pf.prepare refuses every
     week of either, so the queue waits instead of draining into
-    errors)."""
+    errors). The public engine missing where the private one is
+    installed names the step that switches to it (never taken here)."""
     from app.core.engines import pf
     try:
         if _engine_ready():
             return "" if pf.engine_current() else pf.engine_stale_message()
     except Exception:
         pass
+    try:
+        from flubnf import settings
+        if settings.engine_public() and settings.private_engine_installed():
+            from app.core.engine_build import switch_step
+            return ("the public engine, the default, is not installed on "
+                    "the runner; the private engine installed there runs "
+                    f"instead after {switch_step('private')}")
+    except Exception:
+        pass
     return "the particle-filter engine is not installed on the runner"
 
 
-#: where an install records its engine for the launchers, which read the
-#: file on every open: setup_engine.sh --public's (FluBNF.command sources
-#: it) and, on Windows, setup.ps1's (FluBNF.bat calls it); the line that
-#: sets FLUBNF_ENGINE in each, `export FLUBNF_ENGINE=public` and
-#: `set "FLUBNF_ENGINE=public"` (cmd's names have no case)
-ENV_FILE, ENV_FILE_WIN = ".flubnf.env", ".flubnf.env.cmd"
-_ENGINE_LINE = re.compile(r"\s*(?:export\s+)?FLUBNF_ENGINE=(.*)")
-_ENGINE_LINE_WIN = re.compile(r'\s*set\s+"?FLUBNF_ENGINE=(.*?)"?\s*',
-                              re.IGNORECASE)
-
-
-def _sh_value(value: str) -> str:
-    """What sh assigns from the text after `FLUBNF_ENGINE=`: a quoted
-    value whole, else up to a blank or a ; (a comment after it dropped)."""
-    if value[:1] in ("'", '"'):
-        end = value.find(value[0], 1)
-        if end > 0:
-            return value[1:end]
-    return re.split(r"[\s;]", value, maxsplit=1)[0].strip("\"'")
+# Where an install records its engine, which the launchers read on every
+# open and settings.engine_choice reads once per process: setup_engine.sh
+# --public and --private write `export FLUBNF_ENGINE=<engine>` to
+# .flubnf.env (FluBNF.command sources it) and, on Windows, setup.ps1
+# -Engine public and -Engine private write `set "FLUBNF_ENGINE=<engine>"`
+# to .flubnf.env.cmd (FluBNF.bat calls it); cmd's names have no case. The
+# parser is settings' (recorded_engine); ENV_FILE and ENV_FILE_WIN are
+# imported from there at the top.
 
 
 def _recorded_engine() -> str | None:
     """The engine this install (sb.REPO) records: the last FLUBNF_ENGINE
-    its ENV_FILE sets (ENV_FILE_WIN on Windows), read as
-    settings.engine_choice reads one (unknown means private); None when
-    it sets none, or the file is not a regular file (FluBNF.command's
-    `[ -f ]` skips one) or cannot be read."""
+    its ENV_FILE sets (ENV_FILE_WIN on Windows), read by
+    settings.engine_name (exactly private selects the private engine,
+    anything else the public one); None when it sets none, or the file is
+    not a regular file (FluBNF.command's `[ -f ]` skips one) or cannot be
+    read. Read from disk on every call."""
     from app.core import sandbox as sb
     from flubnf import settings
-    win = settings._windows()
-    line = _ENGINE_LINE_WIN if win else _ENGINE_LINE
-    f = Path(sb.REPO) / (ENV_FILE_WIN if win else ENV_FILE)
-    if not os.path.isfile(f):             # never a pipe's endless wait
-        return None
-    try:
-        text = f.read_text(encoding="utf-8", errors="replace")
-    except OSError:
-        return None
-    value = None
-    for ln in text.splitlines():
-        m = line.fullmatch(ln)
-        if m:
-            value = m.group(1)
-    if value is None:
-        return None
-    if win:                               # cmd's quotes are the pattern's
-        words = value.split()
-        v = words[0].strip("\"'") if words else ""
-    else:
-        v = _sh_value(value)
-    v = v.strip().lower()
-    return v if v in settings.ENGINES else "private"
+    return settings.recorded_engine(sb.REPO)
 
 
 def _engine_record_problem() -> str:
     """Why this process may not replay here, "" when it may: its install
     records an engine (_recorded_engine) and this process's environment
-    runs the other (settings.engine_choice), as a Terminal that never
-    read the record does."""
+    names the other (FLUBNF_ENGINE set, as a Terminal that never read the
+    record may have it). With FLUBNF_ENGINE unset, settings reads the
+    record itself, so the two agree."""
     from flubnf import settings
+    if not settings._engine_text(os.environ.get("FLUBNF_ENGINE", "")):
+        return ""
     rec, ours = _recorded_engine(), settings.engine_choice()
     if rec is None or rec == ours:
         return ""
@@ -2209,6 +2196,34 @@ def _tidy(sv: dict) -> None:
 # --------------------------------------------------------------- serve
 
 
+def _engine_changed_on_reexec() -> str:
+    """Why this start stops, when it is a re-execution (_reexec:
+    runner.json's pid is this process's, as execv keeps it) and the engine
+    this runner ran (its runner.json's engine; none, as main's runner
+    wrote, reads as private) is not the one this install runs now; else
+    "". A start by hand has another pid and goes on with whatever engine
+    is selected."""
+    from flubnf.settings import ENGINES, engine_choice
+    st = read_state()
+    try:
+        same = int(st.get("pid")) == os.getpid()
+    except (TypeError, ValueError):
+        same = False
+    if not same:
+        return ""
+    was = st.get("engine") if st.get("engine") in ENGINES else "private"
+    now = engine_choice()
+    if was == now:
+        return ""
+    from app.core.engine_build import switch_step
+    head7 = _head()[:7] or "a new build"
+    return (f"Not started again: this runner ran the {was} engine and, "
+            f"after the update to {head7}, this install runs the {now} one. "
+            f"Jobs begun on the {was} engine would be refused and leave the "
+            f"queue. To keep the {was} engine, run {switch_step(was)}; to go "
+            f"on with the {now} one, start the runner again.")
+
+
 def serve() -> int:
     """`flubnf runner`: work this computer's student experiment queue, one
     job at a time, until SIGTERM, SIGINT or SIGHUP (its Terminal closing;
@@ -2216,8 +2231,10 @@ def serve() -> int:
 
     Refused (1, in words on stderr) from a student's clone, with
     STUDENTS missing, without flock or killpg (Windows), from a Terminal
-    whose engine is not the one the install records
-    (_engine_record_problem: the job child inherits this environment),
+    whose environment names another engine than the install records
+    (_engine_record_problem: the job child inherits this environment), at
+    a re-execution after an update that changed the engine
+    (_engine_changed_on_reexec: its jobs would be refused one by one),
     and while another runner holds runner.lock. Otherwise it says its
     build and engine, recovers what a runner that died left, then polls
     every POLL_S (_dispatch). A stop kills the running job's tree and
@@ -2227,6 +2244,10 @@ def serve() -> int:
     why = _start_problem()
     if why:
         print(f"Not started: {why}", file=sys.stderr, flush=True)
+        return 1
+    said = _engine_changed_on_reexec()
+    if said:                              # before the lock: never taken
+        print(said, file=sys.stderr, flush=True)
         return 1
     state_dir().mkdir(exist_ok=True)
     fd = _lock()

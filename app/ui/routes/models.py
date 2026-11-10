@@ -141,6 +141,16 @@ def _record(name: str) -> dict:
              f"{fmt(blend)}), so it is kept for research runs only.")]})
 
 
+def _engine_public() -> bool:
+    """Whether this copy runs the public engine, the default
+    (settings.engine_public); False when it cannot be read."""
+    try:
+        from flubnf.settings import engine_public
+        return engine_public()
+    except Exception:
+        return False
+
+
 def _rule(v: float) -> str:
     """The one relWIS rule's class: below 1 beats the baseline."""
     return "ok" if v < 1 else "bad"
@@ -238,5 +248,8 @@ def model_page(request: Request, name: str):
         # the Oracle SIHRS's runs (its quick run, the research run) need the
         # particle-filter engine: why not, else ''
         "pf_missing": pipeline._pf_engine_missing(pipeline._pf_engine_state()),
+        # the research run's two-strain member has no counterpart in the
+        # public engine, the default: pipeline skips it there
+        "pf2s_private_only": _engine_public(),
         # the replicates field's range is the knob's (the Forecast panel's)
         "replicates_knob": _knobs.BY_KEY["pf.replicates"]})

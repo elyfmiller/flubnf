@@ -261,6 +261,8 @@
       <div class="sbscroll"><table class="kv sbkeys"><thead><tr><th>key</th><th>value</th><th>from</th></tr></thead><tbody>
        {% for k, v, src in keys %}<tr><td><code>{{ k }}</code></td><td>{{ v }}</td><td>{{ src }}</td></tr>{% endfor %}
       </tbody></table></div>
+      {# the console's pf.* names, mapped in the writer (lwf.translate_cell) #}
+      <p class="hint" id="sb-keys-lwf">On the public engine, the default, these are written to <code>lwf.conf</code> as <code>noise_model neg_bin</code>, <code>lwf_*</code> and <code>random_seed</code>; a seed repeats a fit exactly only on the same engine.</p>
      {% endcall %}
     </section>
     <div id="sb-checked" aria-live="polite"></div>

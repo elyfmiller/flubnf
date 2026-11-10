@@ -799,15 +799,41 @@ def engine_version(versions: dict, key: str) -> str | None:
     return v
 
 
+def public_pybnf_commit() -> str | None:
+    """The public engine's build commit (8 characters) when the builder
+    runs the public engine, the default, and its build is known; else
+    None. Every public PyBNF build self-reports 1.8.1 (the August release,
+    which has no lwf), so the commit names the build: lanl/PyBNF at the
+    pin of engine-requirements.txt. The private engine, the fallback,
+    reports its fork's own version."""
+    try:
+        from flubnf.settings import engine_public
+        if not engine_public():
+            return None
+        from app.core import engine_build as _eb
+        b = _eb.engine_build()
+        if _eb.engine_of(b) == "public" and _eb.known(b):
+            return str(b["commit"])[:8]
+    except Exception:
+        pass
+    return None
+
+
 def public_versions(versions: dict) -> dict:
     """The versions the payload publishes: reported version strings only,
     never an absent component, a pending probe, or a local path (perl
-    reports where it lives, not a version)."""
+    reports where it lives, not a version). On the public engine, pybnf
+    is its build commit (public_pybnf_commit), never the 1.8.1 every
+    public build reports."""
     out = {}
     for k, v in sorted((versions or {}).items()):
         v = engine_version(versions, k)
         if v and "/" not in v and "\\" not in v:
             out[k] = v
+    if "pybnf" in out:
+        commit = public_pybnf_commit()
+        if commit:
+            out["pybnf"] = commit
     return out
 
 

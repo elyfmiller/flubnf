@@ -206,7 +206,10 @@ def check(files: dict, *, work: Path | None = None, name: str = "") -> dict:
             k = line.split("=", 1)[0].strip()
             if k.startswith("pf_") and not pf_engine.engine_accepts_pf_key(k):
                 unknown(k)
+    # the private engine only: the public one writes its own data rows
+    # (lwf.translate_cell), and sampling_interval_line is empty there
     if (times is not None and len(times) == 1
+            and not pf_engine._public()
             and "pf_sampling_interval" not in keys
             and not pf_engine.sampling_interval_line()):
         warning("ONE_ROW", "one data row: this engine needs two or more "

@@ -32,10 +32,11 @@ from app.ui.versions import RUNNING_SHA, VERSIONS
 
 # === Forecast pipeline: param harvest, sleep guard, weekly report, _run_all ===
 def _harvest_params(workroot: Path) -> dict:
-    """Per-location posterior medians of the fitted PF parameters, pooled
-    across replicates (params_*.txt under each cell's out/Results/PF/Runs,
-    or the public engine's Results/LWF/parameters.txt), stored as
-    results.json 'params'. Unreadable cells are skipped."""
+    """Per-location medians of the fitted PF parameters' forecasting
+    sample, pooled across replicates (params_*.txt under each cell's
+    out/Results/PF/Runs, or the public engine's
+    Results/LWF/parameters.txt), stored as results.json 'params'.
+    Unreadable cells are skipped."""
     import json as _json
     import numpy as _np
     from app.core.engines import lwf as _lwf
@@ -459,19 +460,23 @@ def _build_pairs(run_row: dict | None) -> list:
 
 
 def _pf_engine_state() -> str:
-    """This machine's PF engine in one word:
+    """The particle-filter engine this copy runs, in one word:
 
-      absent   no engine venv/fork: analogue-only Tier A, the run proceeds
-      broken   venv + fork path but no pybnf/pf.py: every fit would fail
-      ready    the fork provides fit_type = pf
+      absent   not installed: analogue-only Tier A, the run proceeds
+      broken   the private engine only: venv + fork path but no
+               pybnf/pf.py, so every fit would fail
+      ready    it can fit: the public engine's venv (lanl/PyBNF's
+               job_type = lwf), the default, or with FLUBNF_ENGINE=private
+               the fork that provides fit_type = pf, the fallback
 
     Installed-ness is defined once, in app.core.engines.pf.engine_available.
     """
     from flubnf.settings import PY_ENGINE, PYBNF, engine_public
     from app.core.engines import pf as pf_engine
     if engine_public():
-        # FLUBNF_ENGINE=public: its venv alone (a run's preflight checks it
-        # against the lock); the private venv and fork are not needed
+        # the public engine, the default: its venv alone (a run's preflight
+        # checks it against the lock); the private venv and fork are not
+        # needed
         return "ready" if pf_engine.engine_available() else "absent"
     if not (PY_ENGINE.exists() and PYBNF.exists()):
         return "absent"
@@ -480,10 +485,25 @@ def _pf_engine_state() -> str:
 
 def _pf_engine_missing(pf_state: str) -> str:
     """How the pages finish "... needs the particle-filter engine, ...":
-    '' when it is ready."""
-    return ("" if pf_state == "ready"
-            else "which is not installed on this machine"
-            if pf_state == "absent" else "whose install is incomplete")
+    '' when it is ready. On the public engine, the default, an absent
+    engine names its install step, and the switch to the private engine
+    when that one is installed here."""
+    if pf_state == "ready":
+        return ""
+    if pf_state != "absent":
+        return "whose install is incomplete"
+    from flubnf import settings
+    if not settings.engine_public():
+        return "which is not installed on this machine"
+    from app.core.engine_build import switch_step
+    from app.core.engines import lwf
+    if settings.private_engine_installed():
+        return ("which is not installed yet on this machine (the public "
+                "engine, the default since this update: to install it, "
+                f"{lwf._setup_step()}; the private engine installed here "
+                f"runs instead after {switch_step('private')})")
+    return ("which is not installed on this machine (to install it, "
+            f"{lwf._setup_step()})")
 
 
 def _optional_rows(spec, workroot: Path, pf_samples: dict, an_q: dict,
@@ -731,10 +751,18 @@ def _run_all(spec: RunSpec) -> None:
                                      else "engine venv not installed (Tier A)")
             (workroot / "cells.json").write_text("[]", encoding="utf-8")
         # 1b. RESEARCH third member: the two-strain SIHRS (members=3, no UI
-        # control), in a pf2s subdir of the same workroot (one row, one archive)
+        # control), in a pf2s subdir of the same workroot (one row, one archive).
+        # The public engine has no two-strain counterpart: the member is
+        # skipped there with its reason, as pf_skipped records the filter's
         pf2s_samples = {}
-        if ((spec.extra or {}).get("members") == 3
-                and pf_wanted and pf_state == "ready"):
+        members3 = ((spec.extra or {}).get("members") == 3
+                    and pf_wanted and pf_state == "ready")
+        from flubnf.settings import engine_public as _engine_public
+        if members3 and _engine_public():
+            outcome["pf2s_skipped"] = ("the two-strain member runs on the "
+                                       "private engine only "
+                                       "(FLUBNF_ENGINE=private)")
+        elif members3:
             from dataclasses import replace as _dc_replace
             spec2s = _dc_replace(spec, extra={**(spec.extra or {}),
                                               "variant": "2strain"})

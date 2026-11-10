@@ -552,6 +552,16 @@ def preflight(settings: Path | Mapping, *, retro_root: Path) -> dict:
     if done and not complete:
         change = retro.engine_build_change(st, "pf")
         if change:
+            from app.core import engine_build as _eb
+            had = _eb.engine_of(st.get("engine_build"))
+            if had != _eb.engine_of(_eb.engine_build()):
+                # the engine it began on, and the step that switches back
+                raise Refusal(finding(
+                    "MACHINE", f"{p['id']} has weeks that {change}. Resuming "
+                    "would mix two engine builds in one season. To finish it "
+                    f"on the {had} engine it began on: {_eb.switch_step(had)}; "
+                    "or archive or discard the existing results to replay it "
+                    "on this one."))
             raise Refusal(finding(
                 "MACHINE", f"{p['id']} has weeks that {change}: resuming "
                 "would mix two engine builds. Switch the engine back to "
@@ -624,10 +634,10 @@ def _begun_elsewhere(folder: Path, asof: str, here: str) -> str | None:
 def _switch_step(engine: str) -> str:
     """The step that switches this install to `engine`: its launcher's
     record, which every open reads over the shell's FLUBNF_ENGINE (and
-    which a terminal start must match, runner._engine_record_problem)."""
-    from flubnf.settings import _windows
-    return (f"setup.ps1 -Engine {engine}" if _windows()
-            else f"./setup_engine.sh --{engine}")
+    which a terminal start reads too, settings.engine_choice). The short
+    form of engine_build.switch_step."""
+    from app.core.engine_build import switch_step
+    return switch_step(engine, short=True)
 
 
 def _two_strain(ref: str) -> bool:
@@ -640,9 +650,10 @@ def _two_strain(ref: str) -> bool:
 
 def _engine_of(build) -> str:
     """The engine a recorded build names: public when it says so, else
-    private (a build recorded without one, or none recorded)."""
-    named = build.get("engine") if isinstance(build, Mapping) else None
-    return "public" if named == "public" else "private"
+    private (a build recorded without one, or none recorded);
+    engine_build.engine_of."""
+    from app.core.engine_build import engine_of
+    return engine_of(build)
 
 
 def started(p: Mapping) -> dict:

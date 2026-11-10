@@ -1,6 +1,7 @@
-"""SHIPPED behind FLUBNF_ENGINE=public: the public engine, lanl/PyBNF's
-job_type = lwf (the Liu–West filter), from the venv engine-requirements.txt
-pins.
+"""SHIPPED: the default engine, the public one: lanl/PyBNF's job_type = lwf
+(the Liu–West filter), from the venv engine-requirements.txt pins.
+FLUBNF_ENGINE=private runs the lab's PyBNF fork instead (pf.py), the
+fallback.
 
 pf.prepare() writes every cell as it always has (model, data, network check,
 pf.conf). When the runners start, translate_cell() derives the public
@@ -72,7 +73,8 @@ RESAMPLE_THRESHOLD = 0.5
 # --- the switch and the venv ------------------------------------------------
 
 def public() -> bool:
-    """Whether FLUBNF_ENGINE asks for the public engine (read each call)."""
+    """Whether the public engine runs (settings.engine_choice: the default,
+    unless FLUBNF_ENGINE=private)."""
     from flubnf.settings import engine_public
     return engine_public()
 
@@ -96,12 +98,12 @@ def runner_cmd(runner) -> list:
 
 
 def _setup_step(platform: str | None = None) -> str:
+    """How this machine installs the public engine, as a clause."""
     plat = platform or sys.platform
     if plat == "win32":
-        return ("open FluBNF.bat again with FLUBNF_ENGINE=public (setup.ps1 "
-                "-Engine public records that)")
+        return "open FluBNF.bat again; it installs it"
     return ("run ./setup_engine.sh --public in the FluBNF folder "
-            "(SetupEngine.command on a Mac runs the same script)")
+            "(SetupEngine.command on a Mac does the same)")
 
 
 def engine_available() -> bool:
@@ -112,11 +114,25 @@ def engine_available() -> bool:
         return False
 
 
+def _fallback(platform: str | None = None) -> str:
+    """The sentence after the public engine's install step: how the private
+    engine runs instead when it is installed here, else that it is not."""
+    from flubnf.settings import private_engine_installed
+    if private_engine_installed():
+        from app.core.engine_build import switch_step
+        return ("The private engine is installed here and runs instead, as "
+                f"the fallback, after {switch_step('private', platform)} (it "
+                "records FLUBNF_ENGINE=private for this copy).")
+    return ("The private engine, the fallback, is not installed here "
+            "(docs/ENGINE.md).")
+
+
 def engine_missing_message(platform: str | None = None) -> str:
-    return (f"The public engine is not installed: there is no Python at "
-            f"{python()}. To install it, {_setup_step(platform)}. To use "
-            "the private engine instead, set FLUBNF_ENGINE=private, or leave "
-            "it unset.")
+    """The public engine's venv is missing: where it was looked for, how to
+    install it, and the fallback."""
+    return (f"The public engine (the default) is not installed: there is no "
+            f"Python at {python()}. To install it, {_setup_step(platform)}. "
+            f"{_fallback(platform)}")
 
 
 #: (key, result) of the last lock check; the check imports bngsim and the
@@ -583,10 +599,11 @@ def translate_cell(cell: dict) -> Path:
     keys = [k for k, _ in conf]
     for k in keys:
         if k in _NO_COUNTERPART:
+            from app.core.engine_build import switch_step
             raise Untranslatable(
                 f"{k} ({_NO_COUNTERPART[k]}) has no counterpart in the "
-                "public engine; run this on the private engine "
-                "(FLUBNF_ENGINE=private)")
+                "public engine; the private engine runs it "
+                f"({switch_step('private', short=True)})")
         if k not in _MAPPED and k not in _READ:
             raise Untranslatable(f"pf.conf's key {k} has no counterpart in "
                                  "the public engine")

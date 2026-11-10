@@ -44,14 +44,21 @@ def _platform() -> str:
 
 
 def _engine_setup_hint():
-    """HTML clause telling this machine's user how to enable the PF engine.
+    """HTML clause telling this machine's user how to install the engine
+    this copy runs.
 
-    Windows gets the engine file from the lab and FluBNF.bat, which unpacks
-    it (no setup_engine.sh twin; setup.ps1 only diagnoses, and the GitHub
-    routes need access to the private fork, so docs/ENGINE.md keeps them).
-    Resolved per render via _platform() so tests can vary it. Not for
-    methods.html: site_build publishes that page, and a platform-specific
-    string would bake in the builder's platform.
+    The public engine, the default: its install step (lwf._setup_step) on
+    every platform. The private engine, the fallback, is reached only when
+    this copy records FLUBNF_ENGINE=private: Windows gets the engine file
+    from the lab and FluBNF.bat, which unpacks it (no setup_engine.sh twin;
+    setup.ps1 only diagnoses, and the GitHub routes need access to the
+    private fork, so docs/ENGINE.md keeps them); macOS double-clicks
+    SetupEngine.command, which reads the record; elsewhere the script
+    names the private route, since a bare ./setup_engine.sh installs the
+    public engine on a copy with no record. Resolved per render via
+    _platform() so tests can vary it. Not for methods.html: site_build
+    publishes that page, and a platform-specific string would bake in the
+    builder's platform.
     """
     from markupsafe import Markup
     from app.core import engine_build
@@ -63,12 +70,32 @@ def _engine_setup_hint():
         return Markup(
             "save the engine file from the lab (<code>"
             f"{engine_build.archive_name()}</code>) in your Downloads folder "
-            "and open <code>FluBNF.bat</code> again; no GitHub account is "
-            "needed (<code>docs\\ENGINE.md</code> has the GitHub routes)")
+            "and open <code>FluBNF.bat</code> again (this copy is set to the "
+            "private engine, the fallback; setup.ps1 -Engine public goes "
+            "back to the default); no GitHub account is needed "
+            "(<code>docs\\ENGINE.md</code> has the GitHub routes)")
     if _platform() == "darwin":
-        return Markup("double-click <code>SetupEngine.command</code> and "
-                      "relaunch the console")
-    return Markup("run <code>./setup_engine.sh</code> and relaunch the console")
+        return Markup("double-click <code>SetupEngine.command</code> (this "
+                      "copy records the private engine) and relaunch the "
+                      "console")
+    return Markup("run <code>./setup_engine.sh --private</code> and relaunch "
+                  "the console")
+
+
+def _engine_fallback_hint():
+    """The rest of the engine's install line when the public engine, the
+    default, is chosen and the private one, the fallback, is installed
+    here: the switch to it, as a clause starting "; " ("" otherwise). It
+    follows engine_setup_hint() where a page says the engine is missing;
+    Home and Retrospective pass it as engine_fallback (a page value, not
+    a global)."""
+    from markupsafe import Markup
+    from flubnf import settings
+    if not (settings.engine_public() and settings.private_engine_installed()):
+        return Markup("")
+    from app.core.engine_build import switch_step
+    return Markup.escape("; the private engine installed here runs instead "
+                         f"after {switch_step('private', _platform())}")
 
 
 def _hub_setup_words() -> tuple:

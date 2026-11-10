@@ -24,6 +24,7 @@ each tested:
 from __future__ import annotations
 
 import json
+import re
 
 from app.core import horizons as hz, relwis
 from app.core.html_page import esc as _e
@@ -1047,21 +1048,29 @@ def render_page(payload: dict, map_svg: str, methods_html: str,
         "the probabilistic forecast, week by week with the settled truth "
         "overlaid, and the live table of weekly and cumulative relWIS. The "
         "Groundhog replays on any machine that runs the console; "
-        f"{mech['the']} needs the lab's engine (PyBNF, BNGsim and "
-        f'BioNetGen). <a href="{INSTALL_URL}">Install and run</a>.</div>')
+        f"{mech['the']} needs the fitting engine: public PyBNF "
+        "(lanl/PyBNF, job_type = lwf), BNGsim and BioNetGen, which install "
+        f'with no lab files. <a href="{INSTALL_URL}">Install and run</a>.'
+        "</div>")
 
     build = payload["build"]
     from app.core.site_build import ENGINE_KEYS, engine_version
     engines = [f"{k} {engine_version(build['versions'], k)}"
                for k in ENGINE_KEYS
                if engine_version(build["versions"], k)]
+    # on the public engine the payload names pybnf by its build commit
+    # (site_build.public_versions): every public build reports 1.8.1
+    by_commit = bool(re.fullmatch(
+        r"[0-9a-f]{7,40}", str(build["versions"].get("pybnf") or "")))
     if engines:
         engine_line = (
             f"Engines: {_e(', '.join(engines))}. Engine versions are "
-            "self-reported by the builder's install; the sealed record's "
-            "engine pin is bngsim 0.15.1, pinned by every engine installer, "
-            "and a locally built engine can self-report an older version "
-            "string.")
+            "self-reported by the builder's install"
+            + (", except PyBNF, named by its build commit (every "
+               "lanl/PyBNF build reports 1.8.1)" if by_commit else "")
+            + "; the sealed record's engine pin is bngsim 0.15.1, pinned "
+            "by every engine installer, and a locally built engine can "
+            "self-report an older version string.")
     else:
         engine_line = ("The sealed record's engine pin is bngsim 0.15.1, "
                        "pinned by every engine installer.")
@@ -1176,9 +1185,10 @@ def render_page(payload: dict, map_svg: str, methods_html: str,
       <div class="card"><span class="k">Software</span>
         <h3>We build our own stack</h3>
         <p>The model is written as rules in BNGL, compiled by BioNetGen,
-        integrated by BNGsim (our C++17 engine), and fitted by our
-        particle-filter extension of PyBioNetFit, the framework this lab
-        co-developed with Los Alamos. Nothing under the hood is a black box
+        integrated by BNGsim (our C++17 engine), and fitted by the Liu-West
+        filter in public PyBioNetFit (lanl/PyBNF, job_type = lwf), the
+        framework this lab co-developed with Los Alamos; it installs with no
+        lab files. Nothing under the hood is a black box
         we cannot open: when a forecast needs a capability, we write it into
         the same open tools everyone else can use. Methods breaks each layer
         down.</p>
@@ -1237,7 +1247,8 @@ def render_page(payload: dict, map_svg: str, methods_html: str,
         <p>Clone the repository and run the setup script: the console
         replays the Groundhog on macOS, Linux, or Windows, with pause,
         resume, and a playback player for the results. {_e(mech["the"][0].upper() + mech["the"][1:])}
-        also needs the lab's engine, which the engine installer sets up.</p>
+        also needs the fitting engine, public PyBNF with BNGsim, which the
+        engine installer sets up with no lab files.</p>
         <div class="linkrow">
           <a href="{INSTALL_URL}">Install and run</a>
           <a href="{REPO_URL}">Repository</a>

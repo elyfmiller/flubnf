@@ -1,4 +1,6 @@
-"""SHIPPED: the PF-SIHRS engine; writes pf.conf and runs PyBNF `fit_type=pf`.
+"""SHIPPED: the PF-SIHRS engine; writes pf.conf and runs the filter: PyBNF
+`fit_type=pf` (the fork, the fallback) or, by default, lanl/PyBNF's
+job_type = lwf through lwf.py.
 
 Two-venv dispatch (rule 8): materialization and scoring run here, in the
 analysis venv; the filter runs in the pybnf/bngsim venv (Python 3.11/3.12,
@@ -26,10 +28,11 @@ Sections, in file order:
   collect         _cell_statuses, _record_collect_failure, _save_cloud, collect,
                   _pool
 
-FLUBNF_ENGINE=public (flubnf.settings.engine_choice) runs the same cells on
-lanl/PyBNF's job_type = lwf instead (app/core/engines/lwf.py): the engine
-checks, runner_cmd, execute() and collect() hand over to it; prepare() is the
-same for both engines.
+The public engine, the default (flubnf.settings.engine_choice), runs the
+same cells on lanl/PyBNF's job_type = lwf (app/core/engines/lwf.py): the
+engine checks, runner_cmd, execute() and collect() hand over to it;
+prepare() is the same for both engines. The fork's fit_type = pf runs them
+with FLUBNF_ENGINE=private, the fallback.
 """
 from __future__ import annotations
 
@@ -464,7 +467,8 @@ def engine_fix(_platform: str | None = None) -> str:
 
 
 def _public() -> bool:
-    """Whether FLUBNF_ENGINE asks for the public engine (lwf.py)."""
+    """Whether the public engine runs (lwf.py; settings.engine_choice: the
+    default, unless FLUBNF_ENGINE=private)."""
     from flubnf.settings import engine_public
     return engine_public()
 
@@ -558,7 +562,12 @@ def engine_accepts_pf_key(key: str) -> bool:
 
 def sampling_interval_line() -> str:
     """The conf line `pf_sampling_interval = 1`, or nothing, by the
-    installed engine's own source."""
+    installed private engine's own source. Nothing on the public engine:
+    its translation writes one data row per week whatever the fork on disk
+    accepts (lwf.translate_cell), so pf.conf does not depend on whether a
+    private checkout sits on disk."""
+    if _public():
+        return ""
     return (f"{SAMPLING_INTERVAL_KEY} = 1\n"
             if engine_accepts_pf_key(SAMPLING_INTERVAL_KEY) else "")
 
@@ -1475,14 +1484,17 @@ def shard_cells(cells: list, width: int | None = None) -> list:
 PUBLIC_COST_RATIO = 2.4
 
 
-def cell_seconds(cell: dict) -> float:
+def cell_seconds(cell: dict, engine: str | None = None) -> float:
     """Predicted seconds for one cell (no particle count: the reference
-    10,000), on the engine FLUBNF_ENGINE names."""
+    10,000), on `engine` ("public" or "private"; by default the one this
+    process runs, settings.engine_choice): the public engine's cost is
+    PUBLIC_COST_RATIO times the private engine's."""
     n_obs = int(cell.get("n_obs") or 0)
     particles = float(cell.get("particles") or COST_REFERENCE_PARTICLES)
     s = ((COST_INTERCEPT_S + COST_PER_WEEK_S * (n_obs + COST_FORECAST_WEEKS))
          * max(particles, 1.0) / COST_REFERENCE_PARTICLES)
-    return s * PUBLIC_COST_RATIO if _public() else s
+    public = _public() if engine is None else engine == "public"
+    return s * PUBLIC_COST_RATIO if public else s
 
 
 def expected_seconds(shards: list) -> float:
@@ -1609,10 +1621,12 @@ def _over_budget(status_files: list, n_cells: int, shards: list,
     bound (the floor usually does; "60 min = 3 x 12 min" would be false)."""
     done = _finished(status_files)
     predicted = expected_seconds(shards)
+    factor = (f", x {PUBLIC_COST_RATIO:g} on the public engine"
+              if _public() else "")
     model = (f"the {predicted / 60:.0f} min the cost model "
              f"({COST_INTERCEPT_S} + {COST_PER_WEEK_S} * (n_obs + "
-             f"{COST_FORECAST_WEEKS}) s per cell) predicts for the slowest "
-             f"of {len(shards)} shard(s)")
+             f"{COST_FORECAST_WEEKS}) s per cell{factor}) predicts for the "
+             f"slowest of {len(shards)} shard(s)")
     if not sized:
         how = f"{budget / 60:.0f} min, set by the caller"
     elif TIMEOUT_SAFETY * predicted < TIMEOUT_FLOOR_S:   # the floor bound

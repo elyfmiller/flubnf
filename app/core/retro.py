@@ -648,11 +648,13 @@ def _week_engine(wd: Path, engine: str) -> None:
     except (OSError, ValueError, AttributeError):
         had = None
     if had and had != engine and cells_done(wd):
+        from app.core.engine_build import switch_step
         raise EngineBuildMismatch(
-            f"the week at {wd} began on the {had} engine and FLUBNF_ENGINE "
-            f"now names the {engine} one. Resuming would pool fits from two "
-            "engines in one week. Switch the engine back, or archive or "
-            "discard the existing results to replay it on this one.")
+            f"the week at {wd} began on the {had} engine and this install "
+            f"now runs the {engine} one. Resuming would pool fits from two "
+            f"engines in one week. To finish it on the {had} engine: "
+            f"{switch_step(had)}; or archive or discard the existing "
+            "results to replay it on this one.")
     f.parent.mkdir(parents=True, exist_ok=True)
     f.write_text(json.dumps({"engine": engine}), encoding="utf-8")
 
@@ -683,7 +685,7 @@ def _launch_runners(wd: Path, shards: list, halt: Path) -> list:
     # when no week had finished yet
     _week_engine(wd, "public" if public else "private")
     if public:
-        # FLUBNF_ENGINE=public: the cells' lwf files, from what prepare
+        # the public engine: the cells' lwf files, from what prepare
         # wrote; a cell the public engine cannot run is marked failed with
         # its reason, as a failed fit is, and not dispatched
         from app.core.engines import lwf
@@ -1057,11 +1059,21 @@ def run_season(root: Path, season: str, locations: list, replicates=3,
         # recorded resumes as before (and is not stamped by the resume)
         bchange = engine_build_change(prior, engine, build)
         if bchange:
+            # the engine the season began on (a record with no build was
+            # fitted by the private engine) against this machine's
+            had_engine = _eb.engine_of(prior.get("engine_build")
+                                       if isinstance(prior, dict) else None)
+            if had_engine != _eb.engine_of(build):
+                remedy = (f"To finish it on the {had_engine} engine it began "
+                          f"on: {_eb.switch_step(had_engine)}; or archive or "
+                          "discard the existing results to replay it on this "
+                          "one.")
+            else:
+                remedy = ("Switch the engine back, or archive or discard the "
+                          "existing results to replay it on this one.")
             raise EngineBuildMismatch(
                 f"{season} at {root} has completed weeks that {bchange}. "
-                "Resuming would mix two engine builds in one season. "
-                "Switch the engine back, or archive or discard the existing "
-                "results to replay it on this one.")
+                f"Resuming would mix two engine builds in one season. {remedy}")
         # nor across the Groundhog's forms: weeks replayed pooled (every
         # tree from before 2026-10-15 has no key) and weeks replayed
         # own-weighted would be scored as one season

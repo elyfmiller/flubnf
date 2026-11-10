@@ -25,8 +25,10 @@
 </nav>
 {% if own_tab %}{% include "_dataset_replay.html" %}{% else %}
 {# platform-aware (templating.py _engine_setup_hint): never a macOS-only
-   filename. What to do now, one line across the page; the how in its tip #}
-{% if not engine_ok %}{% call tips.alert("warn", "Groundhog only works without it.", title="The Oracle SIHRS needs the particle-filter engine.", id="rt-engine-off", live="") %}To install it, {{ engine_setup_hint() }}.{% endcall %}{% endif %}
+   filename. What to do now, one line across the page; the how in its tip,
+   with the switch to the private engine when the default is missing and
+   that one is installed here (engine_fallback) #}
+{% if not engine_ok %}{% call tips.alert("warn", "Groundhog only works without it.", title="The Oracle SIHRS needs the particle-filter engine.", id="rt-engine-off", live="") %}To install it, {{ engine_setup_hint() }}{{ engine_fallback if engine_fallback is defined else "" }}.{% endcall %}{% endif %}
 {# the forms beside the seasons; on a phone the seasons (the results)
    come first (tabs/retro.css .rt-cols) #}
 <div class="cols rt-cols">
