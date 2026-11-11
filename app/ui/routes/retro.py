@@ -31,7 +31,7 @@ from app.ui import pipeline, retro_prep, retro_seasons, templating
 from app.ui.forms import (_knob_form, _knob_panel, _knob_raw, _knobs,
                           _str_field)
 from app.ui.retro_prep import (_job_covered, _relwis_figures, _results_jobs,
-                               _results_pending, _retro_map_models,
+                               _retro_map_models,
                                _scores_df, _scores_scoreable_fast,
                                _week_map_cards_by_model)
 from app.ui.retro_seasons import (_RETRO_ACTIVE, _archive_progress,
@@ -1239,7 +1239,7 @@ def retro_results(request: Request, season: str, week: str = "",
     live = _replaying(root, season, archive)
     if not live and ((request.query_params.get("rescore")
                       and not _is_sealed_root(root))
-                     or _results_pending(root)):
+                     or retro_prep._results_pending(root)):
         job = retro_prep._ensure_results_job(
             root, season, force=bool(request.query_params.get("rescore")))
         if job.get("refused"):

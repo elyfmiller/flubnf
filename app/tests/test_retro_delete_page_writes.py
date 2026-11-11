@@ -340,10 +340,10 @@ def test_a_results_page_open_while_storage_deletes_the_season_lets_it_end(
     files and us_aggregate.json made playback_cache again and the delete
     failed on the folder, "Could not delete", with every week gone)."""
     from app.core import scoring
-    from app.ui.routes import retro as ui_retro
+    from app.ui import retro_prep
     W3 = "2098-01-17"
     root = _season_tree(world["rr"], SEASON, weeks=(W1, W2, W3))
-    monkeypatch.setattr(ui_retro, "_results_pending", lambda r: "")
+    monkeypatch.setattr(retro_prep, "_results_pending", lambda r: "")
     monkeypatch.setattr(scoring, "load_truth", lambda: ({}, {}))
     at_aggregate, week_gone, page_done = (threading.Event(),
                                           threading.Event(),
