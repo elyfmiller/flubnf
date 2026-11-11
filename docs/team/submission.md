@@ -3255,6 +3255,51 @@ and CDC's rules. The season's facts are in
 
 ## Decided
 
+- 2026-11-11 (Ely, relayed by App): THE HUB'S POPULATION CHECK IS A
+  STANDING PART OF THIS LANE'S REVIEW, a forecast-plausibility check, from
+  round 2026-11-14 on. For both files: every location and horizon whose
+  largest quantile is over popn_frac x the location's population, with
+  the value, the limit and the ratio, and every one above 0.9 of the
+  limit as a near miss. popn_frac is read from cdcepi main's
+  hub-config/validations.yml (max_hosp_popn_frac) at review time, never
+  hard-coded (0.001 since e363d512; 0.0025 for part of 2026-11-04), and
+  the population from cdcepi main's auxiliary-data/locations.csv. Ely
+  decides each over-limit location every round: accept the hub's RED,
+  leave it out, or something else. Until App adds it to FluBNF's own
+  hub check, the console's "Passes the hub's checks" does not cover it
+  (app/core/hubcheck.py still uses 30%).
+- 2026-11-11: THE ROUND REVIEW CHECKLIST, from round 2026-11-14 on (the
+  standing rules gathered in one place; each line's source in brackets).
+  On the two CSVs Ely gives this lane after each run, all before the
+  fork commit, and the list goes to Ely with the files so locations are
+  dropped before the hub pull request, not after (2026-11-05):
+  1. Structure and the hub's checks: locations, horizons 0-3, 23 levels,
+     monotone, whole numbers; the hubValidations checks against cdcepi
+     main's tasks.json (scratchpad tools/hubcheck_files.py).
+  2. The hub's population check (above): over-limit list and near
+     misses, popn_frac read at review time (tools/popn_check.sh).
+  3. The gate: scripts/sense_check.py, h3 97.5% over the three-week mean,
+     FAIL above 30x stops the round (2026-10-22).
+  4. Spencer's red flags (h3 97.5% over the last week above 30x where the
+     last week is at least 10), flat or higher, and the member table
+     (1.5x, at least three other members; read beside each member's
+     growth, Open 2026-11-05) (2026-10-28, 2026-11-05).
+  5. The run record's tail_cap: n, mode, level, each member's level, and
+     cells above 0 for both members; and the files agree with it (no h3
+     97.5% above n x the level) (2026-11-11).
+  6. State by state, both models: implied weekly growth to h3 against
+     the observed growth of the last three weeks, the two models' h3
+     medians more than 1.5x apart, and any rise where the data are flat
+     or falling (2026-11-05).
+  7. The seed stage of every jurisdiction (2026-10-30).
+  8. In a round that changes the engine or a setting: the medians and the
+     lower half against the previous round (2026-11-10, 2026-11-11).
+  9. Before the hub pull request: the deadline in cdcepi main's tasks.json
+     (2026-11-11).
+  Weekly, when the dashboard updates: our placements and the error split
+  against the field, naming the measure (2026-10-30, 2026-11-11).
+  One run of this lane's scratchpad tools/check_pair.sh covers 1-5 and
+  the shape scan; 6-8 are this lane's review.
 - 2026-11-11 (Ely, relayed by App): round 2026-11-14 (run 2026-11-11)
   takes output.tail_level larger for both members, the cap still 10x,
   the mode unchanged (shrink). Ely's words as relayed: "i think we then
