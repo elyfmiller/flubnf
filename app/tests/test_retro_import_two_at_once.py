@@ -164,7 +164,9 @@ def test_a_tree_that_appears_meanwhile_is_not_deleted_without_replace(
         world, monkeypatch):
     """The second look: a tree under the destination's name that appeared
     while this import extracted (another process's import) is left as it
-    is and the import refused in words, its temp tree removed."""
+    is and the import refused in words, its temp tree removed. A folder
+    with no imported.json is not called "already imported" (the seventh
+    pass's finding 1): the words say it is not a whole import."""
     dst = world["dst"]
     paused, go = _pause_first(monkeypatch)
     out = {}
@@ -184,8 +186,10 @@ def test_a_tree_that_appears_meanwhile_is_not_deleted_without_replace(
         go.set()
     t.join(30)
     assert isinstance(out["r"], rb.BundleError), out["r"]
-    assert str(out["r"]) == (f"{SEASON} from this bundle was already "
-                             f"imported as {world['stamp']}.")
+    assert str(out["r"]) == (
+        f"{SEASON} from this bundle was not imported: what is at {dst} is "
+        "not a whole import; a Replace import puts this bundle's run in its "
+        "place.")
     assert sorted(p.name for p in dst.iterdir()) == ["theirs.txt"]
     assert not list(world["rr"].glob("*.importing*"))
 

@@ -665,21 +665,28 @@ def _asides_left(dst: Path, now: float | None = None, but=()) -> list:
     return out
 
 
-def _asides_left_words(season: str, stamp: str, left: list) -> str:
+def _asides_left_words(season: str, stamp: str, left: list,
+                       whole: bool) -> str:
     """What every import of the run says while old runs Replaces set aside
-    stay beside it for good (_asides_left): where, and that they may go by
-    hand. "" when there are none."""
+    stay beside it for good (_asides_left): where, and, only while a whole
+    import (of any bundle) is at the run's name (`whole`), that they may go
+    by hand. With none there, a folder set aside may hold the only copy of
+    the run, and the words say that instead. "" when there are none."""
     if not left:
         return ""
-    if len(left) == 1:
-        return (f"An earlier Replace set a run of {season} aside in "
-                f"{left[0]}, and the console keeps it there: it can be "
-                f"deleted by hand once the run imported as {stamp} is the "
-                "one wanted.")
-    where = ", ".join(str(p) for p in left[:-1]) + f" and {left[-1]}"
-    return (f"Earlier Replaces set runs of {season} aside in {where}, and "
-            "the console keeps them there: they can be deleted by hand "
-            f"once the run imported as {stamp} is the one wanted.")
+    one = len(left) == 1
+    where = (str(left[0]) if one else
+             ", ".join(str(p) for p in left[:-1]) + f" and {left[-1]}")
+    head = (f"An earlier Replace set a run of {season} aside in {where}, "
+            "and the console keeps it there: " if one else
+            f"Earlier Replaces set runs of {season} aside in {where}, and "
+            "the console keeps them there: ")
+    if not whole:
+        return head + ("no whole import is under the run's own name, so "
+                       + ("it may be the only copy of the run." if one else
+                          "they may be the only copies of the run."))
+    return head + (("it can" if one else "they can") + " be deleted by hand "
+                   f"once the run imported as {stamp} is the one wanted.")
 
 
 def _aside_name(dst: Path) -> Path:
@@ -755,6 +762,24 @@ def _already(season: str, stamp: str) -> str:
     return f"{season} from this bundle was already imported as {stamp}."
 
 
+def _at_name_words(season: str, stamp: str, dst: Path, sha: str) -> str:
+    """Why a plain import is refused when something is at the run's name:
+    "already imported" only over a whole import of this bundle (its
+    imported.json names this bundle's sha256). Another file's whole import,
+    or a folder that is not a whole import (a stray cache file, part of a
+    run), is said to be what it is, and that a Replace puts this bundle's
+    run in its place."""
+    if _whole_import(dst, sha):
+        return _already(season, stamp)
+    if _whole_import(dst):
+        return (f"{season} was already imported as {stamp} from another "
+                "file; a Replace import puts this bundle's run in its "
+                "place.")
+    return (f"{season} from this bundle was not imported: what is at {dst} "
+            "is not a whole import; a Replace import puts this bundle's run "
+            "in its place.")
+
+
 def _protected_words(season: str, stamp: str) -> str:
     """#104's refusal: a Replace never deletes in a protected folder."""
     return (f"{season} from this bundle is imported as {stamp} in a "
@@ -795,10 +820,13 @@ def import_bundle(path: Path, retro_root: Path, replace: bool = False,
     then deletes the old one, so a process killed part way never leaves
     part of a run at the name. What it left aside is put back under the
     run's name by the next import's sweep when nothing is there (a plain
-    import is then refused as already imported, and says the run is
-    back), and is deleted only once a whole import of its own bundle is
-    at the name; one that stays for good is named by every import of the
-    run, refused or not, with the words that it can be deleted by hand.
+    import is then refused, and says the run is back), and is deleted
+    only once a whole import of its own bundle is at the name; one that
+    stays for good is named by every import of the run, refused or not,
+    with the words that it can be deleted by hand while a whole import is
+    at the name, and that it may be the only copy of the run while none
+    is. A plain import says "already imported" only over a whole import
+    of this bundle (_at_name_words).
     The old run is deleted only for this bundle's whole import (its
     imported.json with this bundle's sha256), renamed .dropping- first;
     when the new tree cannot go in and the old one cannot go back, it is
@@ -838,12 +866,14 @@ def import_bundle(path: Path, retro_root: Path, replace: bool = False,
                              mine)
         except BundleError as e:
             left = _asides_left_words(m["season"], m["stamp"],
-                                      _asides_left(dst, but=mine))
+                                      _asides_left(dst, but=mine),
+                                      _whole_import(dst))
             if left:
                 raise BundleError(f"{e} {left}") from None
             raise
         left = _asides_left_words(m["season"], m["stamp"],
-                                  _asides_left(dst, but=mine))
+                                  _asides_left(dst, but=mine),
+                                  _whole_import(dst))
         if left:
             r.warnings.append(left[:1].lower() + left[1:].rstrip("."))
         return r
@@ -863,7 +893,8 @@ def _import_into(path: Path, m: dict, dst: Path, replace: bool, build: str,
             # run (the old tree it set aside) is swept all the same; one
             # in a protected folder stays where it is
             _sweep_stale_temps(dst)
-            raise BundleError(_already(season, stamp))
+            raise BundleError(_at_name_words(season, stamp, dst,
+                                             m["bundle_sha256"]))
         # replacing deletes it: never a protected folder (reclaim's roots:
         # the sealed records, the hub clone, FLUBNF_PROTECT_ROOTS, the
         # barrier Storage's Delete also asks), checked before anything is
@@ -905,7 +936,8 @@ def _import_into(path: Path, m: dict, dst: Path, replace: bool, build: str,
             # import landed meanwhile
             if not replace:
                 raise BundleError(" ".join(filter(None, (
-                    _already(season, stamp), back))))
+                    _at_name_words(season, stamp, dst, m["bundle_sha256"]),
+                    back))))
             if reclaim.is_protected(dst):
                 raise BundleError(" ".join(filter(None, (
                     _protected_words(season, stamp), back))))
@@ -988,7 +1020,8 @@ def _import_into(path: Path, m: dict, dst: Path, replace: bool, build: str,
             # left aside a later import's sweep puts back or removes
             if dst.exists() or dst.is_symlink():
                 if not replace:
-                    raise BundleError(_already(season, stamp))
+                    raise BundleError(_at_name_words(
+                        season, stamp, dst, m["bundle_sha256"]))
                 if reclaim.is_protected(dst):
                     raise BundleError(_protected_words(season, stamp))
                 # named before the rename: a Ctrl-C at any point after it
