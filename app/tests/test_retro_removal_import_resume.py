@@ -199,7 +199,8 @@ def test_a_results_page_opened_during_a_replace_starts_no_finalize(
     whole. (Since the review of #105 at bc045672, finding 3, the run
     being deleted is the old one set aside, its scores gone; the run's
     name already holds the new tree, whole, and the mark is still
-    held.)"""
+    held. Since the seventh pass, the old run let go is renamed
+    .dropping- before its delete begins.)"""
     p, dst, stamp = _imported(world)
     page = f"/retro/{SEASON}?archive={stamp}"
     paused, go = _paused_delete(monkeypatch)
@@ -216,7 +217,7 @@ def test_a_results_page_opened_during_a_replace_starts_no_finalize(
     try:
         assert paused.wait(20), "the Replace's delete did not begin"
         aside = [q for q in dst.parent.iterdir()
-                 if q.name.startswith(dst.name + ".replaced-")]
+                 if q.name.startswith(dst.name + ".dropping-")]
         assert len(aside) == 1, sorted(q.name for q in dst.parent.iterdir())
         assert (aside[0] / "weeks").is_dir()
         assert not (aside[0] / "scores.json").exists()

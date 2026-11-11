@@ -37,6 +37,7 @@ import json
 import os
 import re
 import shutil
+from contextlib import nullcontext
 from pathlib import Path
 
 from app.core import retro
@@ -177,15 +178,27 @@ def season_week_dirs(root: Path) -> list:
     return [p.parent for p in retro.season_sample_files(root)]
 
 
-def prune_season(root: Path) -> dict:
+def _held(hold, root: Path):
+    """`hold(root)` (the console's: Storage's _reclaim_hold), or a block
+    that always lets the work go on: around one week's prune or one
+    file's compress, it yields whether the tree may be touched now."""
+    return hold(root) if hold is not None else nullcontext(True)
+
+
+def prune_season(root: Path, hold=None) -> dict:
     """Prune every completed week in a season tree. Refuses protected
-    trees wholesale. Returns {"bytes": freed, "weeks": n_pruned}."""
+    trees wholesale. Returns {"bytes": freed, "weeks": n_pruned}. `hold`
+    (see execute) is asked before each week: once it says no, the rest of
+    the tree is left as it is."""
     root = Path(root)
     if is_protected(root):
         return {"bytes": 0, "weeks": 0}
     freed = weeks = 0
     for wd in season_week_dirs(root):
-        b = prune_week(wd)
+        with _held(hold, root) as free:
+            if not free:
+                break
+            b = prune_week(wd)
         if b:
             freed += b
             weeks += 1
@@ -285,18 +298,23 @@ def compressible_files(root: Path) -> list:
             if p.name == retro.SAMPLES_JSON and not is_protected(p)]
 
 
-def compress_tree(root: Path) -> dict:
+def compress_tree(root: Path, hold=None) -> dict:
     """Compress every plain-JSON stored week in one season tree, preserving
-    each file's mtime (caches stay valid). Returns {"saved", "files"}."""
+    each file's mtime (caches stay valid). Returns {"saved", "files"}.
+    `hold` (see execute) is asked before each file: once it says no, the
+    rest of the tree is left as it is."""
     saved = files = 0
     for p in compressible_files(root):
-        try:
-            before = p.stat().st_size
-            gz = retro.compress_samples_file(p)
-            saved += before - gz.stat().st_size
-            files += 1
-        except OSError:
-            continue              # one stuck file must not sink the sweep
+        with _held(hold, root) as free:
+            if not free:
+                break
+            try:
+                before = p.stat().st_size
+                gz = retro.compress_samples_file(p)
+                saved += before - gz.stat().st_size
+                files += 1
+            except OSError:
+                continue          # one stuck file must not sink the sweep
     return {"saved": saved, "files": files}
 
 
@@ -455,6 +473,21 @@ def clear_codegen_cache(busy=None, lock=None, registries=None) -> dict:
 
 # ------------------------------------------------------------ the full plan
 
+def _research_entries(research_root: Path) -> list:
+    """Season trees under one research root (compress-only), as the retro
+    root's: an import's temp tree and a Replace's old run set aside or
+    being deleted (replay_bundle.is_temp_name) are passed over, and the
+    survey and the perform step take the same list. [] when the root is
+    absent or protected."""
+    from app.core.replay_bundle import is_temp_name
+    rr = Path(research_root)
+    if not rr.is_dir() or is_protected(rr):
+        return []
+    return [p for p in sorted(rr.iterdir())
+            if not is_temp_name(p.name)
+            and (p / "weeks").is_dir() and not is_protected(p)]
+
+
 def _season_entries(retro_root: Path, skip: set) -> list:
     """Season trees under the retro root (live and archived), minus skipped
     (busy) names and protected trees. Symlinked seasons are operated on
@@ -497,10 +530,7 @@ def survey(retro_root: Path, workroot_base: Path,
     managed = _season_entries(retro_root, skip_seasons)
     research = []
     for rr in research_roots:
-        rr = Path(rr)
-        if rr.is_dir() and not is_protected(rr):
-            research += [p for p in sorted(rr.iterdir())
-                         if (p / "weeks").is_dir() and not is_protected(p)]
+        research += _research_entries(rr)
     for entry in managed:
         pruned_here = False
         for wd in season_week_dirs(entry):
@@ -546,10 +576,19 @@ def plan_counts(plan: dict) -> tuple:
 def execute(retro_root: Path, workroot_base: Path,
             research_roots=None,
             skip_seasons: set | None = None,
-            skip_workroots: set | None = None) -> dict:
+            skip_workroots: set | None = None,
+            hold=None) -> dict:
     """Perform the reclaim the survey described, against the tree as it
     stands NOW (every busy and protection rule re-applied per entry).
-    Returns actual bytes freed per category."""
+    Returns actual bytes freed per category.
+
+    `hold(tree)`, a context manager yielding True or False, is entered
+    around each week's prune and each file's compress in a season tree,
+    and the work is done inside it only when it yields True; on False the
+    rest of that tree is left alone. The console's (Storage's
+    _reclaim_hold) holds the lock a delete's, a move's or a Replace's mark
+    is taken under and says whether such a mark holds the tree, so a mark
+    can never come between that look and the work."""
     if research_roots is None:
         research_roots = RESEARCH_ROOTS      # read at call time: patchable
     skip_seasons = set(skip_seasons or ())
@@ -557,21 +596,17 @@ def execute(retro_root: Path, workroot_base: Path,
     out = {"week_bytes": 0, "weeks": 0, "workroot_bytes": 0, "workroots": 0,
            "compress_saved": 0, "compress_files": 0}
     for entry in _season_entries(retro_root, skip_seasons):
-        r = prune_season(entry)
+        r = prune_season(entry, hold)
         out["week_bytes"] += r["bytes"]
         out["weeks"] += r["weeks"]
-        c = compress_tree(entry)
+        c = compress_tree(entry, hold)
         out["compress_saved"] += c["saved"]
         out["compress_files"] += c["files"]
     for research in research_roots:
-        research = Path(research)
-        if not research.is_dir() or is_protected(research):
-            continue
-        for p in sorted(research.iterdir()):
-            if (p / "weeks").is_dir() and not is_protected(p):
-                c = compress_tree(p)
-                out["compress_saved"] += c["saved"]
-                out["compress_files"] += c["files"]
+        for p in _research_entries(research):
+            c = compress_tree(p, hold)
+            out["compress_saved"] += c["saved"]
+            out["compress_files"] += c["files"]
     for w in _workroots(workroot_base, skip_workroots):
         b = prune_workroot(w)
         if b:
