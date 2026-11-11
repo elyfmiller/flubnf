@@ -368,6 +368,14 @@ def import_bundle(path: Path, retro_root: Path, replace: bool = False,
         if not replace:
             raise BundleError(f"{season} from this bundle was already "
                               f"imported as {stamp}.")
+        # replacing deletes it: never a protected folder (reclaim's roots:
+        # the sealed records, the hub clone, FLUBNF_PROTECT_ROOTS)
+        from app.core import reclaim
+        if reclaim.is_protected(dst):
+            raise BundleError(f"{season} from this bundle is imported as "
+                              f"{stamp} in a protected folder, which the "
+                              "console never deletes; nothing was "
+                              "replaced.")
     tmp = dst.with_name(dst.name + ".importing")
     if tmp.exists() or tmp.is_symlink():
         retro.delete_tree(tmp)

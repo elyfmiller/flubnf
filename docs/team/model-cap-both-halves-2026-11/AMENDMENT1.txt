@@ -1,0 +1,58 @@
+AMENDMENT 1 TO THE TAIL CAP ON BOTH HALVES (prereg 67262c94): A LOWER HALF
+BALANCED IN ADMISSIONS (BN), THE GROUNDHOG HALF
+Model lane (Ely's Windows PC), written 2026-11-11 after Part 1's scores
+(86f194f0) and before any score of the arm below.
+
+WHY, AND WHAT IS ALREADY KNOWN. Ely, 2026-11-11, on reading Part 1: after a
+jump like Delaware's, the cap squeezes the top while the bottom keeps its
+width, so the bottom half can be wider than the capped top. That looks
+wrong and likely costs WIS; it should be looked at before the 2026-11-11
+run. Part 1 (report.txt) tested three lower-half rules, and all of them
+narrowed the lower half too far for the Groundhog: 95% coverage fell (10x
+R3: S 0.904, M 0.884, B 0.876, LN 0.867), most in October 2023, where the
+truth already fell below the band (no cap: 8.2% below the 2.5% quantile).
+B balanced the halves on the log scale, which pulls the 2.5% quantile up
+to m^2 / q97.5. The rule below balances them in admissions, which pulls it
+only to 2m - q97.5, so it acts only where the band is wider below the
+median than above it in the forecast's own units. This arm is chosen
+knowing Part 1's results, so it is held to Part 1's rule and to a second
+test against the one-sided shrink at the same level.
+
+THE ARM. Data, code, the post-calibration step, the levels, the limits and
+the location exponent k are Part 1's. Per location:
+  BN (balanced in admissions): the upper half as S (cap_rows' shrink with
+  k). Below the median, q' = m (q/m)^kN for every level with q > 0, where
+  kN = min(1, min over horizons h of e_h), and e_h is computed on the rows
+  before the cap, with q97.5'_h = m_h (q97.5_h / m_h)^k (the capped top,
+  unrounded):
+    t_h = 2 m_h - q97.5'_h (the 2.5% quantile that makes the band as wide
+    below the median as above it);
+    e_h = ln(m_h / t_h) / ln(m_h / q2.5_h) where m_h > 0, q2.5_h > 0 and
+    q2.5_h < t_h < m_h; otherwise e_h = 1.
+  kN = 1 when k = 1. A horizon whose 2.5% quantile is 0 is left alone
+  (counted and reported). Then whole_block, as for every arm.
+Arms: BN10-R3, BN10-RX, BN15-R3, BN15-RX. They are scored on the same
+17,116 cells, with Part 1's subsets, coverage, tails and h0 lean.
+
+CODE CHECK, in addition to Part 1's (i) to (iii) and (v): (vi) where kN < 1,
+at every horizon whose e_h was computed, the moved 2.5% quantile is at
+least 2m - q97.5 of the capped rows, within one admission; (vii) BN's
+levels above the median are identical to S's at the same n and V.
+
+PREDICTIONS, written now:
+  H1 BN changes fewer state blocks below the median than B at every n and
+     V.
+  H2 BN n-V - S n-V pooled in [-0.004, +0.001] for each of the four arms.
+  H3 95% coverage: BN n-V at most 0.010 below S n-V, for each arm.
+  H4 Sep-Oct (2023-24): BN costs less than B against S at 10x R3 (BN10-R3
+     - S10-R3 < B10-R3 - S10-R3).
+  H5 On EARLY, BN10-R3 - S10-R3 <= 0.
+
+DECISION RULE. BN n-V is RECOMMENDED over S n-V, the shrink alone at the
+same cap and level, when
+  (1) it passes Part 1's tests (a) to (f) against S n-R3; and
+  (2) against S n-V: the pooled difference <= 0 with the bootstrap
+      interval's upper end at most +0.002; no season worse by more than
+      0.003; 95% coverage pooled at most 0.010 lower.
+Otherwise not, with the failing tests named. The Groundhog half alone
+does not move the Oracle. Nothing ships without Ely.

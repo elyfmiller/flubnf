@@ -726,11 +726,17 @@ def retro_run(background: BackgroundTasks, season: str = Form(...),
             return _refused(
                 f"Not started: discarding {season} was not confirmed.",
                 "Nothing was deleted.")
-        if mode == "discard" and existing:
+        if mode in ("discard", "archive") and existing:
             # Storage's one barrier (sealed records, the hub clone,
-            # FLUBNF_PROTECT_ROOTS), before anything is moved or claimed
+            # FLUBNF_PROTECT_ROOTS), before anything is moved or claimed:
+            # an archive would move the season out from under it
             from app.ui.routes.storage import _storage_protected
             if _storage_protected(live):
+                if mode == "archive":
+                    return _refused(
+                        f"Not started: the {season} results are in a "
+                        "protected folder, which the console never moves.",
+                        "Nothing was moved.")
                 return _refused(
                     f"Not started: the {season} results are in a protected "
                     "folder, which the console never deletes.",
