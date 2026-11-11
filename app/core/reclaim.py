@@ -297,6 +297,21 @@ def compress_tree(root: Path) -> dict:
 
 # ------------------------------------------------------------ the full plan
 
+def _research_entries(research_root: Path) -> list:
+    """Season trees under one research root (compress-only), as the retro
+    root's: an import's temp tree and a Replace's old run set aside or
+    being deleted (replay_bundle.is_temp_name) are passed over, and the
+    survey and the perform step take the same list. [] when the root is
+    absent or protected."""
+    from app.core.replay_bundle import is_temp_name
+    rr = Path(research_root)
+    if not rr.is_dir() or is_protected(rr):
+        return []
+    return [p for p in sorted(rr.iterdir())
+            if not is_temp_name(p.name)
+            and (p / "weeks").is_dir() and not is_protected(p)]
+
+
 def _season_entries(retro_root: Path, skip: set) -> list:
     """Season trees under the retro root (live and archived), minus skipped
     (busy) names and protected trees. Symlinked seasons are operated on
@@ -339,10 +354,7 @@ def survey(retro_root: Path, workroot_base: Path,
     managed = _season_entries(retro_root, skip_seasons)
     research = []
     for rr in research_roots:
-        rr = Path(rr)
-        if rr.is_dir() and not is_protected(rr):
-            research += [p for p in sorted(rr.iterdir())
-                         if (p / "weeks").is_dir() and not is_protected(p)]
+        research += _research_entries(rr)
     for entry in managed:
         pruned_here = False
         for wd in season_week_dirs(entry):
@@ -406,14 +418,10 @@ def execute(retro_root: Path, workroot_base: Path,
         out["compress_saved"] += c["saved"]
         out["compress_files"] += c["files"]
     for research in research_roots:
-        research = Path(research)
-        if not research.is_dir() or is_protected(research):
-            continue
-        for p in sorted(research.iterdir()):
-            if (p / "weeks").is_dir() and not is_protected(p):
-                c = compress_tree(p)
-                out["compress_saved"] += c["saved"]
-                out["compress_files"] += c["files"]
+        for p in _research_entries(research):
+            c = compress_tree(p)
+            out["compress_saved"] += c["saved"]
+            out["compress_files"] += c["files"]
     for w in _workroots(workroot_base, skip_workroots):
         b = prune_workroot(w)
         if b:
