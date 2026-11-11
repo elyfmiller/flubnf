@@ -79,6 +79,18 @@ def _check_method(info: zipfile.ZipInfo, name: str) -> None:
                           "the bundle is damaged or altered.")
 
 
+def _check_offset(info: zipfile.ZipInfo, name: str) -> None:
+    """Refuse a member whose local header would lie before the start of
+    the file, with the words a member that cannot be unpacked gets. One
+    changed byte raising the end record's central-directory offset shifts
+    every member that way (zipfile subtracts the difference), and its seek
+    there raised a raw OSError (EINVAL), which read as a disk error. Only
+    this is checked: a real disk error still says so."""
+    if info.header_offset < 0:
+        raise BundleError(f"{name}: {info.filename} could not be unpacked; "
+                          "the bundle is damaged or altered.")
+
+
 class BundleError(ValueError):
     """A bundle that cannot be exported or imported; str() is the reason."""
 
@@ -267,6 +279,7 @@ def inspect_bundle(path: Path, name: str = "") -> dict:
                 raise BundleError(f"{name} has no {MANIFEST} at its "
                                   "top level, so it is not a replay bundle.")
             for i in infos:
+                _check_offset(i, name)
                 if i.filename.endswith("/"):
                     continue                          # a directory entry
                 if not _safe_member(i.filename):
@@ -910,6 +923,7 @@ def _import_into(path: Path, m: dict, dst: Path, replace: bool, build: str,
                             # asked again of the file opened here (it may
                             # have changed since it was inspected)
                             _check_method(z.getinfo(f), name)
+                            _check_offset(z.getinfo(f), name)
                             _extract_member(z, f, tmp / f, files[f]["sha256"],
                                             files[f]["bytes"], name)
                         except _UNREADABLE:
