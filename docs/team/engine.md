@@ -6,6 +6,30 @@ repositories outside this one; it pushes only this file here.
 
 ## Now
 
+- 2026-11-10 (late evening): Ely's old hub clone is renamed too, on Ely's
+  yes: `Documents\GitHub\FluSight-forecast-hub` is now
+  `Documents\GitHub\FluSight-forecast-hub-old`. It is still at e311e57
+  (target data of 2026-08-25) with a clean tree, `main` level with
+  `origin/main` and no stashes. Nothing had it open, and nothing was
+  deleted. To undo, rename it back.
+  - `flubnf.settings.HUB`, checked in the same three cases:
+    - A shell with no `FLUBNF_HUB` now gets
+      `%LOCALAPPDATA%\FluBNF\FluSight-forecast-hub`, whose target data run
+      through 2026-10-31.
+    - So does the account's value.
+    - A shell opened before 2026-11-09's install keeps its pin, which now
+      names a missing folder. The console then has no `locations.csv`:
+      doctor fails, and the console opens with no vintage. That shell no
+      longer forecasts from August's data without a sign.
+  - One exception to failing visibly: `FluBNF.bat` started from such a
+    shell offers to fetch the data, answers yes by itself after 20 s, and
+    `setup.ps1` would sparse-clone a new hub into the old Documents path
+    and record that path as the account's `FLUBNF_HUB`. The data would be
+    current, but the account would then have two hubs. A double-click
+    from Explorer reads the account's value and is not affected.
+  - With the entry below, the trap in the gate entry is closed for both
+    the engine and the hub.
+
 - 2026-11-10 (evening): Ely's old private checkout is renamed, on Ely's
   yes: `Documents\GitHub\PyBNF-pf` is now `Documents\GitHub\PyBNF-pf-old`.
   It is still at eab31c71 with a clean tree; nothing had it open, and
