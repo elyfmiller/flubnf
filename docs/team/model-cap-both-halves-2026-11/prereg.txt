@@ -1,0 +1,206 @@
+PRE-REGISTRATION: THE TAIL CAP ON BOTH HALVES, WITH THE CAP'S LEVEL.
+THE GROUNDHOG HALF NOW; THE ORACLE SIHRS HALF WHEN C0'S STORED WEEKS ARE ON
+THE PC
+Model lane (Ely's Windows PC), written 2026-11-10 before any score of any arm
+of this screen. Asked by Ely, 2026-11-04 (docs/team/submission.md Open: "the
+tail cap on both halves (the shrink's exponent applied below the median as
+well as above, or a separate lower-half exponent), so the cap acts in both
+directions in the middle of the rise"); the Submission lane's handoff of
+2026-11-04 19:11 UTC (the mirror, against the one-sided shrink and a lower
+narrowing; the cap's lagging level); Ely's go to start, 2026-11-10.
+Nothing here changes a shipped method. Nothing ships without Ely.
+
+WHAT IS ALREADY KNOWN (read before writing this, so the predictions are not
+blind):
+- Production since round 2026-10-31: the location-wide shrink above the
+  median (output.tail_mode shrink) at 10x the mean of the last three
+  reported weeks (flubnf.tailcap.RECENT_WEEKS); nothing below the median.
+- Submission, 2026-11-04, the mirror on three as-submitted October rounds
+  (10-10, 10-17, 10-24; truth through 10-31; states): Groundhog 15x 0.669
+  one-sided against 0.650 mirrored, 10x 0.631 against 0.597; log 0.557
+  against 0.542 and 0.561 against 0.534. Oracle 15x 0.670 against 0.656,
+  10x 0.646 against 0.620; log 0.627 against 0.598, 0.633 against 0.589.
+- Submission, 2026-11-04, round 2026-11-07 at 10x: the h0 band's width
+  below the median over the width above, typical state, Groundhog 0.32
+  before the cap and 0.79 after (Oracle 0.49 and 1.09); the location
+  exponent's median 0.54 for both members; Delaware's last week 2.09x the
+  three-week mean.
+- This lane, 2026-10-25 (laptop), the same Groundhog retro seasons (kernel
+  form, hub 3a83d410, 17,116 state cells), relWIS natural / log, coverage
+  50 / 95: none 0.6423 / 0.6249, 0.519 / 0.946; clip 15x 0.6433 / 0.6261,
+  0.519 / 0.939; shrink 15x 0.6491 / 0.6311, 0.508 / 0.928. Sep-Oct (2023-24,
+  772 cells) none 0.978, shrink 15x 0.935; November (2,012 cells) none
+  0.542, shrink 15x 0.561. From the 2026-10-22 screen (928 October cells
+  including 2026-27's weeks): shrink 10x Sep-Oct 0.828, Nov 0.599; 15x
+  0.904 and 0.561; none 0.949 and 0.542.
+- The Oracle's 84-week screen split by seed stage (submission.md,
+  2026-10-30): on the 15 corrected-seed weeks none 0.572, shrink 15x
+  0.577, shrink 10x 0.614 (95% coverage 0.96, 0.88, 0.80); in the 50
+  old-pin weeks every rule 0.616.
+No arm below has been scored on these seasons by anyone; the mirror's,
+the separate lower exponent's, the lower narrowing's and the level
+variants' retro scores are unknown to this lane.
+
+PART 1, THE GROUNDHOG HALF (runs once this file is frozen and on origin/dev)
+
+DATA AND CODE.
+- The stored forecasts: `flubnf groundhog retro all --aux flusurv` on dev
+  f05e70f7 (pre-move id), hub 3a83d410, run 2026-11-10 on this PC; the
+  shipped kernel form (own_share 0.5, anchor_weight kernel, kernel_sd 1.0,
+  ess_floor 30; donors aux_preset:flusurv+flusurv@06eff6a7). It reproduced
+  the record exactly (0.6802, 0.6272, 0.6448, pooled 0.6423 on 17,116
+  cells). Copied outside the repository, with sha256:
+    355dca4f1278128d2d7f973019cbb8689f7e3cb448432b52b05b6a058dfedbb5  replay/2023-24/forecasts.json.gz
+    48902aacbc74fd8cd3f8625a10cc8616ce5df4f1d9e1b2f8fda274eb51a3bd24  replay/2024-25/forecasts.json.gz
+    7bdd5f20134fba9c194819a8bba35c6b52b88f0028784079a4f9a5ac12517e67  replay/2025-26/forecasts.json.gz
+  The 52 state jurisdictions only (US is not in these replays).
+- The scoring hub: this lane's hub clone at 3a83d410 (settled truth,
+  FluSight-baseline, the archived vintages).
+- The repository's own functions, unchanged: app.core.submit
+  .rows_from_quantiles, app.core.data.vintage_path, flubnf.tailcap
+  (recent_level, limit_for, exponent_needed, shrink_block, whole_block,
+  cap_rows), app.core.groundhog.score_week. The new lower-half rules live
+  in this screen's script only; a mode in flubnf/tailcap.py is the
+  Submission lane's to write, at Ely's word, after this screen.
+- 2026-27 is not in the screen: the hub at 3a83d410 ends with the
+  2026-10-18 vintage, and this season's rounds are scored live by the
+  Submission lane.
+
+THE POST-CALIBRATION STEP, for every stored week W, in the pipeline's order
+(hub rows, then the cap; the historical ceiling is off, as registered and
+as submitted):
+- rows = rows_from_quantiles(q, fips, W), whole admissions, every state.
+- obs(fips): the week's vintage (vintage_path(W)), rows dated on or before
+  W, finite values, oldest first, the last 15, as the pipeline builds it.
+- the level, three variants: R3 = recent_level(obs) (the mean of the last
+  three; production); R1 = the last finite value of obs; RX = max(R3, R1).
+  A location whose level is 0, NaN or missing is left alone in every arm.
+- the upper limit L = n x level, for n in {10, 15}.
+- the location exponent k = min over horizons of exponent_needed(block_h,
+  L), the blocks taken from rows (as cap_rows takes them); k = 1 leaves the
+  location alone in every mode.
+- per block (location, horizon), median m, levels q:
+  S  (one-sided; production): cap_rows(rows, L, mode="shrink"), the
+     repository's own call; the median and below untouched.
+  M  (the mirror): q' = m (q/m)^k for every level with q > 0, both halves
+     (q = 0 stays 0); the upper half equals S's before rounding.
+  B  (a separate lower-half exponent): the upper half as S; below the
+     median q' = m (q/m)^kL with kL = min(1, min over horizons h of
+     k x ln(q97.5_h / m_h) / ln(m_h / q2.5_h)), the horizons taken where
+     q2.5_h > 0 and m_h > q2.5_h and q97.5_h > m_h, from the rows before
+     the cap; kL = 1 when k = 1. In words: once the cap acts, the lower half
+     is narrowed just enough that at every horizon the 95% band is no
+     wider below the median than above it on the log scale.
+  LN (a lower narrowing): the upper half as S; below the median q' =
+     m (q/m)^0.7 in every block with m > 0 (the narrowing's exponent,
+     oracle.narrow 0.7, applied to the lower half only; independent of
+     the cap and the level).
+  Then whole_block(capped, block) for every mode: the moved levels in
+  whole admissions (half to even), the block monotone.
+
+ARMS (all from the same stored forecasts, so the cells are common by
+construction): N (the hub rows, no cap); and X n-V for X in {S, M, B, LN},
+n in {10, 15}, V in {R3, R1, RX}: 24 arms. S10-R3 is production. K0, the
+stored quantiles unrounded (the record convention), is the reproduction
+gate only.
+
+REPRODUCTION GATE. K0 per season must equal 0.6802, 0.6272, 0.6448 (pooled
+0.6423, 17,116 cells) to four decimals. If not, stop and report before any
+arm is read.
+
+SCORING. score_week against the settled truth, FluSight's cell rule, the
+52 states pooled. relWIS (ratio of WIS sums against FluSight-baseline) and
+the log-scale relWIS; 50% and 95% coverage; and, descriptive, the share of
+scored cells whose truth falls below the 2.5% quantile and above the 97.5%.
+Subsets, each reported for every arm:
+- the three seasons pooled, and each season;
+- EARLY: the first 8 as-of weeks of each season with a scored state cell
+  (24 weeks);
+- the CORRECTED-SEED WINDOWS of the Oracle screen, every as-of date within
+  2023-10-07 to 2023-12-02, 2024-11-16 to 2024-12-14, 2025-11-15 to
+  2025-12-06 (the Groundhog has no seed; reported so the two halves read
+  side by side);
+- by as-of month: Sep-Oct, Nov, Dec on.
+Week-cluster bootstrap, 2,000 resamples stratified by season, numpy
+default_rng(20261110), of the pooled difference (negative = the first arm
+better): every arm against S10-R3; M, B and LN against S at the same n and
+level; S10-R1 and S10-RX against S10-R3, and the same at 15; S15-R3 against
+S10-R3. Pooled, EARLY and the corrected-seed windows.
+Descriptive: the h0 lean (the 95% band's width below the median over the
+width above, natural scale, median over state blocks; all weeks and EARLY),
+the share of state blocks each arm changes below and above the median, and
+the location exponents k and kL (median, share under 0.5).
+
+CODE CHECK (before any recommendation; a failure is a defect, reported):
+(i) S rows: an independent implementation of the location-wide shrink from
+its written rule (exponent from the worst horizon's 97.5% quantile, q' =
+m (q/m)^k above the median, rounding half to even, monotone) equals
+cap_rows on every block; (ii) every arm: the median unchanged, monotone,
+whole admissions where moved, unmoved levels identical to the hub rows;
+(iii) M, B, LN: the levels above the median identical to S's at the same n
+and V; (iv) B: at every horizon where kL was computed, the lower log-width
+of the 95% band at most the upper log-width after rounding, within one
+admission; (v) M with k = 1, B with kL = 1 and N agree block for block.
+
+PREDICTIONS, written now:
+  G1 The mirror helps where the cap acts and is about free elsewhere:
+     M10-R3 - S10-R3 pooled in [-0.012, +0.001]; M15-R3 - S15-R3 in
+     [-0.008, +0.001].
+  G2 On EARLY, M beats S at both caps (R3): M - S <= -0.005.
+  G3 The mirror costs coverage: 95% coverage M10-R3 at least 0.02 below
+     S10-R3 pooled, and M15-R3 at least 0.01 below S15-R3; the share of
+     truths below the 2.5% quantile rises under M at both caps.
+  G4 B sits between S and M: |B - S| <= |M - S| pooled at each n (R3), and
+     B changes fewer state blocks below the median than M.
+  G5 The lower narrowing does not help the Groundhog, whose lower half is
+     already the narrow one before the cap: LN10-R3 - S10-R3 and
+     LN15-R3 - S15-R3 pooled both >= -0.002.
+  G6 The level: R1 and RX raise the limit in rising weeks, so they act
+     less: S10-RX - S10-R3 pooled in [-0.010, +0.002], and on EARLY
+     S10-RX - S10-R3 <= +0.003. RX changes fewer state blocks than R3 at
+     each n.
+  G7 S10-R3 - S15-R3 > 0 pooled (the tighter cap costs over whole
+     seasons, as from November in the 2026-10-22 screen).
+
+DECISION RULE (this lane's recommendation to Ely; Ely and the PI choose n,
+10x having been their joint choice for the peers' widths, so the rule picks
+a mode and a level at each n and does not pick n):
+At each n, an arm X n-V other than S n-R3 is RECOMMENDED over S n-R3 when
+  (a) X n-V - S n-R3 pooled <= 0, the bootstrap interval's upper end at
+      most +0.002;
+  (b) no season is worse than S n-R3 by more than 0.005;
+  (c) EARLY: X n-V - S n-R3 <= +0.003;
+  (d) the log scale, pooled: X n-V - S n-R3 <= +0.002;
+  (e) 95% coverage pooled at least 0.90 and 50% at least 0.40; on EARLY
+      95% at least 0.85;
+  (f) the code check finds no defect.
+Among the arms that pass, the lowest pooled relWIS; within 0.001 of it,
+the simpler, in this order: level R3, RX, R1; mode M, B, LN. If none
+passes, S n-R3 stays the recommendation and the failing tests are named.
+The Groundhog half alone does not move the Oracle; a mode for both members
+waits for Part 2 unless Ely decides otherwise.
+
+PART 2, THE ORACLE SIHRS HALF (written now; runs when the lab Mac's
+research tree is on this PC, warm start 4.7)
+- C0's stored weeks of the width screen (84 as-of weeks of 2023-24 to
+  2025-26, 17,466 scored state cells per rule; PREREG.md of
+  model-oracle-width-screen-2026-10), post hoc, no engine: the stored
+  member samples (the Oracle step, the run's narrowing and the output floor
+  applied, as in a live run), hub rows by app.core.submit.quantile_rows,
+  then the same 25 arms as Part 1 with the same rules, at the run's own
+  narrowing exponent k 0.7 (no re-exponentiation), scored as score_arm.py
+  scores (FluSight's cell rule, the validated baseline join).
+- The same scores and subsets, and in place of the corrected-seed windows:
+  the 15 corrected-seed weeks and the 11 mixed weeks apart, the stage from
+  resolve_state with season_total_early on each archived vintage, as in
+  submission.md 2026-10-30.
+- The same code check, decision rule and tie order.
+- Predictions:
+  O1 On the corrected-seed weeks M10-R3 - S10-R3 <= -0.010 (S10 cost about
+     0.04 there against none).
+  O2 M15-R3 - S15-R3 pooled in [-0.010, +0.003].
+  O3 In the 50 old-pin weeks every arm within 0.003 of N.
+  O4 LN costs the Oracle more than the Groundhog (its narrowing already
+     acts on both halves): LN15-R3 - S15-R3 pooled >= 0.
+Before Part 2 runs, any change to it is a dated amendment beside this
+file, frozen before the Oracle half's first score.

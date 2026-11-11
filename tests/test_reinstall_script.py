@@ -108,6 +108,22 @@ def _home_with_old_install(tmp_path: Path) -> Path:
     return home
 
 
+def _python312_dir(tmp_path: Path) -> Path:
+    """A folder holding a stand-in `python3.12`, for PATH. The public route
+    needs exactly Python 3.12 and stops before anything changes without one;
+    the machine running the tests need not have it (GitHub's ubuntu-26.04
+    image has none), and these tests are about the engine file, not the
+    Python check."""
+    d = tmp_path / "py312-bin"
+    d.mkdir()
+    stub = d / "python3.12"
+    stub.write_text('#!/bin/sh\n'
+                    '[ "$1" = "-V" ] && echo "Python 3.12.0 (a test stand-in)"\n'
+                    'exit 0\n')
+    stub.chmod(0o755)
+    return d
+
+
 def _run(home: Path, origin: Path, *, no_install: bool = True,
          **env_extra) -> subprocess.CompletedProcess:
     env = {k: v for k, v in os.environ.items() if not k.startswith("FLUBNF_")}
@@ -295,7 +311,9 @@ def test_the_default_route_needs_no_engine_file(tmp_path):
     folders stay where they are."""
     origin, _ = _bare_origin(tmp_path)
     home = _home_with_old_install(tmp_path)
-    out = _run(home, origin, FLUBNF_ENGINE=None)
+    py312 = _python312_dir(tmp_path)
+    out = _run(home, origin, FLUBNF_ENGINE=None,
+               PATH=f"{py312}{os.pathsep}{os.environ.get('PATH', '')}")
     assert out.returncode == 0, out.stdout + out.stderr
     assert "no engine file found" not in out.stdout
     assert "installed from engine-requirements.txt" in out.stdout

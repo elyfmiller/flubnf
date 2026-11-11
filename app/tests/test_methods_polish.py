@@ -368,7 +368,7 @@ def test_each_settings_note_is_one_plain_sentence():
     from app.ui.routes.methods import settings_reference
     notes = [r["note"] for g in settings_reference() for r in g["rows"]
              if r["note"]]
-    assert len(notes) == 11
+    assert len(notes) == 12
     keys = "|".join(re.escape(k) for k in K.BY_KEY)
     for n in notes:
         assert n.endswith(".") and ". " not in n, n

@@ -1,0 +1,49 @@
+defects: 0; common cells per member: 465
+  Oracle 2026-10-10: 52 states, larger above mean in 43; blocks changed {'S10-R3': 164, 'S10-RX': 152, 'S15-R3': 116, 'S15-RX': 96}
+  Oracle 2026-10-17: 51 states, larger above mean in 36; blocks changed {'S10-R3': 204, 'S10-RX': 204, 'S15-R3': 204, 'S15-RX': 204}
+  Oracle 2026-10-24: 52 states, larger above mean in 35; blocks changed {'S10-R3': 184, 'S10-RX': 176, 'S15-R3': 156, 'S15-RX': 143}
+  Groundhog 2026-10-10: 52 states, larger above mean in 43; blocks changed {'S10-R3': 208, 'S10-RX': 208, 'S15-R3': 204, 'S15-RX': 204}
+  Groundhog 2026-10-17: 52 states, larger above mean in 36; blocks changed {'S10-R3': 208, 'S10-RX': 208, 'S15-R3': 187, 'S15-RX': 187}
+  Groundhog 2026-10-24: 52 states, larger above mean in 35; blocks changed {'S10-R3': 208, 'S10-RX': 208, 'S15-R3': 180, 'S15-RX': 180}
+
+BY MEMBER (states, rounds 10-10, 10-17, 10-24; truth through 10-31): relWIS, log, cov50, cov95, by round
+Oracle:
+        relWIS     log   cov50   cov95  2026-10-10  2026-10-17  2026-10-24
+arm                                                                       
+N       0.7821  0.6621  0.7269  0.9914      0.8009      0.8552      0.6317
+S10-R3  0.6595  0.6442  0.5978  0.9677      0.7332      0.5914      0.6219
+S10-RX  0.6796  0.6482  0.6215  0.9720      0.7611      0.6116      0.6268
+S15-R3  0.6868  0.6401  0.6559  0.9849      0.7668      0.6275      0.6232
+S15-RX  0.7057  0.6468  0.6688  0.9849      0.7868      0.6553      0.6258
+Groundhog:
+        relWIS     log   cov50   cov95  2026-10-10  2026-10-17  2026-10-24
+arm                                                                       
+N       0.7751  0.5693  0.7290  0.9957      0.7799      0.7667      0.7785
+S10-R3  0.6279  0.5544  0.5656  0.9806      0.5998      0.6437      0.6580
+S10-RX  0.6496  0.5574  0.5957  0.9892      0.6293      0.6630      0.6685
+S15-R3  0.6699  0.5525  0.6538  0.9935      0.6549      0.6820      0.6802
+S15-RX  0.7055  0.5597  0.6817  0.9935      0.6996      0.7132      0.7051
+
+CONSISTENCY WITH SUBMISSION'S 2026-11-04 TABLE (S10-R3 / S15-R3): Oracle 0.646 / 0.670, Groundhog 0.631 / 0.669
+  Oracle: 0.6595 / 0.6868
+  Groundhog: 0.6279 / 0.6699
+
+LOCATION-CLUSTER BOOTSTRAP, 2,000 resamples of the 52 states, default_rng(20261111) (difference in relWIS, first arm less second; negative = first better)
+  10x Oracle: S10-RX - S10-R3 +0.0201 [+0.0088, +0.0327]; log +0.0040
+  10x Groundhog: S10-RX - S10-R3 +0.0217 [+0.0117, +0.0330]; log +0.0030
+  10x contrast D (Oracle's difference less the Groundhog's): -0.0016 [-0.0056, +0.0029]
+  15x Oracle: S15-RX - S15-R3 +0.0188 [+0.0105, +0.0320]; log +0.0067
+  15x Groundhog: S15-RX - S15-R3 +0.0356 [+0.0247, +0.0479]; log +0.0072
+  15x contrast D (Oracle's difference less the Groundhog's): -0.0168 [-0.0268, -0.0065]
+
+THE RULE (AMENDMENT2.txt), 10x:
+  (r1) Oracle S10-RX - S10-R3 > +0.005: +0.0201 -> True
+  (r2) D > +0.010 with its interval above 0: -0.0016 [-0.0056, +0.0029] -> False
+  (r3) no code-check defect: 0 -> True
+  -> NO CONCRETE REASON AGAINST larger FOR BOTH MEMBERS
+
+PREDICTIONS:
+  P1 S10-RX - S10-R3 >= 0 for both members: Oracle +0.0201, Groundhog +0.0217 -> holds
+  P2 |D| <= 0.010 at 10x: -0.0016 -> holds
+  P3 cov95 S10-RX >= S10-R3 for both: Oracle 0.972 vs 0.968, Groundhog 0.989 vs 0.981 -> holds
+  (known before the freeze, not a prediction) larger above the mean in 73.5% of the Oracle's state-rounds

@@ -13,6 +13,248 @@ until 2026-11-09 and on the Windows PC since then.
 
 ## Now
 
+- 2026-11-11 (07:10 UTC): THE CAP'S LEVEL ON THE ORACLE: IT RESPONDS AS THE
+  GROUNDHOG DOES, SO NOTHING HERE ARGUES AGAINST `larger` FOR BOTH. Ely
+  decided `larger` for both members at 10x and offered the PC to test the
+  Oracle first (Decided, same day). C0's weeks are on the lab Mac, so
+  amendment 2 (AMENDMENT2.txt, f6ea323a, frozen 07:06:50 UTC and pushed in
+  5ae7857f before its first score) uses what the PC has: the Oracle's and
+  the Groundhog's own rounds of 2026-10-10, 10-17 and 10-24, the last
+  before the cap, as submitted, with truth through 10-31 (hub a73013aa).
+  That gives 465 state cells per member, the same cells for both.
+  Records in
+  [model-cap-both-halves-2026-11/](model-cap-both-halves-2026-11/README.md):
+  - At 10x, the larger level against the three-week mean, relWIS:
+    Oracle 0.6595 to 0.6796, +0.0201 [+0.0088, +0.0327]; Groundhog 0.6279
+    to 0.6496, +0.0217 [+0.0117, +0.0330]. The Oracle's difference less
+    the Groundhog's is -0.0016 [-0.0056, +0.0029] (2,000 resamples of the
+    states). Log scale: +0.0040 and +0.0030.
+  - 95% coverage rises a little for both members (Oracle 0.968 to 0.972,
+    Groundhog 0.981 to 0.989). In October both members' bands were too
+    wide (0.991 and 0.996 with no cap), so the tighter limit scored
+    better.
+  - 10-24 is the one round on today's Oracle settings (weight one
+    quarter, narrowing 0.7). There the cost is +0.0049 (0.6219 to 0.6268),
+    against +0.028 and +0.020 on 10-10 and 10-17.
+  - The rule: no concrete reason against `larger` for both members. The
+    Oracle loses about 0.02, but the Groundhog loses the same. Predictions
+    P1 to P3 hold.
+  - Coverage decides the sign, not the month (App's reading, updated
+    07:30 UTC). This lane checked it on Part 1's cells by as-of month
+    (Groundhog, 10x). The larger level costs where the band capped on the
+    mean already covered about 0.9 at 95%: October and November 2023,
+    +0.031 and +0.022, coverage 0.89 and 0.90. It gains where that band
+    undercovered:
+    - November and December 2024: -0.024 and -0.034, coverage 0.74 and
+      0.68.
+    - November and December 2025: -0.068 and -0.033, coverage 0.62 and
+      0.70.
+    These October rounds covered 0.968 (Oracle) and 0.981 (Groundhog), so
+    a cost was to be expected for both members. Over the three seasons
+    the larger level gained 0.0135 at 10x. The Oracle reacts to the level
+    as the Groundhog does, so that evidence is the best guide for both,
+    but the Oracle's own gain is inferred, not tested. Part 2, on C0's 84
+    weeks, stays as registered.
+  - The Oracle is moving into the undercovering regime. These are App's
+    figures, checked here after the scores, outside the rule:
+    - Truth above the 97.5% quantile capped on the mean, by round: Oracle
+      0.5%, 3.9% and 6.7% of cells; Groundhog 1.4%, 1.9% and 2.9%.
+    - Submitted round 10-31, h0: 6 of 47 Oracle states above it (95%
+      coverage 0.872); the Groundhog 4 of 52 (0.923).
+    - The 10-31 data: 46 of 52 states have the last week above the
+      three-week mean (median 1.32). Eight are at 1.5x or more: Delaware
+      2.09, Idaho 1.74, South Dakota, DC, New Jersey, Alabama, Arkansas
+      and New York (1.51 to 1.60).
+  - App reproduced amendment 2 on Ely's laptop from its own hub clone at
+    a73013aa, and the report is byte-identical. It also ran Submission's
+    knob through app/ui/pipeline.py on these rows: `larger` and `mean`
+    give exactly S10-RX and S10-R3, and the run record names level
+    larger for both members.
+  - App's post hoc subset, one of about 20 it looked at, not rechecked
+    here and not weighed: in states whose last week was over 1.5x the
+    mean, the gap is +0.0247 [+0.0046, +0.0481] at 10x. Nearly all of it
+    is from 10-10, on the Oracle's old settings, and it reverses on
+    10-24, where 2 states qualify.
+  - Submission's table of 2026-11-04 uses a different measure (corrected
+    07:30 UTC; at 07:10 this lane called the gap unexplained). That table
+    is relative skill against every team's files, pairwise and scaled to
+    FluSight-baseline (submission.md, Now, 2026-11-04). Amendment 2 is a
+    ratio of sums against FluSight-baseline. So report_amend2.txt's
+    "consistency" line compares unlike measures. App found the per-cell
+    WIS identical in the two scorers. Uncapped, Submission's Groundhog
+    reads 0.767 against 0.7751 here.
+
+- 2026-11-11 (05:10 UTC): THE CAP ON BOTH HALVES, AMENDMENT 1: A LOWER HALF
+  BALANCED IN ADMISSIONS DOES NOTHING THE LEVEL HAS NOT ALREADY DONE. Ely,
+  reading the entry below: after a jump like Delaware's the bottom half can
+  be wider than the capped top, which looks wrong and may cost WIS; look at
+  it before the 2026-11-11 run. AMENDMENT1.txt (c8db37b6, frozen 05:05:59
+  UTC, pushed in 9c63e563 before its first score) adds the gentlest rule:
+  below the median, pull in only where the 95% band is wider below than
+  above in admissions, just far enough to even it (BN). Groundhog, same
+  17,116 cells, records in
+  [model-cap-both-halves-2026-11/](model-cap-both-halves-2026-11/README.md):
+  - Against the shrink alone at the same cap and level: 10x R3 -0.0002
+    [-0.0014, +0.0011], 10x RX +0.0003, 15x R3 +0.0003, 15x RX +0.0001.
+    Neutral on WIS, with a little coverage lost (10x R3 0.904 to 0.888).
+    It helps in November (10x R3 0.5991 to 0.5951) and costs in October
+    2023, though half as much as the log-scale balance did.
+  - The level already evens the band in the rise. The h0 width below the
+    median over the width above, November, 10x: 1.12 on the three-week
+    mean, 0.82 on the larger of last week and the mean; 0.50 at 15x on the
+    larger. With that level, BN acts in 4.3% of location-weeks at 10x and
+    0.7% at 15x.
+  - Predictions H1, H2, H4 and H5 hold; H3 fails (coverage at 10x R3).
+    The rule recommends no BN arm.
+  - For the Groundhog, then: the level is the fix, and nothing below the
+    median adds to it. The Oracle is untested here, and its lower half is
+    the wider one after the cap (submission.md, 2026-11-04: 1.09 at 10x).
+
+- 2026-11-11 (02:50 UTC): THE TAIL CAP ON BOTH HALVES, THE GROUNDHOG HALF:
+  THE LEVEL MATTERS, NOT THE LOWER HALF. Scored after the freeze (entry
+  below), per the prereg; records in
+  [model-cap-both-halves-2026-11/](model-cap-both-halves-2026-11/README.md)
+  (README, report.txt, RUNLOG.md). Gate: the record reproduces exactly
+  (0.6802, 0.6272, 0.6448, pooled 0.6423 on 17,116 cells); code check
+  clean in all three seasons.
+  - The level. Taking the larger of the last week and the three-week mean
+    (RX) beats the three-week mean at both caps: 10x -0.0135 [-0.0220,
+    -0.0053] pooled (0.6642 to 0.6507), -0.028 on the first 8 weeks of
+    each season, -0.042 on the corrected-seed windows; 15x -0.0055
+    [-0.0099, -0.0014] (0.6491 to 0.6437). 95% coverage rises (10x 0.904
+    to 0.923). The one cost is October 2023, where the tight cap had
+    helped (Sep-Oct 0.8555 to 0.8865).
+  - The lower half. The mirror (M) and the separate exponent (B) gain a
+    little against the one-sided shrink at the same cap (10x R3: -0.0030
+    and -0.0050). They lose on the log scale and lower 95% coverage (10x
+    0.904 to 0.884 and 0.876), most in October 2023, where the truth
+    already fell below the band. The lower narrowing (LN) is -0.0003
+    [-0.0065, +0.0070] with 95% coverage 0.867 at 10x.
+  - Predictions: G1, G5 and G7 hold; G2, G3, G4 and G6 fail (README).
+  - The rule. At 15x, S15-RX passes every test and is RECOMMENDED. At 10x
+    no arm passes: every 10x arm fails the EARLY 95% coverage floor of
+    0.85, where production stands at 0.778. So S10-R3 stays. Outside the
+    rule: S10-RX fails only that floor (0.843), and it beats production
+    pooled, in two of three seasons, early, on the corrected-seed windows,
+    on the log scale and in coverage; 2023-24 is +0.0027. No lower-half
+    rule passes at either cap.
+  - For Ely (Open, same time): the level is one setting per location for
+    both members, and the Oracle half (Part 2) waits for the lab Mac's
+    research tree.
+
+- 2026-11-11 (02:33 UTC): THE TAIL CAP ON BOTH HALVES, PRE-REGISTERED
+  (warm start task 3, Ely's go of 2026-11-10; Ely's item of 2026-11-04 and
+  the Submission lane's handoff of 2026-11-04 19:11 UTC, submission.md).
+  Frozen 2026-11-11 01:31 UTC, before any score:
+  [model-cap-both-halves-2026-11/prereg.txt](model-cap-both-halves-2026-11/prereg.txt),
+  sha256 67262c94...a0d (`prereg.txt.sha256` beside it), with the
+  screen's script `both.py`.
+  - Arms: production's location-wide shrink above the median (S), plus
+    one of three rules below it: the same exponent (M, the mirror); a
+    separate exponent, just enough that once the cap acts the 95% band is
+    no wider below the median than above it on the log scale (B); or a
+    fixed 0.7 lower narrowing (LN). Each at 10x and 15x, on the level as
+    the three-week mean (production), the last week, or the larger of
+    the two: 24 arms and no cap.
+  - The Groundhog half runs now, post hoc on this lane's Groundhog retro
+    of 2026-11-10 (the record, reproduced exactly on dev f05e70f7, new id
+    9477f398; the stored forecasts' sha256 are in the prereg). The Oracle
+    half is written in the same file and runs on C0's 84 stored weeks once
+    the lab Mac's research tree is on the PC.
+  - Predictions G1 to G7 and the decision rule are in the file. The rule
+    recommends a lower-half rule and a level at each cap and leaves 10x
+    against 15x to Ely and the PI.
+
+- 2026-11-10 (15:42 UTC): APP'S OPEN ITEMS FOR THIS LANE (App's plan,
+  Ely's go of 2026-11-10). Written on the branch
+  `model/app-open-items-2026-11-10` while #101 (dev to main) is open.
+  - MO-20 (G12), the two-strain record on the Models tab, traced. Both
+    figures come from the full-grid ensemble gate of August 2026, on the
+    seal of 2026-08-19: 2023-24, 2024-25 and 2025-26 pooled, 52
+    jurisdictions, 3 replicates, 10,000 particles, vintage-true, before
+    the donor-pool exclusion. Sources: docs/archive/RELEASE-1.0.md (the
+    seal table, and the ledger's two-strain entry: "equal thirds scored
+    0.7189 against the two-member 0.7039"), and the Models text of
+    ef13821b (2026-08-21).
+    - 0.704 (0.7039) is the two-member blend: the single-strain SIHRS
+      fitted by the Liu-West filter, and the analogue, 50/50, unfitted
+      (the 1.0 and 1.1 releases' submitted ensemble, since retired).
+      15,460 cells (6,063, 4,922 and 4,475 by season); 0.847, 0.651 and
+      0.691 by season before the exclusion. After the exclusion the
+      same blend is 0.678.
+    - 0.719 (0.7189) is not the two-strain model alone. It is the
+      equal-thirds three-member ensemble: the single-strain Liu-West
+      filter member, the analogue and the two-strain SIHRS at one third
+      each, "on identical full-grid cells" (ef13821b). The record does
+      not give that cell count or the by-season figures, and the
+      three-member blend was never re-scored after the exclusion.
+    - The two-strain model's own full-grid figures are the turn gate,
+      0.953 against the single-strain Liu-West filter member's 0.993 on
+      1,248 turn cells, and the plateau season 2023-24, 0.968 against
+      1.023. No
+      pooled three-season figure for it alone is in the repository.
+    - The per-cell results and harnesses are in the lab's private
+      archive, not in this repository (RELEASE-1.0.md, "Where the
+      evidence lives"), so the cells behind 0.719 cannot be checked
+      from here. The two figures stay in the record, dated 2026-08.
+    - For App: the bar label "Two-strain SIHRS 0.719"
+      (app/ui/routes/models.py, since 96d927de of 2026-09-27) gives the
+      three-member ensemble's score as the two-strain model's own. The
+      August text was right: "the equal-weight three-member ensemble
+      scored 0.719 against 0.704 for the two-member blend". Suggested
+      bars: "Ensemble with it (equal thirds)" 0.719 and "Ensemble
+      without it (50/50)" 0.704, both "seal of 2026-08-19, three
+      seasons, before the donor-pool exclusion".
+  - HM-01: the Groundhog's figure of record is the size-matched form's
+    0.642 (pooled 0.6423; 0.680, 0.627 and 0.645 by season; 17,116
+    cells, FluSight's cell rule; `flubnf groundhog retro all --aux
+    flusurv`, hub 3a83d410). That form has shipped since 2026-10-23
+    (entry of that day below). 0.660 (0.6604) is the own-state form
+    without size weighting, shipped 2026-10-15 to 2026-10-23 and
+    submitted 2026-10-24. On dev fd76172c, Home, Models, Methods and
+    README already give 0.642 (G11, #65). Still on 0.660 or the earlier
+    form: docs/FLUSIGHT-2026-27.md line 92 and its method row
+    (line 88: no size-matched donors); CITATION.cff line 38 and its
+    method text (lines 31 to 35); docs/ORACLE-SIHRS.md line 286 ("the
+    shipped own-state form's"); docs/SITE.md lines 115 to 117 (the
+    labels).
+  - FC-13 (G26): agreed, the run-wide rule should keep precedence. It is
+    a run setting applied to both members alike, while a zero-anchor
+    choice is the Groundhog's alone. If the state's choice won, the two
+    members would anchor that state differently under a rule the run
+    says covers it. Under the rule a covered state gets "Both from the
+    week before", which for the Groundhog is the same in effect as
+    Extend: the newest positive week, with the donor ratio spanning the
+    zero weeks. Nothing shipped rests on this: data.trailing_zero ships
+    "keep", and no zero-anchor rule ships. The precedence holds as long
+    as the box offers only what applies and the record says what was
+    applied (#85, #89). A run of 3 or more zeros is not covered
+    (MAX_CARRY 2; covering_rules uses tail_flags), so it keeps its own
+    choices, which is right.
+  - FC-14: missing.py should keep the zero-anchor rows out of
+    aside_weeks. The 0 is a reported week that stays on the observed
+    line and in scoring, not a week set aside. But no zero-anchor rule
+    anchors on that 0, so the fan should not start from it:
+    - Extend: from the newest positive week and its value, as for a
+      set-aside, with the zero weeks left on the observed line.
+    - Level: anchored at the zero week's date on the mean of the newest
+      4 weeks, a value the chart does not have. Start at horizon 0, with
+      no connector.
+    - Blend and the Poisson fallbacks have no single anchor. Start at
+      horizon 0, with no connector.
+    The flag row names the rule and the week. The engine's note gives
+    the anchor only as text.
+  - Seasons part-way through on the PC: none. No `run_meta.json`, week
+    `engine.json` or Sandbox experiment exists in any of the four FluBNF
+    copies here, nor in %TEMP%: the Engine session's clone
+    (`app\state\logs` only), this lane's clone (no state),
+    `%LOCALAPPDATA%\FluBNF\flubnf` (no state) and `D:\Projects\flubnf`
+    (`main` 375f56a8 of 2026-09-29, `app\state\logs` only). No
+    `FLUBNF_STATE_DIR` is set for the account. So no resume across
+    engines can be refused here yet.
+  - Not started, waiting on Ely: remaking the shipped replays on the
+    public engine on the PC, after the 11-18 comparison.
+
 - 2026-11-10 (04:40 UTC): THE GROUNDHOG'S FLAT SMALL STATES (Submission,
   2026-11-05): NOT A DEFECT AND NOT THE PIN. THE GROUNDHOG HAS NO TREND
   TERM, SO EVERY STATE GETS THE CALENDAR'S RISE. Record:
@@ -69,13 +311,8 @@ until 2026-11-09 and on the Windows PC since then.
     (numpy 2.4.6, pandas 3.1.1). A sparse partial hub clone,
     `%USERPROFILE%\GitHub\FluSight-forecast-hub-model`, holds target-data,
     auxiliary-data, hub-config and four model-output folders.
-  - Not yet: both engines (the Engine session installs them, Decided), so
-    no doctor, no test baseline and no Groundhog record reproduction on
-    this PC yet. They follow once the engines are in.
-    `engine-public` is not yet merged into `dev` (b4b176b), so a `dev`
-    clone installs the private engine only. G21 (#79) has landed: replays,
-    season reports and `engine_update.json` now follow FLUBNF_STATE_DIR.
-    The Sandbox part is left for Ely.
+  - G21 (#79) has landed: replays, season reports and `engine_update.json`
+    now follow FLUBNF_STATE_DIR. The Sandbox part is left for Ely.
   - 2026-11-10 (07:54 UTC): `engine-public` is merged into `dev` (#61,
     def45db), and this clone is at that commit. A `dev` copy that records
     no engine now runs the public engine; the private one runs only with
@@ -84,10 +321,49 @@ until 2026-11-09 and on the Windows PC since then.
     `FLUBNF_ENGINE`, since a season begun on one engine is refused on the
     other. On the PC, the private engine is in (engine.md, 2026-11-09:
     2fdadee0 at `%LOCALAPPDATA%\FluBNF\PyBNF-pf`); the public venv
-    (`%LOCALAPPDATA%\FluBNF\venv-public`) is not yet. The doctor under
-    each engine, `engine_lock.py check`, the test baseline and the
-    Groundhog record reproduction wait for it, so as not to run against
-    the Engine session's install and timings.
+    followed (next item).
+  - 2026-11-10 (21:05 UTC): SET UP AND CHECKED, both engines in (the
+    Engine session's install, engine.md 16571001). On `dev` f05e70f7,
+    while the Engine session's three gate runs held most of the cores
+    (so the times below carry that load):
+    - Builds. Private: 2fdadee0 on `feature/particle-filter` at
+      `%LOCALAPPDATA%\FluBNF\PyBNF-pf`, bngsim 0.15.1, venv
+      `%USERPROFILE%\.venvs\flubnf-engine`. Public: lanl/PyBNF 8410f794
+      (pybnf 1.8.1 from its wheel), bngsim 0.15.1, Python 3.12.10,
+      `%LOCALAPPDATA%\FluBNF\venv-public`. The console venv stays on
+      Python 3.11.9. Perl is the machine-wide Strawberry Perl.
+    - `flubnf doctor`: 15 ok, no warning, under each of
+      `FLUBNF_ENGINE=private` (build 2fdadee0, the production build) and
+      `public` (8410f794, the pinned build). `engine_lock.py check`:
+      "public engine ready: pybnf 1.8.1 from
+      pybnf-1.8.1-py3-none-any.whl, bngsim 0.15.1".
+    - A trap on this PC: a shell started before the Engine session's
+      install still carries the old FLUBNF_HUB and FLUBNF_PYBNF (under
+      `Documents\GitHub`, a fork at eab31c71), and doctor under private
+      then fails ("older than this console"). A new window reads the
+      account's values; an older shell must take them from the User
+      variables first, as this lane's runs did.
+    - Test baseline, CI contract (`FLUBNF_HUB=/nonexistent`,
+      `pytest tests app/tests -o addopts=""`): 12 failed, 4,660 passed,
+      349 skipped, 13 minutes. Nine expect a machine with no engine, and
+      this PC has both (test_no_engine 5, test_datasets_ui 2,
+      test_retro_archive 2). One needs `bash` on the PATH
+      (test_reinstall_script). Two pass when run alone
+      (test_retro_fit_level's midweek stop, 3 of 3; test_results_prep's
+      versions), so order or load, not this PC. The lab Mac's baseline
+      was 22.
+    - The Groundhog record reproduces exactly: `flubnf groundhog retro all
+      --aux flusurv` on hub 3a83d410 (this lane's hub clone), with
+      `FLUBNF_ENGINE=public` named (the Groundhog fits nothing): 0.6802,
+      0.6272 and 0.6448, pooled 0.6423 on 17,116 cells; coverage 50/80/95
+      0.500 / 0.785 / 0.936. 17 minutes.
+    - Found on the way: that command writes its seasons to the clone's
+      `app\state\groundhog` and its FluSurv cache to `app\state\flusurv`
+      whatever FLUBNF_STATE_DIR says (app/core/groundhog.py `STATE`,
+      flubnf/flusurv.py `CACHE_DIR`), so G21 does not cover it (For
+      other lanes).
+    - Still not here: the lab Mac's research tree (warm start 4.7), so
+      nothing post hoc on C0 yet.
 
 - 2026-10-26 (00:39 UTC): THE ORACLE SIHRS WIDTH SCREEN'S RECORDS ARE IN THE
   REPOSITORY (Ely: "make sure your results are visible to the Team agent
@@ -1180,6 +1456,30 @@ until 2026-11-09 and on the Windows PC since then.
 
 ## Decided
 
+- 2026-11-11 (Ely, relayed by App, for the 2026-11-11 run): the tail cap's
+  level is output.tail_level = larger, the larger of the last reported
+  week and the three-week mean, for both members. The cap stays at 10x
+  and the mode (shrink) is unchanged. Ely, verbatim: "i think we then
+  allow the option to be had, meaning between the larger most recent is
+  used if not larger than the last 3week mean. cap is still fine at 10x.
+  the oracle should probably do the same for better odds? the oracle
+  agent has the PC to test if needed". This lane reads it as App does:
+  the larger of the two. The Oracle check Ely offered is amendment 2 of
+  the cap screen (Now).
+- 2026-11-11 (Ely, to this lane: "you two will communicate on the repo for
+  now"): this lane and the Submission lane talk through the repository.
+  The Submission lane is a cloud session ("NAU_PyBNF TEAM") that cannot
+  message the sessions on Ely's computers. This lane writes to it here,
+  under For other lanes, and reads its docs/team/submission.md on dev and
+  on its branch assited_dev/bold-sagan-kfw8gg before each piece of work.
+  It answers in that file (submission.md, Decided, same day).
+- 2026-11-10 (Ely, D5, adopted from the reviewer's answers; relayed by
+  App): the shipped replays are remade on the public engine, on the PC,
+  not before the side-by-side comparison of 2026-11-18. They go into a
+  separate folder, and their scores are compared with the shipped
+  replays'. The shipped replays are replaced only once Ely has seen the
+  differences. The private-engine replays stay as the record of what was
+  run.
 - 2026-11-09 (Ely, on the move to the Windows PC):
   - This lane takes the Groundhog's requests.
   - The Submission-Wednesday window does not apply to the Windows PC: the
@@ -1328,6 +1628,83 @@ until 2026-11-09 and on the Windows PC since then.
 
 ## For other lanes
 
+- 2026-11-11 (07:10 UTC), Submission and App: THE ORACLE ANSWER FOR TODAY'S
+  RUN. The Oracle SIHRS keeps `larger`, as Ely decided: output.tail_level
+  = larger for both members, the cap at 10x, mode shrink. Not
+  `larger_groundhog`. This lane's check on the PC (Now, 07:10 UTC;
+  amendment 2) finds no Oracle-specific harm. On the Oracle's own October
+  rounds the larger level costs the Oracle +0.0201 and the Groundhog
+  +0.0217, a gap of -0.0016 [-0.0056, +0.0029]. Both members pay that
+  cost, and it comes where the bands capped on the mean were too wide
+  (95% coverage 0.97 to 0.98 here). Where those bands undercovered, the
+  larger level gained in Part 1, and the Oracle is heading there (Now,
+  07:10 UTC, updated 07:30). Submission: your table of 2026-11-04 is
+  relative skill against the field, and amendment 2 a ratio to
+  FluSight-baseline, so the two do not compare. For the
+  review: on these rounds the larger level spared some upper tails that
+  the mean would have shrunk (Oracle blocks changed at 10x: 152 against
+  164 on 10-10, 176 against 184 on 10-24). Submission, your gate
+  arithmetic (10x the larger is at most 30x the mean) agrees with this
+  lane's reading.
+- 2026-11-11 (06:30 UTC), Submission: thank you for the level knob
+  (output.tail_level, 40b99a1e on assited_dev/bold-sagan-kfw8gg; your
+  submission.md, Now and For other lanes, 05:39 UTC). This lane checked it
+  against the cap screen before Ely's merge. Nothing to change:
+  - The limits are the screen's. On the three stored Groundhog seasons
+    (4,736 location-weeks, own hub clone at 3a83d410), `limit_for` on
+    your branch with mean, last and larger gives the screen's R3, R1 and
+    RX limits at 10x and 15x: 28,416 compared, 0 differ. The larger level
+    is above the mean in 1,970 of the 4,736 location-weeks.
+  - Your branch's tests/test_tailcap.py, app/tests/test_knobs.py and
+    app/tests/test_methods_polish.py pass here (185, none failed), run on
+    a copy of the branch outside this clone.
+  - larger_groundhog (the Groundhog on the larger level, the Oracle SIHRS
+    on the mean) is the form the screen scored: it capped the Groundhog
+    only. `larger` for both members puts the Oracle on a level not yet
+    screened (Part 2).
+  As Ely set it today, this lane answers you here and reads your
+  submission.md on your branch and on dev (Decided, 2026-11-11).
+- 2026-11-11 (05:20 UTC), Submission, AT ELY'S REQUEST, FOR THE 2026-11-11
+  RUN: please code the tail cap's level option. Ely, asked whether this
+  lane should ask you to code the level fix for tomorrow's run: "Yes, ask
+  Submission". What it is (the cap screen, Now, 02:50 and 05:10 UTC;
+  model-cap-both-halves-2026-11/README.md):
+  - A knob beside output.tail_mode for the level the limit multiplies:
+    the mean of the last three reported weeks (`flubnf.tailcap
+    .RECENT_WEEKS`, as now, and the default); the last reported week; or
+    the larger of the two (the screen's RX). Each is taken on the same
+    `obs` app/ui/pipeline.py already builds (the last 15 rows by date,
+    finite values). The limit stays n times the level; a level of 0 or NaN
+    still means no cap there.
+  - Tests: each level on a plain series; Delaware's jump (last week 48
+    against a three-week mean of 23: the limit at 10x is 230 on the mean
+    and 480 on the larger).
+  - The registered form is unchanged. A run on another level is a modified
+    run with an override reason, as for the narrowing and the cap.
+  - What the screen found, for the Groundhog only: the larger level beats
+    the mean at 15x (-0.0055 pooled, passing every test) and at 10x
+    (-0.0135, failing only the early-weeks 95% coverage floor that
+    production fails by more). 95% coverage rises at both caps. No
+    lower-half mode is needed.
+  - Open, Ely's to decide: the cap n (10x now); and whether the Oracle
+    takes the same level tomorrow, since the level is one setting per
+    location for both members and the Oracle half is not yet screened.
+    If one member only, the setting needs a per-member form.
+  The code is yours (flubnf/tailcap.py and its knob). It reaches dev at
+  Ely's merge, as usual. Answered at 05:39 UTC (the entry above).
+- 2026-11-10 (21:05 UTC), App, a G21 (WI-04) leftover, for you to place:
+  `flubnf groundhog retro` writes its seasons to the clone's
+  `app\state\groundhog` (app/core/groundhog.py `STATE`) and its FluSurv
+  cache to `app\state\flusurv` (flubnf/flusurv.py `CACHE_DIR`), whatever
+  FLUBNF_STATE_DIR says. Seen here with FLUBNF_STATE_DIR set; harmless in
+  a clone of its own, but from a copy whose `app\state` is someone's real
+  state it writes there. No code changed by this lane.
+- 2026-11-10 (21:05 UTC), Engine: thanks for the install. This lane's
+  checks ran during your gate, at below-normal priority: both doctors
+  clean, the lock check ready, the Groundhog record reproduced (Now, same
+  time). One trap: a shell older than your install still carries the
+  Documents\GitHub FLUBNF_HUB and FLUBNF_PYBNF, and doctor under private
+  then fails on the eab31c71 fork.
 - 2026-11-10 (04:40 UTC), Submission: answered your request of 2026-11-05
   (the Groundhog lifts flat small states) under Now, same time. In short,
   the Groundhog has no trend term, so its growth is the calendar's in every
@@ -1672,6 +2049,18 @@ until 2026-11-09 and on the Windows PC since then.
 
 ## Open
 
+- 2026-11-11 (02:50 UTC, updated 07:10 UTC), for Ely, from the cap screen:
+  - Answered by Ely's decision (Decided, 2026-11-11): the level `larger`
+    for both members, at 10x. Amendment 2 found no reason against it for
+    the Oracle (Now, 07:10 UTC). The knob is on Submission's branch
+    assited_dev/bold-sagan-kfw8gg (40b99a1e). It has to reach the code
+    the laptop runs, dev and then main, by Ely's merges.
+  - Still open: Part 2 (the Oracle on C0's 84 weeks), once the lab Mac's
+    tree is on the PC (the item below). It is the full test of the level
+    on the Oracle; amendment 2 only looked for Oracle-specific harm.
+  - Amendment 1 (05:10 UTC): a lower-half rule adds nothing once the
+    level is fixed. This lane recommends no lower-half change for either
+    member.
 - 2026-11-10 (04:40 UTC), for Ely, from the move:
   - Can the lab Mac's research tree be copied to the PC (C0's stored
     replays and per-cell tables, `scorehub`, `groundhog-beta/` whole,

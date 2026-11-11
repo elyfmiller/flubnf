@@ -260,3 +260,95 @@ def test_clip_rows_by_horizon_uses_each_horizons_own_limit():
 
 def test_registered_form_has_no_historical_ceiling():
     assert TC.HIST_PRODUCTION == 0.0
+
+
+# ---- the level the limit multiplies (knob output.tail_level)
+
+def test_the_registered_level_is_the_three_week_mean():
+    assert TC.LEVEL_PRODUCTION == "mean"
+    assert TC.LEVEL_CHOICES[TC.LEVEL_PRODUCTION] == {"pf": "mean", "analogue": "mean"}
+    v = [1, 2, 3, 10, 20, 30]
+    assert TC.limit_for(15, v) == TC.limit_for(15, v, level="mean") == 300.0
+
+
+def test_each_level_on_a_plain_series():
+    rising, falling = [1, 2, 3, 10, 20, 30], [5, 30, 20, 10]
+    assert TC.cap_level(rising, "mean") == 20.0
+    assert TC.cap_level(rising, "last") == 30.0
+    assert TC.cap_level(rising, "larger") == 30.0
+    assert TC.cap_level(falling, "mean") == 20.0
+    assert TC.cap_level(falling, "last") == 10.0
+    assert TC.cap_level(falling, "larger") == 20.0       # the mean, when the newest week fell
+    # unknown values are skipped, as for the mean
+    assert TC.cap_level([4, float("nan"), 8, None], "last") == 8.0
+    assert TC.cap_level([5], "larger") == 5.0
+
+
+def test_delawares_jump_raises_the_limit_on_the_larger_level():
+    de = [9, 8, 13, 48]          # Delaware, weeks ending 2026-10-10 to 2026-10-31
+    assert TC.cap_level(de, "mean") == 23.0
+    assert TC.limit_for(10, de, level="mean") == 230.0
+    assert TC.limit_for(10, de, level="last") == 480.0
+    assert TC.limit_for(10, de, level="larger") == 480.0
+
+
+@pytest.mark.parametrize("level", TC.LEVELS)
+def test_zero_or_unknown_level_means_no_cap_on_every_level(level):
+    assert math.isnan(TC.limit_for(10, [0, 0, 0], level=level))
+    assert math.isnan(TC.limit_for(10, [], level=level))
+    assert math.isnan(TC.limit_for(10, [float("nan")], level=level))
+    assert math.isnan(TC.limit_for(TC.CAP_PRODUCTION, [8, 13, 48], level=level))
+
+
+def test_a_last_week_of_zero_means_no_cap_on_last_only():
+    assert math.isnan(TC.limit_for(10, [6, 3, 0], level="last"))
+    assert TC.limit_for(10, [6, 3, 0], level="mean") == 30.0
+    assert TC.limit_for(10, [6, 3, 0], level="larger") == 30.0
+
+
+def test_unknown_levels_and_choices_are_refused():
+    with pytest.raises(ValueError):
+        TC.cap_level([1, 2, 3], "median")
+    with pytest.raises(ValueError):
+        TC.limit_for(10, [1, 2, 3], level="larger_groundhog")   # a choice, not a level
+    with pytest.raises(ValueError):
+        TC.member_levels("max")
+
+
+def test_member_levels_give_each_member_its_level():
+    assert TC.member_levels() == {"pf": "mean", "analogue": "mean"}
+    assert TC.member_levels("larger") == {"pf": "larger", "analogue": "larger"}
+    assert TC.member_levels("larger_groundhog") == {"pf": "mean", "analogue": "larger"}
+    assert set(TC.LEVEL_CHOICES) >= set(TC.LEVELS)
+    for choice in TC.LEVEL_CHOICES:
+        assert set(TC.member_levels(choice).values()) <= set(TC.LEVELS)
+
+
+def _de_rows(med=100.0, spread=0.6):
+    """Delaware's four horizons as hub rows, the 97.5% quantile well above
+    230 and below 480."""
+    rows = []
+    for h in TC.HORIZONS:
+        for level, v in _block(med, spread).items():
+            rows.append({"target": TC.TARGET, "output_type": "quantile",
+                         "location": "10", "horizon": h,
+                         "output_type_id": level, "value": float(round(v))})
+    return rows
+
+
+@pytest.mark.parametrize("mode", TC.MODES)
+def test_the_larger_level_spares_a_block_the_mean_would_cut(mode):
+    de = [9, 8, 13, 48]
+    rows = _de_rows()
+    top = max(r["value"] for r in rows if r["output_type_id"] == 0.975)
+    assert 230 < top < 480
+    on_mean, cells_mean = TC.cap_rows(rows, {"10": TC.limit_for(10, de)}, mode=mode)
+    on_larger, cells_larger = TC.cap_rows(
+        rows, {"10": TC.limit_for(10, de, level="larger")}, mode=mode)
+    assert cells_mean > 0 and cells_larger == 0
+    assert on_larger == rows
+    assert max(r["value"] for r in on_mean if r["output_type_id"] == 0.975) <= 230.5
+    # the median and the lower half are untouched either way
+    for a, b in zip(on_mean, rows):
+        if a["output_type_id"] <= 0.5:
+            assert a["value"] == b["value"]

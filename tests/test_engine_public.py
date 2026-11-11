@@ -678,6 +678,22 @@ def test_a_failed_public_install_is_never_stamped(tmp_path):
     assert not (repo / ".venv" / ".public-engine-attempt").exists()
 
 
+def _python312_dir(tmp_path: Path) -> Path:
+    """A folder holding a stand-in `python3.12`, for PATH. The public route
+    needs exactly Python 3.12 and stops before anything changes without one;
+    the machine running the tests need not have it (GitHub's ubuntu-26.04
+    image has none), and these tests are about the engine file, not the
+    Python check."""
+    d = tmp_path / "py312-bin"
+    d.mkdir()
+    stub = d / "python3.12"
+    stub.write_text('#!/bin/sh\n'
+                    '[ "$1" = "-V" ] && echo "Python 3.12.0 (a test stand-in)"\n'
+                    'exit 0\n')
+    stub.chmod(0o755)
+    return d
+
+
 # --- reinstall.sh ---------------------------------------------------------------
 
 @posix_only
@@ -708,6 +724,7 @@ def test_a_public_reinstall_needs_no_engine_file_and_leaves_the_private_engine(
     env = {k: v for k, v in os.environ.items() if not k.startswith("FLUBNF_")}
     if route:
         env["FLUBNF_ENGINE"] = route
+    env["PATH"] = f"{_python312_dir(tmp_path)}{os.pathsep}{env.get('PATH', '')}"
     env.update({"HOME": str(home), "FLUBNF_REPO": str(origin),
                 "FLUBNF_REINSTALL_YES": "1",
                 "FLUBNF_REINSTALL_NO_OPEN": "1", "FLUBNF_REINSTALL_NO_INSTALL": "1",

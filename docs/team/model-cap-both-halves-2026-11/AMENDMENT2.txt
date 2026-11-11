@@ -1,0 +1,73 @@
+AMENDMENT 2 TO THE TAIL CAP ON BOTH HALVES (prereg.txt, 67262c94...):
+THE CAP'S LEVEL ON THE ORACLE SIHRS'S OWN OCTOBER ROUNDS, BEFORE PART 2
+Model lane (Ely's Windows PC), written 2026-11-11 before any score of it.
+
+WHY. Ely's decision for the 2026-11-11 run, relayed by the App lane: the
+tail cap's level output.tail_level = larger (the larger of the last
+reported week and the three-week mean) for both members, the cap at 10x,
+the mode unchanged. Ely, verbatim: "the oracle should probably do the same
+for better odds? the oracle agent has the PC to test if needed". The App
+lane asks whether the Oracle should keep `larger` or go to
+`larger_groundhog` (the Oracle on the mean). Part 2 needs C0's stored
+weeks, which are on the lab Mac, not this PC. This is a quick look on what
+the PC has; it is not Part 2 and does not replace it.
+
+WHAT IS ALREADY KNOWN (read before writing this):
+- Part 1 (the Groundhog's retro seasons): RX beats R3 at 10x by -0.0135
+  pooled and at 15x by -0.0055, but costs in October 2023, the one October
+  in those seasons (Sep-Oct 0.8865 on RX against 0.8555 on R3, 10x).
+- Submission, 2026-11-04, on these same three rounds with truth through
+  10-31 (shrink): Oracle 10x 0.646, 15x 0.670; Groundhog 10x 0.631, 15x
+  0.669. In October the tighter cap helped both members.
+- The code check of amend2.py, run before this freeze on the rounds' rows
+  and vintages (no truth read): 0 defects; the larger level is above the
+  mean for 43, 36 and 35 states in the three rounds (both members); blocks
+  changed at 10x on R3 / RX: Oracle 164 / 152, 204 / 204, 184 / 176;
+  Groundhog 208 / 208 in each round.
+
+DATA AND CODE.
+- The submitted hub files of NAU_PyBNF-OracleSIHRS and NAU_PyBNF-GroundHogCGR
+  for the rounds 2026-10-10, 2026-10-17 and 2026-10-24, the last before
+  the cap (from 2026-10-31), from this lane's hub clone at a73013aa
+  (cdcepi main, 2026-11-09), states only. Each as submitted: the Oracle at
+  weight one half on 10-10 and one quarter after, narrowed (0.7) from
+  10-24 only, so 10-24 alone has today's Oracle settings.
+- The data each round ran on: the archived vintage of its reference date
+  less 7 days (2026-10-03, 10-10, 10-17), the obs as app/ui/pipeline.py
+  builds them (both.py obs_by_fips).
+- Arms on the submitted rows, every horizon in the file: N (no cap); the
+  shrink (flubnf.tailcap.cap_rows, mode shrink) at 10x and 15x on R3 (the
+  three-week mean) and RX (the larger of it and the last week): S10-R3,
+  S10-RX, S15-R3, S15-RX. RX gives the same limits as Submission's
+  `larger` (checked: 0 of 28,416 differ on Part 1's seasons).
+- Scored with app.core.groundhog.score_week (FluSight's cell rule, the
+  FluSight-baseline join), horizons 0 to 3 with truth through 2026-10-31
+  (the hub's target file at a73013aa; the last weeks are first reports).
+  That leaves 4, 3 and 2 horizons in the three rounds. Both members are
+  compared on the cells both have.
+- Measures: relWIS (natural) and log relWIS pooled over the three rounds,
+  50% and 95% coverage, relWIS by round. The difference S10-RX - S10-R3
+  per member, and the contrast D = the Oracle's difference less the
+  Groundhog's, each with a location-cluster bootstrap (2,000 resamples of
+  the states, default_rng(20261111)); the same at 15x, descriptive.
+
+PREDICTIONS (10x):
+  P1 S10-RX - S10-R3 >= 0 for both members (in October the looser limit
+     costs, as in October 2023 and in Submission's 10x against 15x).
+  P2 |D| <= 0.010: the Oracle responds to the level as the Groundhog does.
+  P3 The 95% coverage of S10-RX is at least S10-R3's for both members.
+
+THE RULE (10x, the cap Ely set). This lane advises `larger_groundhog` (the
+Oracle stays on the mean) only if all hold:
+  (r1) the Oracle's S10-RX - S10-R3 pooled relWIS is above +0.005;
+  (r2) D is above +0.010 and its 95% interval lies above 0;
+  (r3) the code check finds no defect.
+Otherwise there is no concrete reason here against Ely's `larger` for both
+members, and this lane says so. A cost that both members share (P1) is not
+a reason against the Oracle: it is the October cost Part 1 already weighed
+for the Groundhog.
+
+LIMITS. Three October rounds, 9 horizon-weeks, three of them on
+provisional truth; two of the Oracle's rounds ran on settings it no longer
+uses. This is a check for an Oracle-specific harm, not a screen. Part 2,
+on C0's 84 weeks, stays as registered.
