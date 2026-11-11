@@ -165,6 +165,59 @@ def test_a_damaged_manifest_member_is_refused_in_words(world):
     _nothing_written(world["rr"])
 
 
+def _without(bundle: Path, member: str) -> None:
+    """`bundle` written again in place without `member` (the file changed
+    on disk: another copy saved over it)."""
+    import zipfile
+    tmp = bundle.with_name(bundle.name + ".part")
+    with zipfile.ZipFile(bundle) as z, \
+            zipfile.ZipFile(tmp, "w", zipfile.ZIP_DEFLATED) as w:
+        for i in z.infolist():
+            if i.filename != member:
+                w.writestr(i, z.read(i.filename))
+    tmp.replace(bundle)
+
+
+@pytest.mark.parametrize("via", ["import", "route", "terminal"])
+def test_a_member_gone_since_the_inspection_is_refused_in_words(
+        world, monkeypatch, via):
+    """The seventh pass's finding 4: the bundle file changes between the
+    inspection and the import, and one member is no longer in it. The
+    import's z.getinfo raised a raw KeyError, which neither the import
+    form nor `flubnf retro import` catches (they catch BundleError and
+    OSError). It is refused as a damaged bundle, in the same words, and
+    nothing is left under the retro root."""
+    from typer.testing import CliRunner
+    from flubnf.cli import app as cli_app
+    member = f"weeks/{W3}/samples.json"
+    bundle, rr = world["bundle"], world["rr"]
+    real = rb.inspect_bundle
+
+    def inspect(path, name=""):
+        m = real(path, name)
+        _without(Path(path), member)
+        return m
+    monkeypatch.setattr(rb, "inspect_bundle", inspect)
+    said = (f"{bundle.name}: {member} could not be unpacked; the bundle is "
+            "damaged or altered.")
+    if via == "import":
+        with pytest.raises(rb.BundleError) as e:
+            rb.import_bundle(bundle, rr)
+        assert str(e.value) == said
+    elif via == "route":
+        _clear_flash()
+        r = client.post("/retro/import", data={"path": str(bundle)},
+                        follow_redirects=False)
+        assert r.status_code == 303 and r.headers["location"] == "/retro"
+        assert _flash() == f"Not imported: {said}"
+    else:
+        res = CliRunner().invoke(cli_app, ["retro", "import", str(bundle),
+                                           "--root", str(rr)])
+        assert res.exit_code == 2, res.output
+        assert f"refused: {said}" in res.output, res.output
+    _nothing_written(rr)
+
+
 # ------------------------- a delete during an import's Replace (finding 3)
 
 def _replace_held(world, monkeypatch):
