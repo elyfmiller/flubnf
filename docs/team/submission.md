@@ -6,6 +6,19 @@ and CDC's rules. The season's facts are in
 
 ## Now
 
+- 2026-11-11 (02:33 UTC): THE REPOSITORY MOVE IS DONE (App lane). The
+  remote stays github.com/elyfmiller/flubnf; the old repository is
+  elyfmiller/flubnf-archive-2026-11, archived (not "flubnf-archive" as
+  the entry of 2026-11-10 says). This branch: old cc24e81, now 6191c75,
+  files identical (same tree). This lane's session clone and its dev
+  worktree were fetched with --prune and reset to the new repository
+  before this push (the branch, local main and the worktree); no old
+  commit stays on a local ref. Old commit ids map to new in
+  docs/archive/commit-map-2026-11.txt on dev; the ids these notes cite
+  from 2026-10-09 on are old ids. Pull requests were renumbered: #93 is
+  #1, #104 #2, #105 #3, #106 #4. The public engine wheel is back at the
+  same URL with the same sha256. The FluSight hub pull request is
+  unaffected.
 - 2026-11-11 (01:30 UTC): THE ENGINE LANE'S 11-07 GATE PASSED (read in
   docs/team/engine.md on dev, 6647862, before the move). Round 2026-11-14
   runs on the public engine; no fallback. The PC's private engine
