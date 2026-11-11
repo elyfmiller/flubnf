@@ -35,8 +35,11 @@ figure; section 4 below):
     started in May, that season has cases and the file said "would not
     help". Such a season now speaks like any season with a case: one
     gives neither a figure nor "would not help", two say "would not
-    help". The June and May starts still differ, and both are true of
-    their files. Two seasons reading 0 throughout still say nothing.
+    help". Two seasons reading 0 throughout still say nothing. The June
+    and May starts differed until the review at d415a9fa (finding 2):
+    the May start's two seasons were one summer, its week 30 in the
+    season before and weeks 31 to 34 in the next, and a summer now
+    counts once, so both say more seasons may.
   * The one-season sentence said "of the group" in a single series, which
     has no group column, and named no group in a file of several. It now
     names none in a file of one group and the group in a file of several.
@@ -367,33 +370,42 @@ def test_4_one_season_with_cases_says_more_seasons_may_no_figure(start):
         "population column so the Liu-West filter can fit it.")
 
 
-def test_4_may_start_says_would_not_help_also_true_of_its_two_seasons():
-    """Started in May, the season before has cases (weeks 18 to 20): two
-    seasons with cases give every horizon nothing, so more seasons like
-    these would not help, as before."""
+def test_4_may_start_is_one_summer_and_says_more_seasons_may():
+    """Started in May, the season before has cases (weeks 18 to 20), and
+    it holds week 30 of the summer of 2023, whose weeks 31 to 34 are in
+    the next season. That was counted as two seasons with cases, and the
+    file said "would not help"; it is one summer (review of #93 at
+    d415a9fa, finding 2; test_dataset_donor_one_summer). At horizons 3
+    and 4 it alone speaks, so one season says so, and more seasons may.
+    Week 30 of 2024, two weeks before the newest, is a second summer at
+    horizons 1 and 2 only."""
     raw = summer_start(date(2023, 5, 6))
     got = donors(raw)
+    assert got["counts"] == (0, 0, 0, 0)
     assert got["seasons"] is None
-    assert not got["one_season"] and not got["open"]
-    assert notice(check(raw, kind="rate")).endswith(
+    assert got["one_season"] == 1 and not got["open"]
+    html = check(raw, kind="rate")
+    assert notice(html).endswith(
         "No earlier season in the file has a week like it at any horizon, "
-        "so more seasons like these would not help.")
+        "but only one season says so, and more seasons may.")
+    assert "would not help" not in html and "Give about" not in html
 
 
-def test_4_june_and_may_starts_differ_and_both_are_true():
+def test_4_june_and_may_starts_read_one_summer_alike():
     """The two files read the same weeks of the window, all 0; they differ
     only in whether the season before has a case. The June start's
-    season before is its summer of zeros, which says nothing, so one
-    season speaks ("more seasons may"); the May start's has cases in
-    May, so two do ("would not help"). Not a bug: each sentence is true
-    of its own file."""
+    season before is its summer of zeros, which says nothing; the May
+    start's has cases in May. Either way the window's weeks of 2023 are
+    one summer, so both say more seasons may. They differed while the
+    May start's summer counted as two seasons ("would not help")."""
     june, may = summer_start(date(2023, 6, 3)), summer_start(date(2023, 5, 6))
     (wj, cj), (wm, cm) = _window_and_cased(june), _window_and_cased(may)
     assert wj == wm and set(wj.values()) == {0.0} and len(wj) == 6
     assert cj == {("series", 2023)}
     assert cm == {("series", 2022), ("series", 2023)}
-    assert "more seasons may" in check(june, kind="rate")
-    assert "would not help" in check(may, kind="rate")
+    for raw in (june, may):
+        html = check(raw, kind="rate")
+        assert "more seasons may" in html and "would not help" not in html
 
 
 def test_4_two_seasons_reading_0_throughout_still_say_nothing():

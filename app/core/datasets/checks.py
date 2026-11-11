@@ -1254,9 +1254,16 @@ def _seasons_heard(bank, window, counts, cased=None):
     cuts the season before to its summer of zeros, which says nothing,
     and the one season left with a case gave every horizon nothing
     (review of #93 at ac51731d, the independent check). It gave "about 6
-    more earlier seasons", which seasons like it never reach; a file
-    starting in May, whose season before has cases in May, has two such
-    seasons and says "would not help".
+    more earlier seasons", which seasons like it never reach. A file
+    starting in May, whose season before has cases in May, said "would
+    not help" through two seasons, but the season before holds only week
+    30 of the same summer (below), and it too says more seasons may.
+
+    A season here is a pass of the window, a year back from the newest
+    week, not a season label: one summer straddles 1 August where the
+    window does (weeks 30 to 34 around week 32), and its weeks 30 and 31
+    to 34 are in two seasons. Counted by label, one summer of zeros said
+    "would not help" (review of #93 at d415a9fa, finding 2).
 
     A horizon at 0 that no season with a case holds a pair for (its
     weeks not reported, or after the newest week) is not spoken for: it
@@ -1275,13 +1282,16 @@ def _seasons_heard(bank, window, counts, cased=None):
     if cased is None:
         cased = _cased(bank)
     groups = {g for g, _ in bank}
+    last = max((d for _, d in bank), default=None)
     spoken, left, one = 0, set(), set()
     for h, c in zip(GROUNDHOG_HORIZONS, counts):
         if c:
             continue
-        # each group's seasons with a case holding a pair there; a season
-        # reading 0 throughout is not one
-        held = {(g, AN.season_of(d)) for g, d in bank
+        # each group's passes of the window holding a pair there, in a
+        # season with a case (one reading 0 throughout is not one): a
+        # pass is a year back from the newest week, as one pass can
+        # straddle 1 August and so hold two seasons
+        held = {(g, round((last - d).days / 365.2425)) for g, d in bank
                 if d in window and (g, AN.season_of(d)) in cased
                 and (g, d + timedelta(days=7 * h)) in bank}
         if not held:
