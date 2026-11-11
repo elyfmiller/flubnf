@@ -88,10 +88,12 @@ def _files(root: Path) -> dict:
 
 
 def _beside(rr: Path) -> list:
-    """What lies under the retro root that is not a run: temp trees and
-    the old trees a Replace set aside."""
+    """What lies under the retro root that is not a run: temp trees, the
+    old trees a Replace set aside, and those it let go (renamed before they
+    are deleted)."""
     return sorted(p.name for p in rr.iterdir()
-                  if ".importing" in p.name or ".replaced" in p.name)
+                  if any(s in p.name
+                         for s in (".importing", ".replaced", ".dropping")))
 
 
 # ------------------------------- 1. a changed byte in the table of contents
@@ -416,7 +418,9 @@ def test_a_replace_killed_while_deleting_the_old_run_leaves_the_run_whole(
     """The review's case: killed half way through deleting the old run.
     The run's name holds the new tree, whole; the old one is aside, under
     a name no page lists; the next plain import says "already imported"
-    truthfully and sweeps the dead process's aside."""
+    truthfully and sweeps the dead process's aside. The old run was let go
+    once the new one stood, so it was renamed .dropping- before its delete
+    began, and goes whatever bundle is at the name."""
     pid = _killed_at(run, pause)
     dst, rr = run["dst"], run["rr"]
     assert _files(dst) == run["reference"], "part of a run at its name"
@@ -424,7 +428,7 @@ def test_a_replace_killed_while_deleting_the_old_run_leaves_the_run_whole(
     assert retro.list_archive_dirs(rr, SEASON) == [dst]
     left = _beside(rr)
     assert len(left) == 1 and left[0].startswith(
-        f"{dst.name}.replaced-{pid}-"), left
+        f"{dst.name}.dropping-{pid}-"), left
     with pytest.raises(rb.BundleError) as e:
         rb.import_bundle(run["bundle"], rr)
     assert str(e.value) == (f"{SEASON} from this bundle was already "
@@ -497,10 +501,14 @@ def _ended_pid() -> int:
 
 
 def _aside(run, suffix: str) -> Path:
+    """An old run of the run's own bundle (its imported.json, as the run
+    at the name has it) under a name beside the run."""
     t = run["dst"].with_name(run["dst"].name + suffix)
     (t / "weeks" / WEEKS[0]).mkdir(parents=True)
     (t / "weeks" / WEEKS[0] / "samples.json").write_text("{}")
     (t / "run_meta.json").write_text("{}")
+    (t / rb.IMPORTED_MARK).write_bytes(
+        (run["dst"] / rb.IMPORTED_MARK).read_bytes())
     return t
 
 

@@ -195,7 +195,10 @@ def test_a_set_aside_run_is_never_deleted_on_age_while_no_whole_import_is_there(
     """The age rule exempts a set-aside run while the name holds no whole
     import: nothing there (and this copy, its imported.json gone, is not
     whole enough to put back), or something that is not an import. Once an
-    import is whole at the name, the next sweep removes it."""
+    import of its own bundle is whole at the name, the next sweep removes
+    it; the copy whose imported.json is gone names no bundle, so it stays
+    (the reviewer's ruling of 2026-11-10: never deleted on a missing
+    value)."""
     dst, rr = run["dst"], run["rr"]
     aside = _set_aside(run, os.getpid())
     if at_name == "nothing":
@@ -211,6 +214,11 @@ def test_a_set_aside_run_is_never_deleted_on_age_while_no_whole_import_is_there(
         retro.delete_tree(dst)                 # the stray, cleared by hand
     r = rb.import_bundle(run["bundle"], rr)
     assert r.root == dst and _files(dst) == run["reference"]
+    if at_name == "nothing":
+        assert rb._sweep_stale_temps(dst, now=time.time() + LATER) == []
+        assert _files(aside) == held
+        assert _beside(rr) == [aside.name]
+        return
     assert rb._sweep_stale_temps(dst, now=time.time() + LATER) == [aside]
     assert _beside(rr) == []
 
@@ -321,14 +329,15 @@ def test_in_a_protected_folder_the_run_goes_back_and_nothing_is_deleted(
 def test_a_delete_of_the_old_run_stopped_part_way_is_never_put_back(
         run, monkeypatch):
     """A Replace stopped part way through deleting the old run it set
-    aside (the new run already whole at the name): that run's imported.json
-    went first, so once the run is deleted from Storage, the next import
-    does not put the part left back as a run; it lands from the bundle."""
+    aside (the new run already whole at the name): that run was renamed
+    .dropping- before its delete began, so once the run is deleted from
+    Storage, the next import does not put the part left back as a run (nor
+    keep it for good): it removes it and lands from the bundle."""
     dst, rr = run["dst"], run["rr"]
     real = retro.delete_tree
 
     def stopped(p):
-        if ".replaced-" in Path(p).name:
+        if ".dropping-" in Path(p).name:
             shutil.rmtree(Path(p) / "weeks")
             raise KeyboardInterrupt
         return real(p)
@@ -338,25 +347,28 @@ def test_a_delete_of_the_old_run_stopped_part_way_is_never_put_back(
     monkeypatch.undo()
     assert _files(dst) == run["reference"]
     part = rr / _beside(rr)[0]
-    assert not (part / "weeks").exists()
-    os.rename(part, dst.with_name(f"{dst.name}.replaced-{_ended_pid()}-"
+    assert ".dropping-" in part.name and not (part / "weeks").exists()
+    os.rename(part, dst.with_name(f"{dst.name}.dropping-{_ended_pid()}-"
                                   "0a0b0c0d"))       # its process ended
     retro.delete_tree(dst)                           # Storage's Delete
     r = rb.import_bundle(run["bundle"], rr)
     assert r.root == dst and _files(dst) == run["reference"]
+    assert _beside(rr) == []
 
 
 def test_a_sweep_stopped_part_way_through_an_old_run_never_puts_it_back(
         run, monkeypatch):
-    """The same for the sweep's own removal of a dead Replace's leftover:
-    stopped part way, the part left is never put back as a run."""
+    """The same for the sweep's own removal of a dead Replace's leftover
+    (an old run of the bundle at the name): renamed .dropping- first, so
+    stopped part way, the part left is never put back as a run, and a
+    later sweep removes it."""
     dst, rr = run["dst"], run["rr"]
     left = dst.with_name(f"{dst.name}.replaced-{_ended_pid()}-0a0b0c0d")
     shutil.copytree(dst, left)
     real = shutil.rmtree
 
     def stopped(p, *a, **k):
-        if Path(p) == left:
+        if ".dropping-" in Path(p).name:
             real(Path(p) / "weeks")
             raise KeyboardInterrupt
         return real(p, *a, **k)
@@ -364,10 +376,14 @@ def test_a_sweep_stopped_part_way_through_an_old_run_never_puts_it_back(
     with pytest.raises(KeyboardInterrupt):
         rb._sweep_stale_temps(dst)
     monkeypatch.undo()
-    assert left.is_dir() and not (left / "weeks").exists()
+    assert not (left.exists() or left.is_symlink())
+    part = rr / next(n for n in _beside(rr) if ".dropping-" in n)
+    assert part.is_dir() and not (part / "weeks").exists()
     retro.delete_tree(dst)
     r = rb.import_bundle(run["bundle"], rr)
     assert r.root == dst and _files(dst) == run["reference"]
+    assert rb._sweep_stale_temps(dst, now=time.time() + LATER) == [part]
+    assert _beside(rr) == []
 
 
 # ------------------------------------- F3. only a whole import stands

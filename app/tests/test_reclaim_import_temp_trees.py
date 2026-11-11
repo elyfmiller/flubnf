@@ -26,6 +26,7 @@ RUN = f"{SEASON}__archived_20980204T101500Z"
 
 TEMPS = [f"{RUN}.importing-{os.getpid()}-0a0b0c0d",
          f"{RUN}.replaced-{os.getpid()}-1a1b1c1d",
+         f"{RUN}.dropping-{os.getpid()}-2a2b2c2d",   # an old run let go
          f"{RUN}.importing"]                      # an older build's name
 
 
@@ -63,5 +64,6 @@ def test_the_temp_names_are_the_imports_own():
     for n in TEMPS:
         assert rb.is_temp_name(n), n
     for n in (SEASON, RUN, f"{RUN}.importing-x", f"{RUN}.replaced",
-              f"{RUN}.replaced-12-x", f"{RUN}.importingz", ""):
+              f"{RUN}.replaced-12-x", f"{RUN}.importingz", f"{RUN}.dropping",
+              f"{RUN}.dropping-12-x", ""):
         assert not rb.is_temp_name(n), n
