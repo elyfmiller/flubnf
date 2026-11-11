@@ -463,6 +463,83 @@ def test_only_an_old_run_no_replace_is_using_is_named(run):
     assert live.is_dir() and mine.is_dir() and dead.is_dir()
 
 
+# ------------------------- a run a delete left part of is never whole
+
+def _failing_delete(monkeypatch, at: Path) -> None:
+    """A delete of `at` that removes its weeks, then fails (a file the disk
+    will not let go)."""
+    real = shutil.rmtree
+
+    def rmtree(p, *a, **k):
+        if Path(p) == at:
+            real(Path(p) / "weeks")
+            raise PermissionError(13, "Permission denied", str(p))
+        return real(p, *a, **k)
+    monkeypatch.setattr(shutil, "rmtree", rmtree)
+
+
+def test_a_run_a_failed_delete_left_part_of_keeps_the_old_run_beside_it(
+        run, monkeypatch):
+    """The seventh pass's finding 3: the run is deleted in the console
+    and the delete fails part way, beside an old run of the same bundle a
+    dead Replace set aside. The part left kept its imported.json, so a
+    plain import took it for a whole import of the bundle, deleted the old
+    run (the only whole copy) and said "already imported". The delete now
+    removes imported.json first: the part left is not a whole import, the
+    old run stays whole and is named as maybe the only copy, and the
+    Replace the words point to puts the run back whole."""
+    dst, rr = run["dst"], run["rr"]
+    aside = dst.with_name(f"{dst.name}.replaced-{_ended_pid()}-0a0b0c0d")
+    shutil.copytree(dst, aside)
+    held = _files(aside)
+    _failing_delete(monkeypatch, dst)
+    with pytest.raises(PermissionError):
+        retro.delete_tree(dst)                   # Storage's Delete, failed
+    monkeypatch.undo()
+    assert dst.is_dir() and not (dst / "weeks").exists()
+    with pytest.raises(rb.BundleError) as e:
+        rb.import_bundle(run["bundle"], rr)
+    assert _files(aside) == held and (aside / rb.IMPORTED_MARK).is_file()
+    assert str(e.value) == _not_whole(dst) + " " + _only_copy_words([aside])
+    r = rb.import_bundle(run["bundle"], rr, replace=True)
+    assert r.root == dst and _files(dst) == run["reference"]
+    assert rb._sweep_stale_temps(dst) == [aside]
+    assert _beside(rr) == []
+
+
+@pytest.mark.parametrize("tree", ["a run", "a folder named imported.json",
+                                  "a link to a run"])
+def test_delete_tree_takes_imported_json_first(run, monkeypatch, tree):
+    """retro.delete_tree, which every delete of a run uses: a delete that
+    fails part way leaves no imported.json; an imported.json that is a
+    folder (never read as a marker) does not stop the delete; a run that is
+    a link loses only its link, and the run it points to keeps its
+    imported.json."""
+    dst = run["dst"]
+    if tree == "a run":
+        _failing_delete(monkeypatch, dst)
+        with pytest.raises(PermissionError):
+            retro.delete_tree(dst)
+        monkeypatch.undo()
+        assert dst.is_dir() and not (dst / rb.IMPORTED_MARK).exists()
+        assert (dst / "run_meta.json").is_file()   # only the weeks went
+        return
+    if tree == "a folder named imported.json":
+        (dst / rb.IMPORTED_MARK).unlink()
+        (dst / rb.IMPORTED_MARK).mkdir()
+        (dst / rb.IMPORTED_MARK / "x").write_text("x")
+        retro.delete_tree(dst)
+        assert not (dst.exists() or dst.is_symlink())
+        return
+    elsewhere = run["tmp"] / "elsewhere-run"
+    os.rename(dst, elsewhere)
+    dst.symlink_to(elsewhere, target_is_directory=True)
+    retro.delete_tree(dst)
+    assert not (dst.exists() or dst.is_symlink())
+    assert (elsewhere / rb.IMPORTED_MARK).is_file()
+    assert _files(elsewhere) == run["reference"]
+
+
 # -------------------------------- an old run let go: .dropping-, then gone
 
 def test_a_run_let_go_and_left_part_deleted_goes_whatever_is_at_the_name(
