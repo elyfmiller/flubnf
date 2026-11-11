@@ -367,6 +367,13 @@ REGISTRY: tuple = (
          note=("Shrink applies the exponent the worst horizon needs to every "
                "horizon above the median, so the band keeps its fan; either "
                "form acts only when the Upper-tail cap is above 0.")),
+    Knob("output.tail_level", "Upper-tail level", BOTH, "output", "method",
+         "choice", TC.LEVEL_PRODUCTION, "flubnf.tailcap:LEVEL_PRODUCTION",
+         "The level the cap multiplies: the three-week mean, the last week, or the larger.",
+         choices=tuple(TC.LEVEL_CHOICES),
+         note=("larger_groundhog gives the Groundhog the larger of the "
+               "three-week mean and the last week and the Oracle SIHRS the "
+               "mean; any level acts only when the Upper-tail cap is above 0.")),
     Knob("output.tail_hist", "Historical ceiling", BOTH, "output", "method",
          "float", TC.HIST_PRODUCTION, "flubnf.tailcap:HIST_PRODUCTION",
          "Upper quantiles clipped, per horizon, at this quantile of past growth over the recent level; 0 off.",
@@ -822,7 +829,8 @@ LATER = frozenset({"oracle.bandwidth", "oracle.count_floor",
 #: hub rows)
 NOT_IN_RETRO = frozenset({"run.weeks_to_drop", "output.floor_lam",
                           "output.tail_cap", "output.tail_mode",
-                          "output.tail_hist", *OPTIONAL_KEYS})
+                          "output.tail_level", "output.tail_hist",
+                          *OPTIONAL_KEYS})
 
 #: form fields that predate the registry -> the knob they now set
 LEGACY_FIELDS = {"particles": "pf.particles", "replicates": "pf.replicates",

@@ -602,13 +602,25 @@ keeps its fan across the weeks and only the worst horizon touches the
 limit. On the replays the clip scores a little better over whole seasons
 and the shrink better in September-October weeks (the Groundhog's
 September-October relWIS 1.02 to 0.91 at 15x, 0.82 at 10x).
+`output.tail_level` chooses the level the limit multiplies: `mean` (the
+registered default, `flubnf.tailcap.LEVEL_PRODUCTION`) the mean of the
+last three reported weeks as above; `last` the last reported week;
+`larger` the larger of the two, so a jump in the newest week raises the
+limit with it (Delaware on 2026-11-07: 48 against a three-week mean of 23,
+so 10x is 230 on the mean and 480 on the larger); and `larger_groundhog`,
+the per-member form, the larger for the Groundhog and the mean for the
+Oracle SIHRS. The Model lane's cap screen (2026-11-11,
+`docs/team/model-cap-both-halves-2026-11/`) scored the larger level on the
+Groundhog only. Each level is read from the same observed weeks, and a
+level of 0 or unknown still means no cap there.
 In both forms the levels the cap moves are rounded back to whole
 admissions and the block kept monotone (`flubnf.tailcap.whole_block`), as
 `app.core.submit` writes every row, so the limit is met to within half an
 admission and the file carries no decimals.
 It runs in `app/ui/pipeline` on the rows after the Oracle step, the
 narrowing and the output floor, so the run record (`tail_cap`: n, the mode,
-the weeks, the cells touched per member) and the files agree; a run at n > 0
+the level and each member's level, the weeks, the cells touched per member)
+and the files agree; a run at n > 0
 is a modified run (the override and its reason), and the replays do not
 apply it (`NOT_IN_RETRO`; it is screened post hoc).
 
