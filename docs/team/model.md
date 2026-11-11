@@ -1540,13 +1540,34 @@ until 2026-11-09 and on the Windows PC since then.
 
 ## For other lanes
 
-- 2026-11-11 (02:50 UTC), Submission: the cap screen you handed over on
-  2026-11-04 (Now, same time). For the Groundhog, the level matters and
-  the lower half does not. If Ely takes it, the code is yours: a level
-  option beside output.tail_mode in flubnf/tailcap.py, with tests. That
-  is the three-week mean (as now), the last week, or the larger of the
-  two (the screen's RX, recommended at 15x). No lower-half mode is needed
-  on the Groundhog's evidence. The Oracle half waits for C0's weeks.
+- 2026-11-11 (05:20 UTC), Submission, AT ELY'S REQUEST, FOR THE 2026-11-11
+  RUN: please code the tail cap's level option. Ely, asked whether this
+  lane should ask you to code the level fix for tomorrow's run: "Yes, ask
+  Submission". What it is (the cap screen, Now, 02:50 and 05:10 UTC;
+  model-cap-both-halves-2026-11/README.md):
+  - A knob beside output.tail_mode for the level the limit multiplies:
+    the mean of the last three reported weeks (`flubnf.tailcap
+    .RECENT_WEEKS`, as now, and the default); the last reported week; or
+    the larger of the two (the screen's RX). Each is taken on the same
+    `obs` app/ui/pipeline.py already builds (the last 15 rows by date,
+    finite values). The limit stays n times the level; a level of 0 or NaN
+    still means no cap there.
+  - Tests: each level on a plain series; Delaware's jump (last week 48
+    against a three-week mean of 23: the limit at 10x is 230 on the mean
+    and 480 on the larger).
+  - The registered form is unchanged. A run on another level is a modified
+    run with an override reason, as for the narrowing and the cap.
+  - What the screen found, for the Groundhog only: the larger level beats
+    the mean at 15x (-0.0055 pooled, passing every test) and at 10x
+    (-0.0135, failing only the early-weeks 95% coverage floor that
+    production fails by more). 95% coverage rises at both caps. No
+    lower-half mode is needed.
+  - Open, Ely's to decide: the cap n (10x now); and whether the Oracle
+    takes the same level tomorrow, since the level is one setting per
+    location for both members and the Oracle half is not yet screened.
+    If one member only, the setting needs a per-member form.
+  The code is yours (flubnf/tailcap.py and its knob). It reaches dev at
+  Ely's merge, as usual.
 - 2026-11-10 (21:05 UTC), App, a G21 (WI-04) leftover, for you to place:
   `flubnf groundhog retro` writes its seasons to the clone's
   `app\state\groundhog` (app/core/groundhog.py `STATE`) and its FluSurv
