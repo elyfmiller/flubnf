@@ -133,8 +133,11 @@ def _path_without_python(tmp_path: Path, conda: str | None) -> str:
         for name in os.listdir(d):
             # GitHub's Linux image puts conda in /usr/bin: a test that
             # says "no conda" must not find the real one there
+            # lexists, not exists: a name already linked to a broken
+            # symlink (GitHub's ubuntu-26.04 has one, grub-ntldr-img) is
+            # there all the same
             if (name.startswith(("python", "conda", "mamba", "micromamba"))
-                    or (tools / name).exists()):
+                    or os.path.lexists(tools / name)):
                 continue
             os.symlink(os.path.join(d, name), tools / name)
     return f"{stub}{os.pathsep}{tools}"
