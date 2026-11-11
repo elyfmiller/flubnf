@@ -6,6 +6,22 @@ and CDC's rules. The season's facts are in
 
 ## Now
 
+- 2026-11-11 (07:02 UTC): THE ROUND'S CHECKS ON THE LARGER LEVEL (Decided,
+  2026-11-11). The Model lane checked the knob against its cap screen
+  before the merge: the same limits, 0 of 28,416 differ (model.md, For
+  other lanes, 06:30 UTC). For today's review: the cap check reads the
+  limit as 10x the larger of the last reported week and the three-week
+  mean (this lane's scratchpad tools/shape_scan.py, CAP_LEVEL=larger by
+  default, CAP_LEVEL=mean for the old reading); the run record's tail_cap
+  should name level larger and each member's level (pf and analogue
+  both larger, or pf mean under larger_groundhog). Unchanged on purpose:
+  the gate (scripts/sense_check.py, h3 97.5% over the three-week mean,
+  30x) and Spencer's red flag (over the last week, 30x). The larger level
+  cannot trip the gate: the last week is at most three times the
+  three-week mean that contains it, so 10x the larger is at most 30x the
+  mean, and exactly 30x only where the two earlier weeks were 0. Before
+  the review: the Model lane's answer on the Oracle (model.md, For other
+  lanes) and the Engine lane's notes.
 - 2026-11-11 (05:39 UTC): THE TAIL CAP'S LEVEL KNOB, CODED (the Model
   lane's request at Ely's word, "Yes, ask Submission"; docs/team/model.md,
   For other lanes, 2026-11-11 05:20 UTC). On the branch
@@ -3129,6 +3145,18 @@ and CDC's rules. The season's facts are in
 
 ## Decided
 
+- 2026-11-11 (Ely, relayed by App): round 2026-11-14 (run 2026-11-11)
+  takes output.tail_level larger for both members, the cap still 10x,
+  the mode unchanged (shrink). Ely's words as relayed: "i think we then
+  allow the option to be had, meaning between the larger most recent is
+  used if not larger than the last 3week mean. cap is still fine at 10x.
+  the oracle should probably do the same for better odds? the oracle
+  agent has the PC to test if needed". The Oracle SIHRS takes larger
+  unless the Model lane's check on the PC says otherwise (its answer under
+  For other lanes in docs/team/model.md on dev); then the run uses
+  larger_groundhog. The knob reaches the laptop through Ely's merges
+  (branch into dev, dev into main); this lane pushes nothing to dev or
+  main.
 - 2026-11-11 (Ely): for now the lanes communicate through the
   repository. This lane (the cloud session "NAU_PyBNF TEAM") cannot
   message the sessions on Ely's computers, and they cannot see it; a
