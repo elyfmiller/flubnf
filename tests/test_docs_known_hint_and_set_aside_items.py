@@ -179,15 +179,26 @@ def test_a_set_aside_run_is_no_storage_row_and_reclaim_passes_over_it():
 def test_the_sweep_s_rule_for_a_set_aside_run_is_as_the_note_says():
     """With app-final's 8a7a4dd7 here, a set-aside run goes only for a
     whole import of its own bundle and every import names one kept;
-    before it, any whole import at the name lets it go."""
+    before it, any whole import at the name lets it go. The words the
+    note quotes are read from what the code says, not from its source:
+    since app-final's 89693ba1 they are built in parts, and they are the
+    note's while a whole import (of any bundle) is at the run's name."""
     rb = _read("app/core/replay_bundle.py")
     if "def _same_bundle(" in rb:
+        from app.core import replay_bundle
         assert "if p in asides and not _same_bundle(p, dst):" in rb
         assert "return bool(sha) and _bundle_of(dst) == sha" in rb
-        assert ('f"An earlier Replace set a run of {season} aside in "'
-                in rb)
-        assert "deleted by hand once the run imported as {stamp} is the" \
-            in rb
+        # a refused import and a finished one both name a kept run, and
+        # both ask whether a whole import of any bundle is at the name
+        assert _flat(rb).count(
+            "_asides_left(dst, but=mine), _whole_import(dst))") == 2
+        kept = Path("/r/2098-99__archived_20980101T000000Z"
+                    ".replaced-123-0a0b0c0d")
+        assert replay_bundle._asides_left_words(
+            "2098-99", "20980101T000000Z", [kept], True) == (
+            f"An earlier Replace set a run of 2098-99 aside in {kept}, and "
+            "the console keeps it there: it can be deleted by hand once "
+            "the run imported as 20980101T000000Z is the one wanted.")
     else:
         assert "whole = _whole_import(dst)" in rb
         assert "if p in asides and not whole:" in rb
