@@ -13,6 +13,29 @@ until 2026-11-09 and on the Windows PC since then.
 
 ## Now
 
+- 2026-11-11 (02:35 UTC): THE TAIL CAP ON BOTH HALVES, PRE-REGISTERED
+  (warm start task 3, Ely's go of 2026-11-10; Ely's item of 2026-11-04 and
+  the Submission lane's handoff of 2026-11-04 19:11 UTC, submission.md).
+  Frozen 2026-11-11 01:31 UTC, before any score:
+  [model-cap-both-halves-2026-11/prereg.txt](model-cap-both-halves-2026-11/prereg.txt),
+  sha256 67262c94...a0d (`prereg.txt.sha256` beside it), with the
+  screen's script `both.py`.
+  - Arms: production's location-wide shrink above the median (S), plus
+    one of three rules below it: the same exponent (M, the mirror); a
+    separate exponent, just enough that once the cap acts the 95% band is
+    no wider below the median than above it on the log scale (B); or a
+    fixed 0.7 lower narrowing (LN). Each at 10x and 15x, on the level as
+    the three-week mean (production), the last week, or the larger of
+    the two: 24 arms and no cap.
+  - The Groundhog half runs now, post hoc on this lane's Groundhog retro
+    of 2026-11-10 (the record, reproduced exactly on dev f05e70f7, new id
+    9477f398; the stored forecasts' sha256 are in the prereg). The Oracle
+    half is written in the same file and runs on C0's 84 stored weeks once
+    the lab Mac's research tree is on the PC.
+  - Predictions G1 to G7 and the decision rule are in the file. The rule
+    recommends a lower-half rule and a level at each cap and leaves 10x
+    against 15x to Ely and the PI.
+
 - 2026-11-10 (15:42 UTC): APP'S OPEN ITEMS FOR THIS LANE (App's plan,
   Ely's go of 2026-11-10). Written on the branch
   `model/app-open-items-2026-11-10` while #101 (dev to main) is open.
@@ -159,13 +182,8 @@ until 2026-11-09 and on the Windows PC since then.
     (numpy 2.4.6, pandas 3.1.1). A sparse partial hub clone,
     `%USERPROFILE%\GitHub\FluSight-forecast-hub-model`, holds target-data,
     auxiliary-data, hub-config and four model-output folders.
-  - Not yet: both engines (the Engine session installs them, Decided), so
-    no doctor, no test baseline and no Groundhog record reproduction on
-    this PC yet. They follow once the engines are in.
-    `engine-public` is not yet merged into `dev` (b4b176b), so a `dev`
-    clone installs the private engine only. G21 (#79) has landed: replays,
-    season reports and `engine_update.json` now follow FLUBNF_STATE_DIR.
-    The Sandbox part is left for Ely.
+  - G21 (#79) has landed: replays, season reports and `engine_update.json`
+    now follow FLUBNF_STATE_DIR. The Sandbox part is left for Ely.
   - 2026-11-10 (07:54 UTC): `engine-public` is merged into `dev` (#61,
     def45db), and this clone is at that commit. A `dev` copy that records
     no engine now runs the public engine; the private one runs only with
@@ -174,10 +192,49 @@ until 2026-11-09 and on the Windows PC since then.
     `FLUBNF_ENGINE`, since a season begun on one engine is refused on the
     other. On the PC, the private engine is in (engine.md, 2026-11-09:
     2fdadee0 at `%LOCALAPPDATA%\FluBNF\PyBNF-pf`); the public venv
-    (`%LOCALAPPDATA%\FluBNF\venv-public`) is not yet. The doctor under
-    each engine, `engine_lock.py check`, the test baseline and the
-    Groundhog record reproduction wait for it, so as not to run against
-    the Engine session's install and timings.
+    followed (next item).
+  - 2026-11-10 (21:05 UTC): SET UP AND CHECKED, both engines in (the
+    Engine session's install, engine.md 16571001). On `dev` f05e70f7,
+    while the Engine session's three gate runs held most of the cores
+    (so the times below carry that load):
+    - Builds. Private: 2fdadee0 on `feature/particle-filter` at
+      `%LOCALAPPDATA%\FluBNF\PyBNF-pf`, bngsim 0.15.1, venv
+      `%USERPROFILE%\.venvs\flubnf-engine`. Public: lanl/PyBNF 8410f794
+      (pybnf 1.8.1 from its wheel), bngsim 0.15.1, Python 3.12.10,
+      `%LOCALAPPDATA%\FluBNF\venv-public`. The console venv stays on
+      Python 3.11.9. Perl is the machine-wide Strawberry Perl.
+    - `flubnf doctor`: 15 ok, no warning, under each of
+      `FLUBNF_ENGINE=private` (build 2fdadee0, the production build) and
+      `public` (8410f794, the pinned build). `engine_lock.py check`:
+      "public engine ready: pybnf 1.8.1 from
+      pybnf-1.8.1-py3-none-any.whl, bngsim 0.15.1".
+    - A trap on this PC: a shell started before the Engine session's
+      install still carries the old FLUBNF_HUB and FLUBNF_PYBNF (under
+      `Documents\GitHub`, a fork at eab31c71), and doctor under private
+      then fails ("older than this console"). A new window reads the
+      account's values; an older shell must take them from the User
+      variables first, as this lane's runs did.
+    - Test baseline, CI contract (`FLUBNF_HUB=/nonexistent`,
+      `pytest tests app/tests -o addopts=""`): 12 failed, 4,660 passed,
+      349 skipped, 13 minutes. Nine expect a machine with no engine, and
+      this PC has both (test_no_engine 5, test_datasets_ui 2,
+      test_retro_archive 2). One needs `bash` on the PATH
+      (test_reinstall_script). Two pass when run alone
+      (test_retro_fit_level's midweek stop, 3 of 3; test_results_prep's
+      versions), so order or load, not this PC. The lab Mac's baseline
+      was 22.
+    - The Groundhog record reproduces exactly: `flubnf groundhog retro all
+      --aux flusurv` on hub 3a83d410 (this lane's hub clone), with
+      `FLUBNF_ENGINE=public` named (the Groundhog fits nothing): 0.6802,
+      0.6272 and 0.6448, pooled 0.6423 on 17,116 cells; coverage 50/80/95
+      0.500 / 0.785 / 0.936. 17 minutes.
+    - Found on the way: that command writes its seasons to the clone's
+      `app\state\groundhog` and its FluSurv cache to `app\state\flusurv`
+      whatever FLUBNF_STATE_DIR says (app/core/groundhog.py `STATE`,
+      flubnf/flusurv.py `CACHE_DIR`), so G21 does not cover it (For
+      other lanes).
+    - Still not here: the lab Mac's research tree (warm start 4.7), so
+      nothing post hoc on C0 yet.
 
 - 2026-10-26 (00:39 UTC): THE ORACLE SIHRS WIDTH SCREEN'S RECORDS ARE IN THE
   REPOSITORY (Ely: "make sure your results are visible to the Team agent
@@ -1425,6 +1482,19 @@ until 2026-11-09 and on the Windows PC since then.
 
 ## For other lanes
 
+- 2026-11-10 (21:05 UTC), App, a G21 (WI-04) leftover, for you to place:
+  `flubnf groundhog retro` writes its seasons to the clone's
+  `app\state\groundhog` (app/core/groundhog.py `STATE`) and its FluSurv
+  cache to `app\state\flusurv` (flubnf/flusurv.py `CACHE_DIR`), whatever
+  FLUBNF_STATE_DIR says. Seen here with FLUBNF_STATE_DIR set; harmless in
+  a clone of its own, but from a copy whose `app\state` is someone's real
+  state it writes there. No code changed by this lane.
+- 2026-11-10 (21:05 UTC), Engine: thanks for the install. This lane's
+  checks ran during your gate, at below-normal priority: both doctors
+  clean, the lock check ready, the Groundhog record reproduced (Now, same
+  time). One trap: a shell older than your install still carries the
+  Documents\GitHub FLUBNF_HUB and FLUBNF_PYBNF, and doctor under private
+  then fails on the eab31c71 fork.
 - 2026-11-10 (04:40 UTC), Submission: answered your request of 2026-11-05
   (the Groundhog lifts flat small states) under Now, same time. In short,
   the Groundhog has no trend term, so its growth is the calendar's in every
