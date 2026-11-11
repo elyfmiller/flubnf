@@ -8,6 +8,7 @@ _storage_inventory, _storage_target and _tree_size here.
 """
 from __future__ import annotations
 
+from contextlib import contextmanager
 from pathlib import Path
 
 from fastapi import APIRouter, Form, Request
@@ -678,13 +679,35 @@ def storage_clear_workroots(request: Request, confirm: str = Form("")):
 
 def _reclaim_skips() -> tuple:
     """(season entry names, workroot names) the reclaim must not touch right
-    now: seasons replaying or mid-finalize, and the active run's workroot."""
+    now: seasons replaying or mid-finalize, trees a delete, a move or an
+    import's Replace holds (retro_prep._removing's mark), and the active
+    run's workroot. The survey and the perform step take the same rule,
+    so their counts agree while nothing changes."""
+    from app.ui import retro_prep
     skip_seasons = {s for s in retro_seasons._known_seasons()
                     if _season_status(s) in _RETRO_ACTIVE}
     for key, job in list(_results_jobs.items()):
         if job and not job["done"].is_set():
             skip_seasons.add(Path(key).name)
+    with retro_prep._results_lock:
+        marked = list(retro_prep._REMOVING)
+    skip_seasons.update(Path(k).name for k in marked)
     return skip_seasons, set(_live_workroot_ids())
+
+
+@contextmanager
+def _reclaim_hold(tree: Path):
+    """Around reclaim's work on one season tree (one week's prune, one
+    file's compress: reclaim.execute's `hold`): held under the lock a
+    delete's, a move's or a Replace's mark is taken under
+    (retro_prep._results_lock), it yields False while such a mark holds
+    the tree, and True otherwise. So the mark never comes between this
+    look and the work: a delete or a Replace that arrives during one
+    file's compress waits for that file, then marks the tree, and reclaim
+    leaves the rest of it alone."""
+    from app.ui import retro_prep
+    with retro_prep._results_lock:
+        yield not retro_prep._being_removed(tree)
 
 
 def _reclaim_survey() -> dict:
@@ -756,7 +779,8 @@ def storage_reclaim(request: Request, confirm: str = Form("")):
     skip_seasons, skip_workroots = _reclaim_skips()
     out = reclaim.execute(retro_seasons.RETRO_ROOT, APP_STATE / "workroots",
                           skip_seasons=skip_seasons,
-                          skip_workroots=skip_workroots)
+                          skip_workroots=skip_workroots,
+                          hold=_reclaim_hold)
     _invalidate_scans()
     hb = retro.human_bytes
     bits = []
