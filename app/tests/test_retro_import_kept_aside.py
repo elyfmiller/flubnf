@@ -20,6 +20,21 @@ it.
 An old run let go once the new one stood is renamed .dropping- before its
 delete begins, so a delete stopped part way leaves a tree the sweep
 removes by that name, whatever bundle is at the run's name.
+
+The review of the seventh pass (app-final at b0968923):
+
+  1. A plain import said "already imported" whatever stood at the name,
+     and "can be deleted by hand" of the kept run though a stray cache
+     file was all that was there: the kept run was the only copy. Now
+     "already imported" only over this bundle's whole import; another
+     file's is called that, a folder that is not a whole import is
+     called that, and the kept run is called deletable only while a
+     whole import is at the name (else: it may be the only copy).
+  2. A run the sweep put back from another file was called "this
+     bundle's". It is said to be from another file.
+  3. A delete of a run that failed part way kept its imported.json, so
+     the part left passed for a whole import and the sweep deleted the
+     kept run. retro.delete_tree takes imported.json first.
 """
 import json
 import os
