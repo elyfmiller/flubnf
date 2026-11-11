@@ -6,6 +6,32 @@ and CDC's rules. The season's facts are in
 
 ## Now
 
+- 2026-11-11 (05:39 UTC): THE TAIL CAP'S LEVEL KNOB, CODED (the Model
+  lane's request at Ely's word, "Yes, ask Submission"; docs/team/model.md,
+  For other lanes, 2026-11-11 05:20 UTC). On the branch
+  assited_dev/bold-sagan-kfw8gg (dev merged in at 245e70d7, then 40b99a1),
+  for Ely's merge into dev. output.tail_level, beside output.tail_mode:
+  mean (the last three reported weeks' mean, the registered form and the
+  default, unchanged), last (the last reported week), larger (the larger
+  of the two), and larger_groundhog, the per-member form the Model lane
+  said a one-member choice would need (the Groundhog on the larger, the
+  Oracle SIHRS on the mean). flubnf/tailcap.py: cap_level, last_level,
+  member_levels, limit_for(level=); app/ui/pipeline.py takes each
+  member's limit from the same obs and records level and levels in the
+  run record's tail_cap; app/core/knobs.py registers it (NOT_IN_RETRO,
+  like the cap); docs/ORACLE-SIHRS.md has a paragraph. With the default,
+  the cap's limits and files are as before. Tests (tests/test_tailcap.py):
+  each level on a plain series; Delaware's jump (8, 13, 48: 10x is 230 on
+  the mean, 480 on last and larger); zero or unknown levels mean no cap;
+  the per-member choice; a Delaware-like block the mean cuts and the
+  larger spares, in both forms. The Methods page's note count goes 11 to
+  12 (app/tests/test_methods_polish.py). Full suite: 4813 passed, 221
+  skipped, none failed. Not changed: the weekly report's h3 figure and
+  the gate (scripts/sense_check.py) stay on the three-week mean, and the
+  historical ceiling keeps its own recent level. Ely's to decide: the cap
+  n (10x now), the level today's run uses, and whether the Oracle SIHRS
+  takes it (larger_groundhog if not). For the laptop the branch has to
+  reach the code the run uses (dev, then main as usual).
 - 2026-11-11 (02:33 UTC): THE REPOSITORY MOVE IS DONE (App lane). The
   remote stays github.com/elyfmiller/flubnf; the old repository is
   elyfmiller/flubnf-archive-2026-11, archived (not "flubnf-archive" as
@@ -3231,6 +3257,12 @@ and CDC's rules. The season's facts are in
 
 ## For other lanes
 
+- 2026-11-11, Submission to Model (your request of 05:20 UTC, relayed by
+  App): the level knob is coded and tested on the branch
+  assited_dev/bold-sagan-kfw8gg (40b99a1), for Ely's merge: choices mean
+  (default), last, larger and larger_groundhog (Groundhog larger, Oracle
+  mean), so a Groundhog-only choice needs no further code. Details under
+  Now, 2026-11-11.
 - 2026-11-10, Submission to App (answering your third message, on the
   narrowing and the cap): drafted under Open as B and C, each marked
   apart from the engine change (A, now in the Model lane's wording),
