@@ -29,6 +29,12 @@ import pandas as pd
 
 TARGET = "wk inc flu hosp"
 THRESHOLD = 30.0
+#: a ratio exactly at the threshold passes, as on paper: 10x the larger of the
+#: last week and the three-week mean reaches 30x the mean only where the two
+#: earlier weeks are 0, and in floating point 10x / (x / 3) can read
+#: 30.000000000000004 (x = 13, 26, 29, ...), so the comparison allows a relative
+#: tolerance this small
+RTOL = 1e-9
 RECENT_WEEKS = 3
 UPPER = 0.975
 LOWER = 0.025
@@ -76,12 +82,13 @@ def ratios(sub: pd.DataFrame, recent: pd.Series) -> dict[int, pd.DataFrame]:
 
 def gate(sub: pd.DataFrame, recent: pd.Series, threshold: float = THRESHOLD) -> tuple[bool, pd.DataFrame, dict[int, pd.DataFrame]]:
     """(passed, the horizon-3 offenders sorted worst first, the per-horizon
-    frames). Passed is False when any horizon-3 ratio exceeds `threshold`."""
+    frames). Passed is False when any horizon-3 ratio exceeds `threshold`
+    (beyond the floating-point tolerance RTOL)."""
     by_h = ratios(sub, recent)
     f = by_h.get(GATE_HORIZON)
     if f is None:
         return True, pd.DataFrame(), by_h
-    over = f[f["ratio"] > threshold].sort_values("ratio", ascending=False)
+    over = f[f["ratio"] > threshold * (1 + RTOL)].sort_values("ratio", ascending=False)
     return over.empty, over, by_h
 
 
@@ -100,7 +107,7 @@ def report(path: Path, truth: pd.DataFrame, threshold: float = THRESHOLD, out=sy
         print(f"   h{h}: 97.5% over recent level, typical state {r.median():.1f}x, "
               f"max {r.max():.0f}x ({names.get(worst, worst)}); "
               f"95% band over median, typical {b.median():.2f}x; "
-              f"over {threshold:g}x: {int((f['ratio'] > threshold).sum())}", file=out)
+              f"over {threshold:g}x: {int((f['ratio'] > threshold * (1 + RTOL)).sum())}", file=out)
     if passed:
         print("   PASS", file=out)
     else:

@@ -84,6 +84,22 @@ def test_the_threshold_is_a_parameter_and_only_horizon_3_gates(sc):
     assert passed and by_h[2].loc["39", "ratio"] == pytest.approx(450.0)
 
 
+def test_a_ratio_of_exactly_the_threshold_passes_despite_floating_point(sc):
+    # Ohio's last three weeks 0, 0, 13: the recent level is 13/3, and 10x the
+    # larger level (the last week) is 130, exactly 30x on paper but
+    # 30.000000000000004 in floating point
+    truth = truth_frame()
+    for d, v in [("2026-10-03", 0), ("2026-10-10", 0), ("2026-10-17", 13)]:
+        truth.loc[(truth["date"] == d) & (truth["location"] == "39"), "value"] = v
+    recent, _, _ = sc.recent_levels(truth)
+    assert 130.0 / recent["39"] > 30.0                   # the float edge itself
+    passed, over, by_h = sc.gate(submission(upper_h3_ohio=130.0), recent)
+    assert passed and over.empty
+    assert by_h[3].loc["39", "ratio"] == pytest.approx(30.0)
+    passed, over, _ = sc.gate(submission(upper_h3_ohio=131.0), recent)   # 30.2x
+    assert not passed and list(over.index) == ["39"]
+
+
 def test_a_zero_recent_level_never_fails_and_other_targets_are_ignored(sc):
     recent, _, _ = sc.recent_levels(truth_frame())
     passed, over, by_h = sc.gate(submission(upper_h3_ohio=100.0, upper_h3_wy=5000.0), recent)
