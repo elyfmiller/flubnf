@@ -6,6 +6,17 @@ and CDC's rules. The season's facts are in
 
 ## Now
 
+- 2026-11-11 (20:19 UTC): THE LEVEL SETTING IS ON main (App; checked here).
+  Ely merged #5 (dev into main) as dcef8bee; main and dev (90a3a4e8, with
+  #6's test-only fix for GitHub's ubuntu-26.04) have the same tree, and
+  main's flubnf/tailcap.py carries LEVEL_CHOICES. Ely's laptop is on
+  dcef8bee, so this round's run record should name app sha dcef8bee. At
+  the run Ely sets cap 10 and level larger by hand (the form restores 15
+  and mean); the review's tail_cap check confirms it. This lane's gate fix
+  (935fd08) is not on main: it waits on this branch for a later merge,
+  and today's data cannot reach its edge. PRs #1-#4 stay unmerged until
+  this round's files are in. The round still waits for the week ending
+  2026-11-07 on cdcepi main (hourly check, last at 19:41 UTC: not yet).
 - 2026-11-11 (18:16 UTC): ROUND 2026-11-14 READINESS (App's check of
   ~18:15 UTC), ANSWERED POINT BY POINT; Ely decides the open points.
   (1) THE HUB'S POPULATION CHECK IS 0.1%. Confirmed on cdcepi main:
