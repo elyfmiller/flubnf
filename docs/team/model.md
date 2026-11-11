@@ -13,6 +13,29 @@ until 2026-11-09 and on the Windows PC since then.
 
 ## Now
 
+- 2026-11-11 (02:35 UTC): THE TAIL CAP ON BOTH HALVES, PRE-REGISTERED
+  (warm start task 3, Ely's go of 2026-11-10; Ely's item of 2026-11-04 and
+  the Submission lane's handoff of 2026-11-04 19:11 UTC, submission.md).
+  Frozen 2026-11-11 01:31 UTC, before any score:
+  [model-cap-both-halves-2026-11/prereg.txt](model-cap-both-halves-2026-11/prereg.txt),
+  sha256 67262c94...a0d (`prereg.txt.sha256` beside it), with the
+  screen's script `both.py`.
+  - Arms: production's location-wide shrink above the median (S), plus
+    one of three rules below it: the same exponent (M, the mirror); a
+    separate exponent, just enough that once the cap acts the 95% band is
+    no wider below the median than above it on the log scale (B); or a
+    fixed 0.7 lower narrowing (LN). Each at 10x and 15x, on the level as
+    the three-week mean (production), the last week, or the larger of
+    the two: 24 arms and no cap.
+  - The Groundhog half runs now, post hoc on this lane's Groundhog retro
+    of 2026-11-10 (the record, reproduced exactly on dev f05e70f7, new id
+    9477f398; the stored forecasts' sha256 are in the prereg). The Oracle
+    half is written in the same file and runs on C0's 84 stored weeks once
+    the lab Mac's research tree is on the PC.
+  - Predictions G1 to G7 and the decision rule are in the file. The rule
+    recommends a lower-half rule and a level at each cap and leaves 10x
+    against 15x to Ely and the PI.
+
 - 2026-11-10 (15:42 UTC): APP'S OPEN ITEMS FOR THIS LANE (App's plan,
   Ely's go of 2026-11-10). Written on the branch
   `model/app-open-items-2026-11-10` while #101 (dev to main) is open.
