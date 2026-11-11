@@ -100,9 +100,39 @@ just far enough to even it. Results in [report_amend1.txt](report_amend1.txt):
 - The rule: no BN arm is recommended over the shrink alone at the same
   cap and level.
 
+## Amendment 2: the level on the Oracle's own October rounds
+
+Ely decided the larger level for both members at 10x for the 2026-11-11
+run, and offered the PC to test the Oracle first. C0's weeks are not on
+the PC. [AMENDMENT2.txt](AMENDMENT2.txt), frozen before its first score,
+uses the Oracle's and the Groundhog's submitted rounds of 2026-10-10,
+10-17 and 10-24 (the last before the cap), truth through 10-31, 465 state
+cells per member. It asks one question: does the Oracle react to the level
+differently from the Groundhog? Results in
+[report_amend2.txt](report_amend2.txt):
+
+| member, 10x | mean (R3) | larger (RX) | RX - R3 | cov95 R3 / RX |
+|---|---|---|---|---|
+| Oracle | 0.6595 | 0.6796 | +0.0201 [+0.0088, +0.0327] | 0.968 / 0.972 |
+| Groundhog | 0.6279 | 0.6496 | +0.0217 [+0.0117, +0.0330] | 0.981 / 0.989 |
+
+- The Oracle's difference less the Groundhog's: -0.0016 [-0.0056,
+  +0.0029]. The rule finds no concrete reason against `larger` for both
+  members. P1 to P3 hold.
+- The cost is October's, and both members pay it: the bands were too wide
+  (95% coverage 0.991 and 0.996 with no cap), so a tighter limit scored
+  better, as in October 2023 in Part 1. On 10-24, the one round on today's
+  Oracle settings, the Oracle's cost is +0.0049.
+- At 15x the Oracle loses less than the Groundhog (gap -0.0168 [-0.0268,
+  -0.0065]).
+- Against Submission's table of 2026-11-04 on these rounds, the
+  Groundhog's scores agree to within 0.003. The Oracle's are 0.014 to
+  0.017 higher, which is not explained here. The comparison is within each
+  member, on the same cells, so it does not depend on this.
+
 ## What follows
 
-- This is the Groundhog half. The level and the cap are one setting per
-  location for both members, so the prereg leaves the Oracle as it is
-  until Part 2 (C0's 84 stored weeks, once the lab Mac's research tree is
-  on the PC), unless Ely decides otherwise.
+- Ely decided the level for both members before Part 2 (larger, 10x,
+  2026-11-11). Part 2 (C0's 84 stored weeks, once the lab Mac's research
+  tree is on the PC) stays as registered: it is the full test of the
+  level and the lower half on the Oracle.

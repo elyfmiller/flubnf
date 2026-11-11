@@ -127,10 +127,10 @@ def main_score():
             for a in ARMS for m in MEMBERS]
     common = set.intersection(*keys)
     for a in ARMS:
-        k = list(zip(CC[a].asof, CC[a].fips, CC[a].horizon))
+        k = list(zip(CC[a]["asof"], CC[a].fips, CC[a].horizon))
         CC[a] = CC[a][[x in common for x in k]].copy()
         V = VV[a][VV[a].scored.astype(bool)]
-        kv = list(zip(V.asof, V.fips, V.horizon))
+        kv = list(zip(V["asof"], V.fips, V.horizon))
         VV[a] = V[[x in common for x in kv]].copy()
     OUT.mkdir(parents=True, exist_ok=True)
     for a in ARMS:
@@ -140,7 +140,8 @@ def main_score():
     for member, rnd, asof, nloc, n_up, touched in info:
         print(f"  {member} {rnd}: {nloc} states, larger above mean in {n_up}; blocks changed {touched}")
     rel, lrel = BO.rel, BO.lrel
-    cov = lambda V, b: float(V[V.band == b].hit.mean())
+    # score_week labels the bands "50" and "95" (strings; both.py read them back from csv as numbers)
+    cov = lambda V, b: float(V[V.band.astype(str) == str(b)].hit.mean())
     print("\nBY MEMBER (states, rounds 10-10, 10-17, 10-24; truth through 10-31): relWIS, log, cov50, cov95, by round")
     for m in MEMBERS:
         rows = []

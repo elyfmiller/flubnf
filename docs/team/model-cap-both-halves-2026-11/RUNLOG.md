@@ -42,6 +42,18 @@ Amendment 2 (the level on the Oracle's own October rounds):
   no truth: 0 defects. Its counts are in AMENDMENT2.txt.
 - 2026-11-11 07:06:50: `AMENDMENT2.txt` frozen (sha256 f6ea323a...),
   made read-only, and pushed with `amend2.py` before its first score.
+- The first `amend2.py --score` stopped before printing anything, on the
+  same pandas slip as Part 1's first report (`.asof` read as the
+  DataFrame's method). The two lines now read the column as `["asof"]`.
+  No rule, arm, measure or threshold changed.
+- The second ran in full but printed every coverage as NaN: score_week
+  labels the bands "50" and "95" as strings, and the report compared them
+  with numbers (both.py had read them back from csv). P3 printed "fails"
+  on NaN. The coverage line now compares the labels as strings, and the
+  report was run again ([report_amend2.txt](report_amend2.txt)). WIS, the
+  bootstrap and the rule were the same in both runs; the coverage was
+  first seen in the third.
+- Afterwards this lane's hub clone went back to 3a83d410, Part 1's.
 
 Read after the scores (descriptive, not in the rule):
 - LN against S gives the same difference at every cap and level (-0.0003

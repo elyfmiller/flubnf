@@ -13,6 +13,46 @@ until 2026-11-09 and on the Windows PC since then.
 
 ## Now
 
+- 2026-11-11 (07:20 UTC): THE CAP'S LEVEL ON THE ORACLE: IT RESPONDS AS THE
+  GROUNDHOG DOES, SO NOTHING HERE ARGUES AGAINST `larger` FOR BOTH. Ely
+  decided `larger` for both members at 10x and offered the PC to test the
+  Oracle first (Decided, same day). C0's weeks are on the lab Mac, so
+  amendment 2 (AMENDMENT2.txt, f6ea323a, frozen 07:06:50 UTC and pushed in
+  5ae7857f before its first score) uses what the PC has: the Oracle's and
+  the Groundhog's own rounds of 2026-10-10, 10-17 and 10-24, the last
+  before the cap, as submitted, with truth through 10-31 (hub a73013aa).
+  That gives 465 state cells per member, the same cells for both.
+  Records in
+  [model-cap-both-halves-2026-11/](model-cap-both-halves-2026-11/README.md):
+  - At 10x, the larger level against the three-week mean, relWIS:
+    Oracle 0.6595 to 0.6796, +0.0201 [+0.0088, +0.0327]; Groundhog 0.6279
+    to 0.6496, +0.0217 [+0.0117, +0.0330]. The Oracle's difference less
+    the Groundhog's is -0.0016 [-0.0056, +0.0029] (2,000 resamples of the
+    states). Log scale: +0.0040 and +0.0030.
+  - 95% coverage rises a little for both members (Oracle 0.968 to 0.972,
+    Groundhog 0.981 to 0.989). In October both members' bands were too
+    wide (0.991 and 0.996 with no cap), so the tighter limit scored
+    better.
+  - 10-24 is the one round on today's Oracle settings (weight one
+    quarter, narrowing 0.7). There the cost is +0.0049 (0.6219 to 0.6268),
+    against +0.028 and +0.020 on 10-10 and 10-17.
+  - The rule: no concrete reason against `larger` for both members. The
+    Oracle loses about 0.02, but the Groundhog loses the same. Predictions
+    P1 to P3 hold.
+  - Part 1 already saw this October cost: in October 2023 the tight cap
+    helped the Groundhog too. Over the Groundhog's three full seasons the
+    larger level still gained 0.0135 at 10x, most of it in the rise
+    (first 8 weeks -0.028, corrected-seed windows -0.042). The Oracle
+    reacts to the level as the Groundhog does, so the season-long
+    evidence is the best guide for both members. Part 2, on C0's 84
+    weeks, stays as registered.
+  - A side note: this lane's Groundhog scores match Submission's table of
+    2026-11-04 on these rounds to within 0.003 (10x 0.6279 against 0.631,
+    15x 0.6699 against 0.669). The Oracle's are 0.014 and 0.017 higher
+    (0.6595 against 0.646, 0.6868 against 0.670), which this lane has not
+    explained. The comparison above is within each member, on the same
+    cells, so it does not depend on this.
+
 - 2026-11-11 (05:10 UTC): THE CAP ON BOTH HALVES, AMENDMENT 1: A LOWER HALF
   BALANCED IN ADMISSIONS DOES NOTHING THE LEVEL HAS NOT ALREADY DONE. Ely,
   reading the entry below: after a jump like Delaware's the bottom half can
@@ -1557,6 +1597,19 @@ until 2026-11-09 and on the Windows PC since then.
 
 ## For other lanes
 
+- 2026-11-11 (07:20 UTC), Submission and App: THE ORACLE ANSWER FOR TODAY'S
+  RUN. The Oracle SIHRS keeps `larger`, as Ely decided: output.tail_level
+  = larger for both members, the cap at 10x, mode shrink. Not
+  `larger_groundhog`. This lane's check on the PC (Now, 07:20 UTC;
+  amendment 2) finds no Oracle-specific harm. On the Oracle's own October
+  rounds the larger level costs the Oracle +0.0201 and the Groundhog
+  +0.0217, a gap of -0.0016 [-0.0056, +0.0029]. That cost is October's
+  (the bands were too wide then) and the members share it. For the
+  review: on these rounds the larger level spared some upper tails that
+  the mean would have shrunk (Oracle blocks changed at 10x: 152 against
+  164 on 10-10, 176 against 184 on 10-24). Submission, your gate
+  arithmetic (10x the larger is at most 30x the mean) agrees with this
+  lane's reading.
 - 2026-11-11 (06:30 UTC), Submission: thank you for the level knob
   (output.tail_level, 40b99a1e on assited_dev/bold-sagan-kfw8gg; your
   submission.md, Now and For other lanes, 05:39 UTC). This lane checked it
@@ -1960,28 +2013,18 @@ until 2026-11-09 and on the Windows PC since then.
 
 ## Open
 
-- 2026-11-11 (02:50 UTC), for Ely, from the cap screen's Groundhog half
-  (Now, same time):
-  - The level is coded (06:30 UTC): Submission's knob output.tail_level,
-    on its branch assited_dev/bold-sagan-kfw8gg for Ely's merge, gives
-    the screen's limits exactly (For other lanes, 06:30 UTC). Its
-    choices: mean (the default, as now), last, larger (both members),
-    larger_groundhog (the Groundhog on the larger, the Oracle on the
-    mean). For the 2026-11-11 run it has to reach the code the laptop
-    runs, dev and then main.
-  - At 15x: take the level as the larger of the last week and the
-    three-week mean (S15-RX, passed every test)?
-  - At 10x, the current setting: the rule keeps the three-week mean, since
-    every 10x arm fails the early-weeks coverage floor that production
-    fails by more. S10-RX is better than production on every measure but
-    October 2023. Weigh it, or wait for the Oracle half?
-  - The Oracle: give it the larger level too (`larger`) before Part 2, or
-    keep it on the mean (`larger_groundhog`) until C0's weeks are scored
-    (the lab Mac's tree, the item below)?
-  - Amendment 1 (05:10 UTC): for the Groundhog, a lower-half rule adds
-    nothing once the level is fixed. For the 2026-11-11 run this lane
-    recommends no lower-half change for either member. The level fix needs
-    Submission's code before the run if it is wanted then.
+- 2026-11-11 (02:50 UTC, updated 07:20 UTC), for Ely, from the cap screen:
+  - Answered by Ely's decision (Decided, 2026-11-11): the level `larger`
+    for both members, at 10x. Amendment 2 found no reason against it for
+    the Oracle (Now, 07:20 UTC). The knob is on Submission's branch
+    assited_dev/bold-sagan-kfw8gg (40b99a1e). It has to reach the code
+    the laptop runs, dev and then main, by Ely's merges.
+  - Still open: Part 2 (the Oracle on C0's 84 weeks), once the lab Mac's
+    tree is on the PC (the item below). It is the full test of the level
+    on the Oracle; amendment 2 only looked for Oracle-specific harm.
+  - Amendment 1 (05:10 UTC): a lower-half rule adds nothing once the
+    level is fixed. This lane recommends no lower-half change for either
+    member.
 - 2026-11-10 (04:40 UTC), for Ely, from the move:
   - Can the lab Mac's research tree be copied to the PC (C0's stored
     replays and per-cell tables, `scorehub`, `groundhog-beta/` whole,
