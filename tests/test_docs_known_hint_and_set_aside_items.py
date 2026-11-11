@@ -224,10 +224,11 @@ def test_a_set_aside_run_s_imported_json_goes_first_now():
 # ---------------------------- 5 to 12: the eight recorded beside them
 
 def _note8() -> str:
-    """The App notes' entry on the eight items."""
+    """The App notes' entry on pass 8's items (eight, and the straddle
+    case pass 8 took back: nine)."""
     notes = _read("docs/team/app.md")
     now = notes[notes.index("## Now"):notes.index("## Decided")]
-    at = now.index("- 2026-11-10 (late night): eight more things are known")
+    at = now.index("- 2026-11-10 (late night): nine more things are known")
     return _flat(now[at:now.index("\n- ", at + 1)])
 
 
@@ -277,6 +278,11 @@ def test_the_app_notes_record_the_eight_items():
             "one**") in note
     assert ('count (8, 6, 4, 2) and say "about 14"; fourteen more seasons '
             'give (96, 66, 36, 6)') in note
+    assert ("**One summer that straddles 1 August counts as two seasons**"
+            in note)
+    assert "took it back (fbefd383)" in note
+    assert "passes over it.)" in note
+    assert "(on this branch too since the merge 04aab15c)" in note
 
 
 # ----------------------------------- 5 to 7: the import and the Delete
@@ -519,3 +525,32 @@ def test_a_week_53_season_is_taken_for_an_ordinary_one(engine_ready):
     assert counts == (8, 6, 4, 2)
     assert "give about 14 more earlier seasons of data." in fix
     assert two(more=14)[0] == (96, 66, 36, 6)
+
+
+def test_one_summer_that_straddles_1_august_counts_as_two(engine_ready):
+    """The review's file (pass 7 of the review of #93 at d415a9fa,
+    finding 2), as the note gives it: zeros at weeks 21 to 39 of 2023 only
+    say "would not help there" when the file ends at week 31 or 32, and
+    "only one season says so" at weeks 29, 30, 33 and 34."""
+    from flubnf import analogue as AN
+
+    def straddle(end):
+        lines = ["week_ending,cases"]
+        for i, d in enumerate(_saturdays(date(2022, 10, 1), end)):
+            v = (0 if d.year == 2023 and 21 <= AN.epiweek(d) <= 39
+                 else 10 + (i * 7) % 40)
+            lines.append(f"{d},{v}")
+        return _file_hint(lines)
+
+    for end, week, counts in ((date(2024, 8, 3), 31, (2, 1, 0, 0)),
+                              (date(2024, 8, 10), 32, (1, 1, 0, 0))):
+        assert AN.epiweek(end) == week
+        got, fix = straddle(end)
+        assert got == counts, end
+        assert ("At 2 horizons no earlier season in the file has a week like "
+                "it, so more seasons like these would not help there.") in fix
+    for end in (date(2024, 7, 20), date(2024, 7, 27), date(2024, 8, 17),
+                date(2024, 8, 24)):
+        got, fix = straddle(end)
+        assert got == (0, 0, 0, 0), end
+        assert "only one season says so, and more seasons may." in fix

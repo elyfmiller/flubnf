@@ -6,13 +6,14 @@ pages (TEAM.md, team/README.md, FLUSIGHT-2026-27.md). Works on `dev`.
 
 ## Now
 
-- 2026-11-10 (late night): eight more things are known (pass 8's checks,
-  and two findings of pass 7 left open), read on this branch at 340e7d76
+- 2026-11-10 (late night): nine more things are known (pass 8's checks,
+  and three findings of pass 7 left open), read on this branch at 340e7d76
+  (its hint change was then taken back in fbefd383; see the last item)
   and, for the import, on app-final at 435aa362 (pass 8's import fixes,
   89693ba1 to 853ab768). Three are in the import of a replay bundle and
   the console's Delete of a run (app/core/replay_bundle.py,
   app/ui/routes/retro.py, app/ui/routes/storage.py), three in the season
-  report and the season page while a delete holds the run, and two in
+  report and the season page while a delete holds the run, and three in
   the "more earlier seasons" hint of Your data's check
   (app/core/datasets/checks.py). A fix is to follow for two of them, as
   each says; the others are recorded as they are.
@@ -27,10 +28,13 @@ pages (TEAM.md, team/README.md, FLUSIGHT-2026-27.md). Works on `dev`.
     under its `.replaced-` name with no imported.json. The sweep never
     puts such a tree back (only a whole import goes back) and never
     deletes it (it names no bundle, so it never matches the import at
-    the name), so every import of that season and stamp names it as a
+    the name), so an import of that season and stamp names it as a
     run an earlier Replace set aside ("An earlier Replace set a run of
     <season> aside in <folder>, and the console keeps it there: ..."),
-    though it is part of one. Nothing is lost: the new run is whole at
+    though it is part of one. (Every import names it once the
+    process that left it has ended or an hour has passed; before that,
+    an import from another process, such as `flubnf retro import` while
+    the console that left it runs, passes over it.) Nothing is lost: the new run is whole at
     the name, Storage lists no row for the part, and its reclaim passes
     over it. It is deleted by hand.
   - **An import that fails on a disk error does not name a kept run.**
@@ -56,7 +60,7 @@ pages (TEAM.md, team/README.md, FLUSIGHT-2026-27.md). Works on `dev`.
     <stamp> from another file; a Replace import puts this bundle's run
     in its place." and "An earlier Replace stopped part way and left an
     earlier run from another file in <folder>; it is back under its own
-    name now." (this branch takes those words at its next merge). The
+    name now." (on this branch too since the merge 04aab15c). The
     Delete itself is silent. A fix is to follow that merge.
   - **A refused delete can leave a cached season report with no national
     figures for the run.** On this branch since 209ba54f, a report build
@@ -113,8 +117,7 @@ pages (TEAM.md, team/README.md, FLUSIGHT-2026-27.md). Works on `dev`.
     5 of the 30. Six locations reported every other week beside the one
     say "about 1" too.
   - **A season that holds MMWR week 53 is taken for an ordinary one**
-    (pass 7 of the review of #93 at d415a9fa, finding 1; declined in the
-    pass that fixed its finding 2, 340e7d76). The figure takes what the
+    (pass 7 of the review of #93 at d415a9fa, finding 1; declined in pass 8). The figure takes what the
     file's earlier seasons gave the fewest horizon, over those seasons,
     as what each more season gives, and a season with a week 53 can give
     more than an ordinary one, or give a horizon what an ordinary one
@@ -134,6 +137,22 @@ pages (TEAM.md, team/README.md, FLUSIGHT-2026-27.md). Works on `dev`.
     rate from them, and that rate gives the second "about 3", never
     reached either; the second's right answer is no figure while every
     horizon has some donor weeks, which the check has no words for.
+  - **One summer that straddles 1 August counts as two seasons** (pass 7
+    of the review of #93 at d415a9fa, finding 2). `_seasons_heard` counts
+    the seasons that show a horizon at 0 gets nothing by season label,
+    and where the donor window holds weeks on both sides of 1 August
+    (week 30 of a summer in one season, weeks 31 to 34 in the next), one
+    summer of zeros is two seasons. One series from 2022-10-01, 0 at MMWR
+    weeks 21 to 39 of 2023 only, ending 2024-08-03 or 2024-08-10 (week 31
+    or 32), counts (2, 1, 0, 0) or (1, 1, 0, 0) and says "At 2 horizons
+    no earlier season in the file has a week like it, so more seasons
+    like these would not help there."; ending at week 29, 30, 33 or 34 it
+    says "only one season says so, and more seasons may". Pass 8 counted
+    passes of the window instead of season labels (340e7d76) and took it
+    back (fbefd383): that count put one season's August weeks and the
+    next July's in two passes, so a one-year file ending near week 29 to
+    33 said "would not help" where it had said "more seasons may". Left
+    as is; a fix counts each summer once, whatever its label and pass.
 
 - 2026-11-10 (night): four more things are known and left as they are
   (pass 7's independent checks of the review of #93). Two are in the
