@@ -30,6 +30,7 @@ the five may (test_dataset_donor_mixed_groups).
 """
 from __future__ import annotations
 
+import html as H
 from datetime import date, timedelta
 
 import pytest
@@ -164,7 +165,8 @@ def test_a_group_with_only_dead_seasons_does_not_speak():
     """Group A's live season shows the weeks 4 later read 0; group B's
     one earlier season is all 0 and so says nothing: B could still gain
     from real seasons. Neither a figure (A's seasons show an ordinary one
-    gives horizon 4 nothing) nor "would not help"."""
+    gives horizon 4 nothing) nor "would not help". B is named (review of
+    #93 at f2fd03ef: "the group" named none in a file of two)."""
     raw = a_bytes().decode().splitlines()
     out = [raw[0]]
     for ln in raw[1:]:
@@ -177,11 +179,13 @@ def test_a_group_with_only_dead_seasons_does_not_speak():
     assert got["counts"][-1] == 0
     assert got["seasons"] is None
     assert got["open"] == 1 and got["open_new"] is False
+    assert got["open_group"] == "B"
     html = check(raw, kind="rate")
-    assert notice(html).endswith(
+    assert H.unescape(notice(html)).endswith(
         "At 1 horizon the earlier seasons in the file give no week like "
-        "it, but more seasons of the group whose seasons show nothing "
-        "either way may.")
+        "it, but more seasons of group 'B', whose seasons show nothing "
+        "either way, may.")
+    assert "the group" not in notice(html)
     assert "would not help" not in html and "Give about" not in html
 
 

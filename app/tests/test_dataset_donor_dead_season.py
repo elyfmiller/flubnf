@@ -19,13 +19,20 @@ figure nor "would not help" (review of #93 at d5a7eb16, findings 1 and
 Since the review of #93 at 42db2a82 (findings 1 and 2;
 test_dataset_donor_few_seasons) a season reading 0 throughout counts for
 nothing either way, so the small group's three seasons of zeros no longer
-speak and the file of (b) gets its figure back; and "would not help"
+speak and the file of (b) got its figure back; and "would not help"
 takes two seasons with cases: one live season gives neither a figure nor
 "would not help".
+
+Since the review of #93 at f2fd03ef (test_dataset_donor_nothing_speaks)
+the figure for an ordinary season is given only for a file of the newest
+season only. The files here hold earlier seasons that read 0 throughout
+and say nothing either way, so they get no figure and no "would not
+help": the check says the earlier seasons in the file show nothing
+either way, and more seasons may. Real seasons would help them, as
+below.
 """
 from __future__ import annotations
 
-import math
 from datetime import date, timedelta
 
 import pytest
@@ -91,49 +98,52 @@ def zero_group_bytes(live_seasons: int = 0) -> bytes:
     return ("\n".join(lines) + "\n").encode()
 
 
-def _figure(end: date, groups: int) -> int:
-    """The figure with nothing to go by: an ordinary season of every
-    group (window_weeks_a_season), as before R1's fix."""
-    return math.ceil(30 / (CK.window_weeks_a_season(AN.epiweek(end))
-                           * groups))
+#: the words for a file whose earlier seasons say nothing at any horizon
+NOTHING = ("No earlier season in the file has a week like it at any "
+           "horizon, but the earlier seasons in the file show nothing "
+           "either way, and more seasons may.")
 
 
 # ------------------------------------------------ the review's two files
 
-def test_one_dead_season_gets_its_figure_back():
+def test_one_dead_season_gives_no_figure_and_more_seasons_may():
+    """It gave "about 6", an ordinary season's figure, until the review
+    of #93 at f2fd03ef: the file holds an earlier season, so no figure."""
     raw = dead_season_bytes()
     assert counts_of(raw) == (0, 0, 0, 0)
     got = CK.groundhog_donors(D.validate(raw))
-    assert got["seasons"] == _figure(END_A, 1) == 6
+    assert got["seasons"] is None and got["unspoken"] == 4
+    assert not got["open"] and not got["one_season"]
     html = check(raw, kind="rate")
     assert notice(html).endswith(
-        "so it will not forecast this data on its own. Give about 6 more "
-        "earlier seasons of data.")
-    assert "would not help" not in html
+        "so it will not forecast this data on its own. " + NOTHING)
+    assert "would not help" not in html and "Give about" not in html
 
 
 def test_real_seasons_would_help_the_dead_season_file():
-    """The figure holds: 6 seasons with cases before the dead one bring
+    """More seasons may: 6 seasons with cases before the dead one bring
     every horizon to its 30, so "would not help" was wrong."""
     assert min(counts_of(dead_season_bytes(live_before=6))) >= 30
 
 
-def test_one_zero_group_beside_new_groups_gets_its_figure_back():
+def test_one_zero_group_beside_new_groups_gives_no_figure():
     """The small group's seasons read 0 throughout and say nothing, so no
-    group speaks: an ordinary season of each of the six, as before R1's
-    fix (review of #93 at 42db2a82, finding 1)."""
+    group speaks (review of #93 at 42db2a82, finding 1). It gave "about 1
+    more", an ordinary season of each of the six, until the review at
+    f2fd03ef: the file holds earlier seasons, so no figure, and more
+    seasons may."""
     raw = zero_group_bytes()
     rep = D.validate(raw)
     assert len(rep.summary["groups"]) == 6
     assert counts_of(raw) == (0, 0, 0, 0)
     got = CK.groundhog_donors(rep)
-    assert got["seasons"] == _figure(END_B, 6) == 1
+    assert got["seasons"] is None and got["unspoken"] == 4
     assert not got["open"] and not got["one_season"]
     html = check(raw, kind="rate")
     assert notice(html).endswith(
-        "so it will not forecast this data on its own. Give about 1 more "
-        "earlier season of data.")
+        "so it will not forecast this data on its own. " + NOTHING)
     assert "would not help" not in html and "without any may" not in html
+    assert "Give about" not in html
 
 
 def test_real_seasons_of_every_group_would_help_the_zero_group_file():
@@ -154,18 +164,21 @@ def test_one_live_season_that_gives_other_horizons_donors_still_none():
     assert got["seasons"] is None and got["one_season"] == 1
 
 
-def test_two_dead_seasons_of_the_only_group_get_the_figure():
+def test_two_dead_seasons_of_the_only_group_say_nothing():
     """Two earlier seasons of the only group hold the weeks and read 0
-    throughout: they say nothing, so the figure (review of #93 at
-    42db2a82, finding 1; test_dataset_donor_few_seasons)."""
+    throughout: they say nothing, so not "would not help" (review of #93
+    at 42db2a82, finding 1; test_dataset_donor_few_seasons), and no
+    figure (at f2fd03ef; it was 6)."""
     lines = ["week_ending,cases"]
     for i, d in enumerate(_saturdays(date(2019, 8, 1), END_A)):
         zero = AN.season_of(d) in (2019, 2020)
         lines.append(f"{d},{0 if zero else _live(i)}")
     raw = ("\n".join(lines) + "\n").encode()
     assert counts_of(raw) == (0, 0, 0, 0)
-    assert CK.groundhog_donors(D.validate(raw))["seasons"] == _figure(
-        END_A, 1) == 6
+    got = CK.groundhog_donors(D.validate(raw))
+    assert got["seasons"] is None and got["unspoken"] == 4
+    assert not got["open"] and not got["one_season"]
+    assert notice(check(raw, kind="rate")).endswith(NOTHING)
 
 
 def test_a_dead_season_among_two_still_none():

@@ -200,6 +200,20 @@ def test_the_words_for_each_shape():
         "it, "
         "but more seasons of the 2 groups whose seasons show nothing "
         "either way may.")
+    # one group in a file of several is named (review of #93 at f2fd03ef)
+    assert DU.no_more_seasons((5, 0, 0, 0), 1, True, group="B") == (
+        "At 3 horizons the earlier seasons in the file give no week like "
+        "it, but earlier seasons of group 'B', which has none in the file, "
+        "may.")
+    assert DU.no_more_seasons((4, 0), 1, False, group="B") == (
+        "At 1 horizon the earlier seasons in the file give no week like "
+        "it, but more seasons of group 'B', whose seasons show nothing "
+        "either way, may.")
+    # several such groups are counted, not named
+    assert DU.no_more_seasons((4, 0), 2, False, group="B") == (
+        "At 1 horizon the earlier seasons in the file give no week like "
+        "it, but more seasons of the 2 groups whose seasons show nothing "
+        "either way may.")
     # every group agrees: as before
     assert DU.no_more_seasons((4, 0)) == (
         "At 1 horizon no earlier season in the file has a week like it, so "

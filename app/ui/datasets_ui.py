@@ -265,7 +265,10 @@ def model_view(rep, chk: dict, kind: str = "") -> dict:
     finds no week like it although the file's earlier seasons hold the
     weeks it reads and show it (no_more_seasons): more such seasons would
     not help, or, where some groups have no season that shows it or show
-    it through one season only, more seasons may.
+    it through one season only, more seasons may. No N either where the
+    file holds earlier seasons and none of them speaks for such a
+    horizon: more seasons may (an N only for a file of the newest season
+    only).
     The Groundhog's badge, notice and fix go by one count, its donor
     weeks at the newest week's scarcest horizon
     (checks.groundhog_donors), as the Forecast tab's line
@@ -305,10 +308,12 @@ def model_view(rep, chk: dict, kind: str = "") -> dict:
         if k is None:
             # a horizon the file's own seasons give nothing: no figure
             several = len(s.get("groups") or ()) > 1
+            named = (donors.get("open_group") if donors.get("open")
+                     else donors.get("one_group"))
             nothing = no_more_seasons(
                 donors["counts"], donors.get("open", 0),
                 donors.get("open_new", False), donors.get("one_season", 0),
-                group=donors.get("one_group") if several else None,
+                group=named if several else None,
                 unspoken=donors.get("unspoken", 0))
             out["groundhog_fix"] = (f"{nothing} {pf_fix}." if pf_fix
                                     else nothing)
@@ -335,22 +340,41 @@ def no_more_seasons(counts, open_groups: int = 0,
     seasons show it but `one_season` groups' through one season only: the
     same, one season being too few to say more would not help (at
     42db2a82, finding 2). One such group in a file of several is named
-    (`group`); a file of one group, a single series with no group column
-    say, names none (review of #93 at ac51731d, finding 4).
+    (`group`), one with no season that shows it as well as one that
+    shows it through one season only; a file of one group, a single
+    series with no group column say, names none (review of #93 at
+    ac51731d, finding 4, and at f2fd03ef).
 
     `unspoken` of the horizons at 0 have no earlier season with a case
     holding the weeks they read (weeks not reported, or after the newest
     week): they are not counted with the others, which the file's seasons
     do speak for, and a sentence of their own says more seasons may there
     (at ac51731d, finding 3: two unreported horizons were counted in
-    "would not help there")."""
+    "would not help there"). Where every horizon at 0 is one of them, in
+    a file that holds earlier seasons, that sentence is the whole of it
+    (at f2fd03ef: such a file said "about 6 more earlier seasons", which
+    seasons like its own never reach)."""
     z = sum(1 for c in counts if not c) - unspoken
+    if unspoken and not z:
+        if unspoken == len(counts):
+            return ("No earlier season in the file has a week like it at "
+                    "any horizon, but the earlier seasons in the file show "
+                    "nothing either way, and more seasons may.")
+        return (f"At {unspoken} horizon{'' if unspoken == 1 else 's'} no "
+                "earlier season in the file has a week like it, but the "
+                "earlier seasons in the file show nothing either way "
+                "there, and more seasons may.")
     tail = ("" if not unspoken else
             f" At {unspoken} more horizon{'' if unspoken == 1 else 's'} "
             "there is none either, but the earlier seasons in the file "
             "show nothing either way there, and more seasons may.")
     if open_groups or one_season:
-        if open_groups:
+        if open_groups == 1 and group is not None:
+            but = (f"but earlier seasons of group '{group}', which has "
+                   "none in the file, may." if open_new else
+                   f"but more seasons of group '{group}', whose seasons "
+                   "show nothing either way, may.")
+        elif open_groups:
             who = ("the group" if open_groups == 1
                    else f"the {open_groups} groups")
             but = (f"but earlier seasons of {who} without any may."

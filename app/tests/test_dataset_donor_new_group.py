@@ -20,10 +20,12 @@ wrong answer to other mixes (review of #93 at d5a7eb16, findings 1 and
 earlier season, the check gives neither a figure nor "would not help",
 and says the earlier seasons in the file give no week like it there and
 that seasons of the groups without any may: the mirror says that of its
-one new group.
+one new group, and names it (review of #93 at f2fd03ef: "the group"
+named none in a file of six).
 """
 from __future__ import annotations
 
+import html as H
 from datetime import date, timedelta
 
 import pytest
@@ -95,13 +97,16 @@ def test_the_mirror_gives_no_figure():
     assert got["counts"] == (75, 50, 25, 0)
     assert got["seasons"] is None
     assert got["open"] == 1 and got["open_new"] is True
+    assert got["open_group"] == "new"
     html = check(raw, kind="rate")
     assert notice(html).startswith(
         "Too little history for the Groundhog at some horizons: at the "
         "newest week it finds 0 to 75 group-weeks like it")
-    assert notice(html).endswith(
+    assert H.unescape(notice(html)).endswith(
         "At 1 horizon the earlier seasons in the file give no week like "
-        "it, but earlier seasons of the group without any may.")
+        "it, but earlier seasons of group 'new', which has none in the "
+        "file, may.")
+    assert "the group" not in notice(html)
     assert "about 1 more" not in html and "Give about" not in html
     assert "would not help" not in html
 

@@ -1067,39 +1067,57 @@ def groundhog_donors(rep: Report):
     to it (0 when it is there; None when the file's own seasons stand
     against a figure, see below), "open": how many groups with data the
     file's seasons say nothing for while they show the others' give
-    nothing (0 unless so), "open_new": whether those groups have no
-    earlier season in the file at all, "one_season": with "open" 0, how
-    many groups' seasons show it through one season only (0 unless so),
+    nothing (0 unless so), "open_group": that group's name when "open"
+    is 1 (else None), "open_new": whether those groups have no earlier
+    season in the file at all, "one_season": with "open" 0, how many
+    groups' seasons show it through one season only (0 unless so),
     "one_group": that group's name when "one_season" is 1 (else None),
     "unspoken": with "seasons" None, how many horizons at 0 no earlier
-    season with a case speaks for (0 unless so; _seasons_heard)}.
+    season with a case speaks for (0 unless so; _seasons_heard): every
+    horizon at 0 when none does}.
     A count is one per group and week. It forecasts each horizon that
     reaches MIN_DONORS and skips the others, so the fewest says whether
     it forecasts all four. The stored notice (dataset_checks, horizon 1)
     is not changed by it.
 
-    "seasons" takes what an earlier season of a group gave the fewest
-    horizon in this file: its count over the groups' earlier seasons
-    holding a week of the window (a horizon that reaches into weeks
-    reading 0 gains less from each), once for every group (more_seasons).
-    A group's season reading 0 throughout (or nothing at all) says
-    nothing about growth and is not one of them: the figure divided by
+    "seasons" takes what an earlier season of the file gave the fewest
+    horizon: its count over the earlier seasons in which some group with
+    a case that season holds a week of the window (a horizon that
+    reaches into weeks reading 0 gains less from each; more_seasons). A
+    group's season reading 0 throughout (or nothing at all) says nothing
+    about growth and makes no season one of them: the figure divided by
     it came out several times too large (review of #93 at 42db2a82,
-    finding 3), and a group with no other season is taken to give what
-    the others' seasons give (at ac51731d, finding 5). With none to go
-    by, an ordinary season of every group (window_weeks_a_season: four
-    weeks around a week 53, else five). A horizon at 0 although earlier
-    seasons hold a week of the window and the week that horizon later,
-    where some group's seasons show that more like them give it nothing
-    (_seasons_say: a summer of zeros, say, not seasons reading 0
-    throughout), has nothing to go by either, and no ordinary season
-    stands for the file's: "seasons" is None, and the
-    check gives no figure (datasets_ui.model_view). Where every group
-    with data shows it through two seasons or more ("open" and
-    "one_season" 0), more seasons like these would not help; where some
-    groups have no season that shows it, seasons of theirs may, and the
-    check says so instead (review of #93 at d5a7eb16, findings 1 and 2);
-    where every group shows it but some through one season only, one
+    finding 3). A group with fewer such seasons than another, or none,
+    is not taken to give what the other's give: counted group by group
+    and shared out over the groups (at ac51731d, finding 5), the group
+    with the most seasons set every group's rate, and the figure came
+    out smaller than seasons like the file's reach (at f2fd03ef). Of a
+    figure too large that such seasons reach and one too small that
+    they do not, the check gives the first.
+
+    With nothing to go by in a file of the newest season only (no
+    earlier week with a value), an ordinary season of every group
+    (window_weeks_a_season: four weeks around a week 53, else five): a
+    newcomer's file, for whom it is the most useful figure. A file that
+    does hold earlier seasons, none of which speaks for a horizon at 0
+    (they read 0 throughout, or the weeks it reads are not reported or
+    come after the newest week), gives no figure: seasons like its own
+    may be no ordinary ones (a summer of zeros, a season reported from
+    October to May only), and such files said "about 6", where seasons
+    like their own never bring the horizon off 0 (at f2fd03ef). Every
+    horizon at 0 is "unspoken", and the check says more seasons may.
+
+    A horizon at 0 although earlier seasons hold a week of the window
+    and the week that horizon later, where some group's seasons show
+    that more like them give it nothing (_seasons_say: a summer of
+    zeros, say, not seasons reading 0 throughout), has nothing to go by
+    either, and no ordinary season stands for the file's: "seasons" is
+    None, and the check gives no figure (datasets_ui.model_view). Where
+    every group with data shows it through two seasons or more ("open"
+    and "one_season" 0), more seasons like these would not help; where
+    some groups have no season that shows it, seasons of theirs may, and
+    the check says so instead (review of #93 at d5a7eb16, findings 1 and
+    2); where every group shows it but some through one season only, one
     season is too few to say more would not help, and the check says
     more seasons may (at 42db2a82, finding 2)."""
     from flubnf import analogue as AN
@@ -1119,47 +1137,60 @@ def groundhog_donors(rep: Report):
               and AN.calendar_distance(AN.epiweek(d), E)
               <= AN.DEFAULT_BANDWIDTH}
     cased = _cased(bank)
-    # each group's earlier seasons holding a week of the window with a
-    # case in them: a season reading 0 throughout gave nothing and says
-    # nothing
-    held = {(g, AN.season_of(d)) for g, d in bank
-            if d in window and (g, AN.season_of(d)) in cased}
-    more = more_seasons(need, n, len(held),
+    # the earlier seasons in which some group with a case that season
+    # holds a week of the window: a group's season reading 0 throughout
+    # gave nothing and says nothing
+    seasons = {AN.season_of(d) for g, d in bank
+               if d in window and (g, AN.season_of(d)) in cased}
+    more = more_seasons(need, n, len(seasons),
                         max(1, len(s.get("groups") or ())),
                         window_weeks_a_season(E))
     heard = _seasons_heard(bank, window, counts, cased) if not n else None
     left, one, spoken = heard if heard is not None else (None, set(), 0)
-    if heard is not None:
-        more = None
     earlier = {g for g, d in bank if AN.season_of(d) < S}
+    zeros = sum(1 for c in counts if not c)
+    # a horizon at 0 that no season speaks for: the ordinary figure only
+    # for a file of the newest season only
+    if heard is not None or (zeros and earlier):
+        more = None
     return {"counts": counts, "n": n, "need": need,
             "enough": sum(1 for c in counts if c >= need),
             "seasons": more, "open": len(left or ()),
+            "open_group": (next(iter(left)) if left and len(left) == 1
+                           else None),
             "open_new": bool(left) and not (left & earlier),
             "one_season": 0 if left else len(one),
             "one_group": (next(iter(one)) if not left and len(one) == 1
                           else None),
-            "unspoken": (sum(1 for c in counts if not c) - spoken
-                         if heard is not None else 0)}
+            "unspoken": zeros - spoken if more is None else 0}
 
 
-def more_seasons(need: int, n: int, held: int, groups: int,
+def more_seasons(need: int, n: int, seasons: int, groups: int,
                  ordinary: int) -> int:
     """About how many more earlier seasons of every group bring `n` donor
-    weeks to `need` (0 when `n` is there): `held` earlier seasons of the
-    groups with a case gave the `n`, so a season of each of the `groups`
-    gives n x groups / held; with no `n` or none held, an ordinary
-    season gives `ordinary` weeks (window_weeks_a_season) for each group.
-    Worked out in whole numbers, as the ceiling of an exact fraction: in
-    floats 15 weeks over 13 seasons gave 14 where 13 bring it to 30 (15 /
-    (15 / 13) is 13.000000000000002; review of #93 at ac51731d, finding
-    2). A group whose seasons read 0 throughout, or that has the newest
-    season only, is one of the `groups` and not of the `held`: nothing in
-    the file says its seasons give less than the others' (finding 5)."""
+    weeks to `need` (0 when `n` is there): `seasons` earlier seasons of
+    the file gave the `n` (groundhog_donors says which count), so one
+    more like them gives n / seasons; with no `n` or no such season, an
+    ordinary season gives `ordinary` weeks (window_weeks_a_season) for
+    each of the `groups`. Worked out in whole numbers, as the ceiling of
+    an exact fraction: in floats 15 weeks over 13 seasons gave 14 where
+    13 bring it to 30 (15 / (15 / 13) is 13.000000000000002; review of
+    #93 at ac51731d, finding 2).
+
+    The `groups` count for an ordinary season only. Each group's seasons
+    counted apart and the `n` shared out over the groups (at ac51731d,
+    finding 5) took a group with fewer seasons, or none that gave
+    anything, to give what the group with the most gave: one group's
+    three seasons beside another's one said "about 2", where 2 more
+    seasons like the file's give 25 of 30, and a group at 0 in every
+    week halved the figure (review of #93 at f2fd03ef). Counted by the
+    file's seasons, the figure is what more seasons like the file's
+    reach; where a group's seasons would give more than the file shows,
+    it is too large, and more seasons still reach it."""
     if n >= need:
         return 0
-    if n > 0 and held > 0:
-        return -(-(need - n) * held // (n * groups))
+    if n > 0 and seasons > 0:
+        return -(-(need - n) * seasons // n)
     return -(-(need - n) // (ordinary * groups))
 
 
@@ -1179,9 +1210,10 @@ def _cased(bank) -> set:
 def _seasons_say(bank, window, counts):
     """What the file's earlier seasons show of a horizon at 0 donor weeks
     (`counts`, one per GROUNDHOG_HORIZONS): None when no group's seasons
-    show that more like them leave it at 0 (a figure is given); else the
-    groups with data whose seasons do not show it at such a horizon (an
-    empty set when every group's do). _seasons_heard says how, and which
+    show that more like them leave it at 0 (groundhog_donors gives a
+    figure only for a file of the newest season only); else the groups
+    with data whose seasons do not show it at such a horizon (an empty
+    set when every group's do). _seasons_heard says how, and which
     groups show it through one season only."""
     heard = _seasons_heard(bank, window, counts)
     return None if heard is None else heard[0]
@@ -1190,10 +1222,11 @@ def _seasons_say(bank, window, counts):
 def _seasons_heard(bank, window, counts, cased=None):
     """What the file's earlier seasons show of a horizon at 0 donor weeks
     (`counts`, one per GROUNDHOG_HORIZONS): None when no group's seasons
-    show that more like them leave it at 0 (a figure is given); else
-    (left, one, spoken): the groups with data whose seasons do not show it
-    at such a horizon, of the others those that show it through one
-    season only there, and how many horizons at 0 a season speaks for.
+    show that more like them leave it at 0 (groundhog_donors gives a
+    figure only for a file of the newest season only); else (left, one,
+    spoken): the groups with data whose seasons do not show it at such a
+    horizon, of the others those that show it through one season only
+    there, and how many horizons at 0 a season speaks for.
     `left` and `one` empty: every group's seasons show it through two or
     more, and more seasons like these would not help. `cased`:
     _cased(bank), worked out here when not given.

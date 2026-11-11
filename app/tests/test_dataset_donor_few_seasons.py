@@ -5,7 +5,10 @@ checks._seasons_heard, datasets_ui.no_more_seasons).
   1. A season reading 0 throughout says nothing about growth. One series
      with two such seasons and a live newest one said "more seasons like
      these would not help", where six real seasons give (31, 31, 31, 31).
-     Such a season is no longer counted either way: the figure is back.
+     Such a season is no longer counted either way: the figure was back,
+     and since the review at f2fd03ef there is none, the file holding
+     earlier seasons: they show nothing either way, and more seasons may
+     (test_dataset_donor_nothing_speaks).
   2. One earlier season decided "would not help". One season with a run
      of zeros at MMWR weeks 4 to 8 said it of horizon 4, where six
      ordinary seasons give (34, 33, 32, 31). It now takes two seasons
@@ -37,6 +40,9 @@ figure; section 4 below):
   * The one-season sentence said "of the group" in a single series, which
     has no group column, and named no group in a file of several. It now
     names none in a file of one group and the group in a file of several.
+
+Review of #93 at f2fd03ef: so does the sentence for a group with no season
+that shows it (section 4's last test).
 """
 from __future__ import annotations
 
@@ -104,15 +110,20 @@ def test_1_counts_and_the_real_seasons_as_the_review_says():
     assert counts_of(finding_1(real_before=6)) == (31, 31, 31, 31)
 
 
-def test_1_two_seasons_of_zeros_give_the_figure_back():
+def test_1_two_seasons_of_zeros_say_nothing_and_more_seasons_may():
+    """Not "would not help". It said "about 6" (an ordinary season) until
+    the review of #93 at f2fd03ef: the file holds earlier seasons, so no
+    figure; six real seasons bring every horizon off 0, so "may"."""
     got = donors(finding_1())
-    assert got["seasons"] == 6
+    assert got["seasons"] is None and got["unspoken"] == 4
     assert not got["open"] and not got["one_season"]
     html = check(finding_1(), kind="rate")
     assert notice(html).endswith(
-        "so it will not forecast this data on its own. Give about 6 more "
-        "earlier seasons of data.")
-    assert "would not help" not in html and "may." not in html
+        "so it will not forecast this data on its own. No earlier season "
+        "in the file has a week like it at any horizon, but the earlier "
+        "seasons in the file show nothing either way, and more seasons "
+        "may.")
+    assert "would not help" not in html and "Give about" not in html
 
 
 def test_1_seasons_of_zeros_do_not_make_a_live_one_two():
@@ -388,18 +399,23 @@ def test_4_june_and_may_starts_differ_and_both_are_true():
 def test_4_two_seasons_reading_0_throughout_still_say_nothing():
     """Beside the cases above: the same newest week, two earlier seasons
     reading 0 throughout and cases in the newest. They are no seasons
-    with a case, so they say nothing, and the figure stays (review of #93
-    at 42db2a82, finding 1)."""
+    with a case, so they say nothing (review of #93 at 42db2a82, finding
+    1): neither "would not help" nor, since the review at f2fd03ef, the
+    ordinary season's "about 6"; more seasons may."""
     lines = ["week_ending,cases"]
     for i, d in enumerate(_saturdays(date(2022, 8, 6), END_4)):
         lines.append(f"{d},{_live(i) if AN.season_of(d) == 2024 else 0}")
     raw = ("\n".join(lines) + "\n").encode()
     assert counts_of(raw) == (0, 0, 0, 0)
     got = donors(raw)
-    assert got["seasons"] == 6
+    assert got["seasons"] is None and got["unspoken"] == 4
     assert not got["one_season"] and not got["open"]
-    assert notice(check(raw, kind="rate")).endswith(
-        "Give about 6 more earlier seasons of data.")
+    html = check(raw, kind="rate")
+    assert notice(html).endswith(
+        "No earlier season in the file has a week like it at any horizon, "
+        "but the earlier seasons in the file show nothing either way, and "
+        "more seasons may.")
+    assert "would not help" not in html and "Give about" not in html
 
 
 def test_4_a_group_whose_one_season_has_a_quiet_window_is_named():
@@ -420,3 +436,48 @@ def test_4_a_group_whose_one_season_has_a_quiet_window_is_named():
     assert H.unescape(notice(check(raw, kind="rate"))).endswith(
         "No earlier season in the file has a week like it at any horizon, "
         "but for group 'B' only one season says so, and more seasons may.")
+
+
+def test_4_a_group_with_no_earlier_season_is_named():
+    """A from August 2022, B from August 2024 (the newest season only):
+    A's two seasons show every horizon gets nothing, B has none. The
+    sentence said "of the group without any", naming none in a file of
+    two (review of #93 at f2fd03ef); it names B."""
+    a = summer_start(date(2022, 8, 6)).decode().splitlines()[1:]
+    b = summer_start(date(2024, 8, 3)).decode().splitlines()[1:]
+    lines = ["week_ending,group,cases"]
+    lines += [ln.replace(",", ",A,") for ln in a]
+    lines += [ln.replace(",", ",B,") for ln in b]
+    raw = ("\n".join(lines) + "\n").encode()
+    rep = D.validate(raw)
+    assert rep.summary["groups"] == ["A", "B"]
+    got = CK.groundhog_donors(rep)
+    assert got["counts"] == (0, 0, 0, 0) and got["seasons"] is None
+    assert got["open"] == 1 and got["open_new"] is True
+    assert got["open_group"] == "B"
+    text = H.unescape(notice(check(raw, kind="rate")))
+    assert text.endswith(
+        "No earlier season in the file has a week like it at any horizon, "
+        "but earlier seasons of group 'B', which has none in the file, "
+        "may.")
+    assert "the group" not in text
+
+
+def test_4_a_group_whose_seasons_read_0_throughout_is_named():
+    """The same A beside a B whose every week reads 0: B has earlier
+    seasons, which show nothing either way, and the sentence names it."""
+    a = summer_start(date(2022, 8, 6)).decode().splitlines()[1:]
+    lines = ["week_ending,group,cases"]
+    lines += [ln.replace(",", ",A,") for ln in a]
+    lines += [ln.split(",")[0] + ",B,0" for ln in a]
+    raw = ("\n".join(lines) + "\n").encode()
+    got = donors(raw)
+    assert got["counts"] == (0, 0, 0, 0) and got["seasons"] is None
+    assert got["open"] == 1 and got["open_new"] is False
+    assert got["open_group"] == "B"
+    text = H.unescape(notice(check(raw, kind="rate")))
+    assert text.endswith(
+        "No earlier season in the file has a week like it at any horizon, "
+        "but more seasons of group 'B', whose seasons show nothing either "
+        "way, may.")
+    assert "the group" not in text

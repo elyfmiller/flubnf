@@ -10,8 +10,11 @@ datasets_ui.model_view).
   * a newest week in a summer of zeros: no horizon finds one, and no
     figure is given;
   * a horizon at 0 only because no earlier season holds the weeks it
-    reads (a file of one season, or one that starts a few weeks before
-    the newest week's season) still gets a figure, as before.
+    reads: a file of one season still gets a figure, as before. One that
+    starts a few weeks before the newest week's season got it too, until
+    the review of #93 at f2fd03ef: it holds an earlier season, whose
+    weeks show nothing either way there, so no figure, and more seasons
+    may (test_dataset_donor_nothing_speaks).
 """
 from __future__ import annotations
 
@@ -112,21 +115,27 @@ def test_a_summer_of_zeros_gives_no_horizon_a_figure():
     assert DU.no_more_seasons((0, 0, 3, 0)).startswith("At 3 horizons ")
 
 
-# --------------------------- a 0 with no season to go by keeps its figure
+# ------- a 0 with no season to go by: the figure for the newest season only
 
 def test_one_season_still_gets_a_figure():
     raw = series_bytes(END_19, 1)
-    got = CK.groundhog_donors(D.validate(raw))
+    rep = D.validate(raw)
+    assert {AN.season_of(d) for _, d in CK._newest(rep.records)} == {
+        AN.season_of(END_19)}
+    got = CK.groundhog_donors(rep)
     assert got["n"] == 0 and got["seasons"] == 6
     assert "Give about 6 more earlier seasons of data." in check(
         raw, kind="rate")
 
 
-def test_a_season_whose_weeks_fall_after_the_newest_still_gets_a_figure():
+def test_a_season_whose_weeks_fall_after_the_newest_gives_no_figure():
     """The newest week is in a season's second week; the file starts four
     weeks before it, so the season before holds weeks of the window whose
     later weeks (horizons 3 and 4) are not in the file yet: 0 there, but
-    not because those seasons give nothing."""
+    not because those seasons give nothing. It gave "about 6" until the
+    review of #93 at f2fd03ef: the file holds an earlier season that
+    shows nothing either way there, so no figure, and more seasons may
+    (eight seasons do)."""
     end = date(2025, 8, 9)
     assert AN.epiweek(end) == 32 and AN.season_of(end) == 2025
     raw = series_bytes(end, 2)
@@ -135,6 +144,13 @@ def test_a_season_whose_weeks_fall_after_the_newest_still_gets_a_figure():
         if ln and ln.split(b",")[0] >= b"2025-07-19"]) + b"\n"
     assert counts_of(raw) == (1, 1, 0, 0)
     got = CK.groundhog_donors(D.validate(raw))
-    assert got["seasons"] == 6
+    assert got["seasons"] is None and got["unspoken"] == 2
+    assert not got["open"] and not got["one_season"]
+    html = check(raw, kind="rate")
+    assert notice(html).endswith(
+        "At 2 horizons no earlier season in the file has a week like it, "
+        "but the earlier seasons in the file show nothing either way "
+        "there, and more seasons may.")
+    assert "Give about" not in html and "would not help" not in html
     more = series_bytes(end, 2 + 6)
     assert min(counts_of(more)) >= 30
