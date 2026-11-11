@@ -6,6 +6,36 @@ pages (TEAM.md, team/README.md, FLUSIGHT-2026-27.md). Works on `dev`.
 
 ## Now
 
+- 2026-11-10 (evening): two launcher wordings are known and left as they
+  are (review of #93 at ac51731d, and the independent check of pass 6).
+  Each is a sentence a user cannot act on as written, met only when a
+  step of setup has gone wrong, and nothing is lost by it.
+  - **After a reinstall into `~/Documents/GitHub`.** reinstall.sh puts
+    the new copy in `~/Documents/GitHub/flubnf` when an older setup is
+    there and none is in `~/GitHub` (reinstall.sh, `DEST`). It runs
+    setup.sh with `FLUBNF_SETUP_FROM=reinstall`, so setup.sh's run-again
+    line names that folder: `run cd "<home>/Documents/GitHub/flubnf" &&
+    ./setup.sh again`. After a problem setup.sh carries on past (the hub
+    data fetch, BioNetGen), it exits 0, the reinstall goes on, and on a
+    Mac it opens FluBNF.command, which moves the copy to
+    `~/GitHub/flubnf` (scripts/macos/move_home.sh). The folder the line
+    names is then gone, and `cd` says so; the same line with
+    `~/GitHub/flubnf` does what it said. When setup.sh stops instead
+    (exit 1), the reinstall stops and opens nothing, so the copy stays
+    where the line says.
+  - **FluBNF.command's first run.** With no console in `.venv`,
+    FluBNF.command runs `./setup.sh` in its own folder without
+    `FLUBNF_SETUP_FROM`, so setup.sh's lines say "run ./setup.sh again"
+    and "Run ./setup.sh again". They are printed in the Terminal window
+    FluBNF.command opened, which has no shell to type them into: when
+    setup.sh stops, FluBNF.command says "Setup hit a problem (see
+    above). Press enter to close." and exits, and when setup.sh carries
+    on, the console starts in that window. A new Terminal window starts
+    in the home folder, where `./setup.sh` is not found. Double-clicking
+    FluBNF.command again runs setup.sh again while the console is still
+    missing; FluBNF.command's own stop for a missing launcher says to do
+    that.
+
 - 2026-11-10 (day): `dev` to `main` is merged. The night's open items
   are now one action plan, with Ely's calls D1 to D21 (Ely took the
   reviewer's answer on each; decisions under Decided).
