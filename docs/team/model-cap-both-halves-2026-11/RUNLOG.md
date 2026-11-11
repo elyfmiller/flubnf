@@ -54,6 +54,18 @@ Amendment 2 (the level on the Oracle's own October rounds):
   bootstrap and the rule were the same in both runs; the coverage was
   first seen in the third.
 - Afterwards this lane's hub clone went back to 3a83d410, Part 1's.
+- The App lane reproduced it on Ely's laptop, from a sparse clone of the
+  hub at a73013aa. `--check` and `--score` gave a report byte-identical to
+  report_amend2.txt.
+- Read after the scores (descriptive, this lane's scratchpad scripts,
+  checking App's review):
+  - Part 1's S10-RX against S10-R3 by season and as-of month, with the
+    95% coverage of S10-R3.
+  - Truth above the 97.5% quantile by member and round.
+  - The submitted round 10-31 at h0 (hub a73013aa for these, then back to
+    3a83d410).
+  - The 10-31 vintage's last week over the three-week mean.
+  The figures are in model.md, Now, 2026-11-11 07:10 UTC.
 
 Read after the scores (descriptive, not in the rule):
 - LN against S gives the same difference at every cap and level (-0.0003

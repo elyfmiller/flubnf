@@ -119,16 +119,28 @@ differently from the Groundhog? Results in
 - The Oracle's difference less the Groundhog's: -0.0016 [-0.0056,
   +0.0029]. The rule finds no concrete reason against `larger` for both
   members. P1 to P3 hold.
-- The cost is October's, and both members pay it: the bands were too wide
-  (95% coverage 0.991 and 0.996 with no cap), so a tighter limit scored
-  better, as in October 2023 in Part 1. On 10-24, the one round on today's
-  Oracle settings, the Oracle's cost is +0.0049.
+- Both members pay the cost because the bands capped on the mean were
+  already too wide (95% coverage 0.968 and 0.981), so the tighter limit
+  scored better. On 10-24, the one round on today's Oracle settings, the
+  Oracle's cost is +0.0049.
 - At 15x the Oracle loses less than the Groundhog (gap -0.0168 [-0.0268,
   -0.0065]).
-- Against Submission's table of 2026-11-04 on these rounds, the
-  Groundhog's scores agree to within 0.003. The Oracle's are 0.014 to
-  0.017 higher, which is not explained here. The comparison is within each
-  member, on the same cells, so it does not depend on this.
+
+After the scores, outside the rule (App's review, checked here):
+- Coverage decides the sign, not the month. In Part 1, by as-of month
+  (Groundhog, 10x), the larger level cost where the mean-capped 95% band
+  covered about 0.9: October and November 2023, +0.031 and +0.022. It
+  gained where that band undercovered: November and December 2024,
+  -0.024 and -0.034 (coverage 0.74 and 0.68); 2025, -0.068 and -0.033
+  (0.62 and 0.70).
+- The Oracle's undercoverage is growing. Truth above its 97.5% quantile
+  capped on the mean: 0.5%, 3.9% and 6.7% of cells by round, against the
+  Groundhog's 1.4%, 1.9% and 2.9%. In the submitted round 10-31 at h0,
+  6 of 47 Oracle states fell above it.
+- Submission's table of 2026-11-04 is relative skill against every team's
+  files. This report is a ratio of sums against FluSight-baseline, so its
+  "consistency" line compares unlike measures.
+- App reproduced the report byte for byte on Ely's laptop.
 
 ## What follows
 

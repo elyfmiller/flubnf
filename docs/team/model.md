@@ -39,19 +39,50 @@ until 2026-11-09 and on the Windows PC since then.
   - The rule: no concrete reason against `larger` for both members. The
     Oracle loses about 0.02, but the Groundhog loses the same. Predictions
     P1 to P3 hold.
-  - Part 1 already saw this October cost: in October 2023 the tight cap
-    helped the Groundhog too. Over the Groundhog's three full seasons the
-    larger level still gained 0.0135 at 10x, most of it in the rise
-    (first 8 weeks -0.028, corrected-seed windows -0.042). The Oracle
-    reacts to the level as the Groundhog does, so the season-long
-    evidence is the best guide for both members. Part 2, on C0's 84
+  - Coverage decides the sign, not the month (App's reading, updated
+    07:30 UTC). This lane checked it on Part 1's cells by as-of month
+    (Groundhog, 10x). The larger level costs where the band capped on the
+    mean already covered about 0.9 at 95%: October and November 2023,
+    +0.031 and +0.022, coverage 0.89 and 0.90. It gains where that band
+    undercovered:
+    - November and December 2024: -0.024 and -0.034, coverage 0.74 and
+      0.68.
+    - November and December 2025: -0.068 and -0.033, coverage 0.62 and
+      0.70.
+    These October rounds covered 0.968 (Oracle) and 0.981 (Groundhog), so
+    a cost was to be expected for both members. Over the three seasons
+    the larger level gained 0.0135 at 10x. The Oracle reacts to the level
+    as the Groundhog does, so that evidence is the best guide for both,
+    but the Oracle's own gain is inferred, not tested. Part 2, on C0's 84
     weeks, stays as registered.
-  - A side note: this lane's Groundhog scores match Submission's table of
-    2026-11-04 on these rounds to within 0.003 (10x 0.6279 against 0.631,
-    15x 0.6699 against 0.669). The Oracle's are 0.014 and 0.017 higher
-    (0.6595 against 0.646, 0.6868 against 0.670), which this lane has not
-    explained. The comparison above is within each member, on the same
-    cells, so it does not depend on this.
+  - The Oracle is moving into the undercovering regime. These are App's
+    figures, checked here after the scores, outside the rule:
+    - Truth above the 97.5% quantile capped on the mean, by round: Oracle
+      0.5%, 3.9% and 6.7% of cells; Groundhog 1.4%, 1.9% and 2.9%.
+    - Submitted round 10-31, h0: 6 of 47 Oracle states above it (95%
+      coverage 0.872); the Groundhog 4 of 52 (0.923).
+    - The 10-31 data: 46 of 52 states have the last week above the
+      three-week mean (median 1.32). Eight are at 1.5x or more: Delaware
+      2.09, Idaho 1.74, South Dakota, DC, New Jersey, Alabama, Arkansas
+      and New York (1.51 to 1.60).
+  - App reproduced amendment 2 on Ely's laptop from its own hub clone at
+    a73013aa, and the report is byte-identical. It also ran Submission's
+    knob through app/ui/pipeline.py on these rows: `larger` and `mean`
+    give exactly S10-RX and S10-R3, and the run record names level
+    larger for both members.
+  - App's post hoc subset, one of about 20 it looked at, not rechecked
+    here and not weighed: in states whose last week was over 1.5x the
+    mean, the gap is +0.0247 [+0.0046, +0.0481] at 10x. Nearly all of it
+    is from 10-10, on the Oracle's old settings, and it reverses on
+    10-24, where 2 states qualify.
+  - Submission's table of 2026-11-04 uses a different measure (corrected
+    07:30 UTC; at 07:10 this lane called the gap unexplained). That table
+    is relative skill against every team's files, pairwise and scaled to
+    FluSight-baseline (submission.md, Now, 2026-11-04). Amendment 2 is a
+    ratio of sums against FluSight-baseline. So report_amend2.txt's
+    "consistency" line compares unlike measures. App found the per-cell
+    WIS identical in the two scorers. Uncapped, Submission's Groundhog
+    reads 0.767 against 0.7751 here.
 
 - 2026-11-11 (05:10 UTC): THE CAP ON BOTH HALVES, AMENDMENT 1: A LOWER HALF
   BALANCED IN ADMISSIONS DOES NOTHING THE LEVEL HAS NOT ALREADY DONE. Ely,
@@ -1603,8 +1634,13 @@ until 2026-11-09 and on the Windows PC since then.
   `larger_groundhog`. This lane's check on the PC (Now, 07:10 UTC;
   amendment 2) finds no Oracle-specific harm. On the Oracle's own October
   rounds the larger level costs the Oracle +0.0201 and the Groundhog
-  +0.0217, a gap of -0.0016 [-0.0056, +0.0029]. That cost is October's
-  (the bands were too wide then) and the members share it. For the
+  +0.0217, a gap of -0.0016 [-0.0056, +0.0029]. Both members pay that
+  cost, and it comes where the bands capped on the mean were too wide
+  (95% coverage 0.97 to 0.98 here). Where those bands undercovered, the
+  larger level gained in Part 1, and the Oracle is heading there (Now,
+  07:10 UTC, updated 07:30). Submission: your table of 2026-11-04 is
+  relative skill against the field, and amendment 2 a ratio to
+  FluSight-baseline, so the two do not compare. For the
   review: on these rounds the larger level spared some upper tails that
   the mean would have shrunk (Oracle blocks changed at 10x: 152 against
   164 on 10-10, 176 against 184 on 10-24). Submission, your gate
