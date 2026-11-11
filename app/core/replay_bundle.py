@@ -765,16 +765,15 @@ def _already(season: str, stamp: str) -> str:
 def _at_name_words(season: str, stamp: str, dst: Path, sha: str) -> str:
     """Why a plain import is refused when something is at the run's name:
     "already imported" only over a whole import of this bundle (its
-    imported.json names this bundle's sha256). Another file's whole import,
-    or a folder that is not a whole import (a stray cache file, part of a
-    run), is said to be what it is, and that a Replace puts this bundle's
-    run in its place."""
+    imported.json names this bundle's sha256). Another file's whole import
+    (one a sweep may have just put back), or a folder that is not a whole
+    import (a stray cache file, part of a run), is said to be what it is,
+    and that a Replace puts this bundle's run in its place."""
     if _whole_import(dst, sha):
         return _already(season, stamp)
     if _whole_import(dst):
-        return (f"{season} was already imported as {stamp} from another "
-                "file; a Replace import puts this bundle's run in its "
-                "place.")
+        return (f"{season} is imported as {stamp} from another file; a "
+                "Replace import puts this bundle's run in its place.")
     return (f"{season} from this bundle was not imported: what is at {dst} "
             "is not a whole import; a Replace import puts this bundle's run "
             "in its place.")
@@ -787,12 +786,16 @@ def _protected_words(season: str, stamp: str) -> str:
             "was replaced.")
 
 
-def _put_back_words(stamp: str, aside: Path) -> str:
+def _put_back_words(stamp: str, aside: Path, ours: bool) -> str:
     """What an import says when its sweep put an earlier Replace's old run
-    back under its name."""
-    return (f"An earlier Replace stopped part way and left the run imported "
-            f"as {stamp} in {aside.name}; it is back under its own name "
-            "now.")
+    back under its name: the run imported as `stamp` when it is this
+    bundle's (`ours`), else an earlier run from another file (a Replace of
+    another file stopped before it let the old run go, and the run it put
+    in deleted since)."""
+    what = (f"the run imported as {stamp}" if ours
+            else "an earlier run from another file")
+    return (f"An earlier Replace stopped part way and left {what} in "
+            f"{aside.name}; it is back under its own name now.")
 
 
 def _not_theirs(season: str, dst: Path) -> str:
@@ -925,7 +928,9 @@ def _import_into(path: Path, m: dict, dst: Path, replace: bool, build: str,
         # when nothing is there, and the import says so
         held, restored = [], []
         _sweep_stale_temps(dst, kept=held, restored=restored)
-        back = _put_back_words(stamp, restored[0]) if restored else ""
+        back = (_put_back_words(stamp, restored[0],
+                                _whole_import(dst, m["bundle_sha256"]))
+                if restored else "")
         if held:
             raise BundleError(" ".join(filter(None, (
                 f"An earlier import of {season} left {held[0].name} in a "

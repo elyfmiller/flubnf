@@ -64,10 +64,13 @@ def _set_aside(run, pid: int, tag: str = "0a0b0c0d") -> Path:
     return aside
 
 
-def _back_words(run, aside: Path) -> str:
-    return (f"An earlier Replace stopped part way and left the run imported "
-            f"as {run['stamp']} in {aside.name}; it is back under its own "
-            "name now.")
+def _back_words(run, aside: Path, ours: bool = True) -> str:
+    """`ours`: the run put back is the importing file's own (else another
+    file's, the seventh pass's finding 2)."""
+    what = (f"the run imported as {run['stamp']}" if ours
+            else "an earlier run from another file")
+    return (f"An earlier Replace stopped part way and left {what} in "
+            f"{aside.name}; it is back under its own name now.")
 
 
 def _already(run) -> str:
@@ -134,7 +137,9 @@ def test_a_replace_killed_between_its_renames_then_a_damaged_bundle_keeps_the_ru
     """The review's case, with a real SIGKILL: the old run is aside, the
     name empty. A Replace with a damaged bundle then puts the old run back
     first, is refused as damaged, and says the run is back: the retro root
-    holds the run, whole, and nothing beside it."""
+    holds the run, whole, and nothing beside it. The damaged copy is
+    another file than the bundle whose run went back, so the run back is
+    said to be from another file (the seventh pass's finding 2)."""
     _killed_at(run, "rename")
     dst, rr = run["dst"], run["rr"]
     assert not (dst.exists() or dst.is_symlink())
@@ -146,7 +151,7 @@ def test_a_replace_killed_between_its_renames_then_a_damaged_bundle_keeps_the_ru
         rb.import_bundle(bad, rr, replace=True)
     assert str(e.value) == (
         f"bad.zip: weeks/{W3}/samples.json could not be unpacked; the bundle "
-        f"is damaged or altered. {_back_words(run, aside)}")
+        f"is damaged or altered. {_back_words(run, aside, ours=False)}")
     assert _files(dst) == run["reference"]
     assert (dst / rb.IMPORTED_MARK).read_bytes() == marker
     assert retro.list_archive_dirs(rr, SEASON) == [dst]

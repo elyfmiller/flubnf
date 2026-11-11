@@ -55,8 +55,8 @@ def _already(run) -> str:
 def _from_another_file(run) -> str:
     """A plain import's refusal over another file's whole import at the
     run's name (the seventh pass's finding 1: never "already imported")."""
-    return (f"{SEASON} was already imported as {run['stamp']} from another "
-            "file; a Replace import puts this bundle's run in its place.")
+    return (f"{SEASON} is imported as {run['stamp']} from another file; a "
+            "Replace import puts this bundle's run in its place.")
 
 
 def _not_whole(dst: Path) -> str:
@@ -351,6 +351,48 @@ def test_a_replace_with_another_file_stopped_before_its_drop_is_named(
     assert _sha_at(dst) == m1["bundle_sha256"]
     assert not any("aside in" in w for w in r.warnings), r.warnings
     assert rb._sweep_stale_temps(dst) == [aside]
+    assert _beside(rr) == []
+
+
+@pytest.mark.parametrize("which", ["the other file", "its own file"])
+def test_a_run_put_back_from_another_file_is_said_to_be_from_it(
+        run, monkeypatch, which):
+    """The seventh pass's finding 2: a Replace of another file (the same
+    export zipped again) over the run, stopped before it let the old run
+    go; the user then deletes the run at the name in the console, and
+    imports a file again. The sweep puts the old run back. Imported from
+    the other file, the refusal said "from this bundle was already
+    imported" though the run back at the name is the first file's: it now
+    says the run there is from another file. Imported from the first file,
+    "already imported" holds."""
+    dst, rr = run["dst"], run["rr"]
+    again = _zipped_again(run["bundle"], run["tmp"] / "again")
+    m1 = rb.inspect_bundle(run["bundle"])
+
+    def stopped(*a):
+        raise KeyboardInterrupt
+    monkeypatch.setattr(rb, "_drop_aside", stopped)
+    with pytest.raises(KeyboardInterrupt):
+        rb.import_bundle(again, rr, replace=True)
+    monkeypatch.undo()
+    left = _beside(rr)
+    assert len(left) == 1 and ".replaced-" in left[0], left
+    aside = _ended(rr / left[0])
+    retro.delete_tree(dst)                       # Storage's Delete
+    bundle = again if which == "the other file" else run["bundle"]
+    with pytest.raises(rb.BundleError) as e:
+        rb.import_bundle(bundle, rr)
+    if which == "the other file":
+        said = (_from_another_file(run) + " An earlier Replace stopped part "
+                f"way and left an earlier run from another file in "
+                f"{aside.name}; it is back under its own name now.")
+    else:
+        said = (_already(run) + " An earlier Replace stopped part way and "
+                f"left the run imported as {run['stamp']} in {aside.name}; "
+                "it is back under its own name now.")
+    assert str(e.value) == said
+    assert _sha_at(dst) == m1["bundle_sha256"]
+    assert _files(dst) == run["reference"]
     assert _beside(rr) == []
 
 
