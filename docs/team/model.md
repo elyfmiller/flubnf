@@ -13,7 +13,7 @@ until 2026-11-09 and on the Windows PC since then.
 
 ## Now
 
-- 2026-11-11 (07:20 UTC): THE CAP'S LEVEL ON THE ORACLE: IT RESPONDS AS THE
+- 2026-11-11 (07:10 UTC): THE CAP'S LEVEL ON THE ORACLE: IT RESPONDS AS THE
   GROUNDHOG DOES, SO NOTHING HERE ARGUES AGAINST `larger` FOR BOTH. Ely
   decided `larger` for both members at 10x and offered the PC to test the
   Oracle first (Decided, same day). C0's weeks are on the lab Mac, so
@@ -1597,10 +1597,10 @@ until 2026-11-09 and on the Windows PC since then.
 
 ## For other lanes
 
-- 2026-11-11 (07:20 UTC), Submission and App: THE ORACLE ANSWER FOR TODAY'S
+- 2026-11-11 (07:10 UTC), Submission and App: THE ORACLE ANSWER FOR TODAY'S
   RUN. The Oracle SIHRS keeps `larger`, as Ely decided: output.tail_level
   = larger for both members, the cap at 10x, mode shrink. Not
-  `larger_groundhog`. This lane's check on the PC (Now, 07:20 UTC;
+  `larger_groundhog`. This lane's check on the PC (Now, 07:10 UTC;
   amendment 2) finds no Oracle-specific harm. On the Oracle's own October
   rounds the larger level costs the Oracle +0.0201 and the Groundhog
   +0.0217, a gap of -0.0016 [-0.0056, +0.0029]. That cost is October's
@@ -2013,10 +2013,10 @@ until 2026-11-09 and on the Windows PC since then.
 
 ## Open
 
-- 2026-11-11 (02:50 UTC, updated 07:20 UTC), for Ely, from the cap screen:
+- 2026-11-11 (02:50 UTC, updated 07:10 UTC), for Ely, from the cap screen:
   - Answered by Ely's decision (Decided, 2026-11-11): the level `larger`
     for both members, at 10x. Amendment 2 found no reason against it for
-    the Oracle (Now, 07:20 UTC). The knob is on Submission's branch
+    the Oracle (Now, 07:10 UTC). The knob is on Submission's branch
     assited_dev/bold-sagan-kfw8gg (40b99a1e). It has to reach the code
     the laptop runs, dev and then main, by Ely's merges.
   - Still open: Part 2 (the Oracle on C0's 84 weeks), once the lab Mac's
