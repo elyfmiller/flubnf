@@ -70,6 +70,38 @@ season), the corrected-seed windows (CSW):
   pooled, in 2024-25 and 2025-26, on EARLY, on the corrected-seed windows,
   on the log scale and in coverage. 2023-24 is the exception, +0.0027,
   from October.
+## Amendment 1: the lower half balanced in admissions (BN)
+
+Ely, on reading the above: after a jump like Delaware's the bottom half can
+be wider than the capped top, which looks wrong and may cost WIS. Part 1's
+lower-half rules all narrowed too far. [AMENDMENT1.txt](AMENDMENT1.txt),
+frozen before its first score, adds the gentlest version: below the median,
+pull in only where the 95% band is wider below than above in admissions,
+just far enough to even it. Results in [report_amend1.txt](report_amend1.txt):
+
+| arm | relWIS | log | cov95 | against S, same cap and level |
+|---|---|---|---|---|
+| BN10-R3 | 0.6640 | 0.6493 | 0.888 | -0.0002 [-0.0014, +0.0011] |
+| BN10-RX | 0.6510 | 0.6373 | 0.917 | +0.0003 [+0.0000, +0.0007] |
+| BN15-R3 | 0.6495 | 0.6357 | 0.921 | +0.0003 [+0.0000, +0.0007] |
+| BN15-RX | 0.6438 | 0.6280 | 0.939 | +0.0001 [+0.0000, +0.0002] |
+
+- On WIS it is neutral, and it costs a little coverage and some log
+  score. It does far less harm than the log-scale balance B (Sep-Oct
+  2023: +0.082 against S10-R3, B +0.164). It helps in November (10x R3
+  0.5991 to 0.5951) and costs in October 2023.
+- Once the level is fixed there is little left for it to do. It acts in
+  10.7% of location-weeks at 10x R3, 4.3% at 10x RX and 0.7% at 15x RX.
+  The level alone already evens the band in the rise: the h0 width below
+  the median over the width above, November, 10x, goes from 1.12 to 0.82,
+  and at 15x RX it is 0.50.
+- Predictions H1, H2, H4 and H5 hold. H3 fails: at 10x R3 its 95%
+  coverage is 0.015 below S's.
+- The rule: no BN arm is recommended over the shrink alone at the same
+  cap and level.
+
+## What follows
+
 - This is the Groundhog half. The level and the cap are one setting per
   location for both members, so the prereg leaves the Oracle as it is
   until Part 2 (C0's 84 stored weeks, once the lab Mac's research tree is

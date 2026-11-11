@@ -24,6 +24,16 @@ Model lane, Ely's Windows PC. Times UTC.
   then ran in full ([report.txt](report.txt)). No rule, arm, subset or
   threshold changed.
 
+Amendment 1 (the lower half balanced in admissions, BN):
+- 2026-11-11 05:05:59: `AMENDMENT1.txt` frozen (sha256 c8db37b6...), after
+  Part 1's results and Ely's reading of them. It went out in commit
+  9c63e563, pushed at once; the committed blob matches the hash.
+- 05:07:04 to 05:07:50: `amend1.py --season` for the three seasons (0
+  defects; 79 horizon-blocks left alone for a 2.5% quantile of 0), then
+  `--report` ([report_amend1.txt](report_amend1.txt)). `amend1.py` was
+  written after the freeze and before its first score. It reads Part 1's
+  arms from the same results folder.
+
 Read after the scores (descriptive, not in the rule):
 - LN against S gives the same difference at every cap and level (-0.0003
   pooled). WIS is a sum over the quantile levels, so a change below the

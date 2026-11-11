@@ -13,6 +13,32 @@ until 2026-11-09 and on the Windows PC since then.
 
 ## Now
 
+- 2026-11-11 (05:10 UTC): THE CAP ON BOTH HALVES, AMENDMENT 1: A LOWER HALF
+  BALANCED IN ADMISSIONS DOES NOTHING THE LEVEL HAS NOT ALREADY DONE. Ely,
+  reading the entry below: after a jump like Delaware's the bottom half can
+  be wider than the capped top, which looks wrong and may cost WIS; look at
+  it before the 2026-11-11 run. AMENDMENT1.txt (c8db37b6, frozen 05:05:59
+  UTC, pushed in 9c63e563 before its first score) adds the gentlest rule:
+  below the median, pull in only where the 95% band is wider below than
+  above in admissions, just far enough to even it (BN). Groundhog, same
+  17,116 cells, records in
+  [model-cap-both-halves-2026-11/](model-cap-both-halves-2026-11/README.md):
+  - Against the shrink alone at the same cap and level: 10x R3 -0.0002
+    [-0.0014, +0.0011], 10x RX +0.0003, 15x R3 +0.0003, 15x RX +0.0001.
+    Neutral on WIS, with a little coverage lost (10x R3 0.904 to 0.888).
+    It helps in November (10x R3 0.5991 to 0.5951) and costs in October
+    2023, though half as much as the log-scale balance did.
+  - The level already evens the band in the rise. The h0 width below the
+    median over the width above, November, 10x: 1.12 on the three-week
+    mean, 0.82 on the larger of last week and the mean; 0.50 at 15x on the
+    larger. With that level, BN acts in 4.3% of location-weeks at 10x and
+    0.7% at 15x.
+  - Predictions H1, H2, H4 and H5 hold; H3 fails (coverage at 10x R3).
+    The rule recommends no BN arm.
+  - For the Groundhog, then: the level is the fix, and nothing below the
+    median adds to it. The Oracle is untested here, and its lower half is
+    the wider one after the cap (submission.md, 2026-11-04: 1.09 at 10x).
+
 - 2026-11-11 (02:50 UTC): THE TAIL CAP ON BOTH HALVES, THE GROUNDHOG HALF:
   THE LEVEL MATTERS, NOT THE LOWER HALF. Scored after the freeze (entry
   below), per the prereg; records in
@@ -1890,6 +1916,10 @@ until 2026-11-09 and on the Windows PC since then.
   - The level is one setting per location for both members. Apply it to
     the Oracle before Part 2, or wait for C0's weeks (the lab Mac's tree,
     the item below)?
+  - Amendment 1 (05:10 UTC): for the Groundhog, a lower-half rule adds
+    nothing once the level is fixed. For the 2026-11-11 run this lane
+    recommends no lower-half change for either member. The level fix needs
+    Submission's code before the run if it is wanted then.
 - 2026-11-10 (04:40 UTC), for Ely, from the move:
   - Can the lab Mac's research tree be copied to the PC (C0's stored
     replays and per-cell tables, `scorehub`, `groundhog-beta/` whole,
