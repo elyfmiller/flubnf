@@ -6,6 +6,21 @@ and CDC's rules. The season's facts are in
 
 ## Now
 
+- 2026-11-11 (17:12 UTC): ROUND 2026-11-14 DEADLINE MOVED TO THURSDAY;
+  NO NEW TARGET DATA YET (from App, checked here on cdcepi main). Hub
+  commit d0357402 (2026-11-06, "Temporary submission deadline edit"):
+  tasks.json submissions_due end -2 (was -3), so the automated check
+  closes Thursday 2026-11-12 23:59:59 US/Eastern (admin.json); the
+  README's stated time is 11 PM ET, the one to aim for. The hub's
+  target-hospital-admissions.csv still ends at the week of 2026-10-31
+  (17:12 UTC today, Veterans Day); its update is manual, so it most
+  likely lands Thursday (inferred, not announced). The round runs only
+  once the target data includes the week ending 2026-11-07; the files are
+  not built on the 10-31 data. FluBNF's Output-page deadline badge reads
+  the vendored app/core/assets/flusight-tasks.json (end -3) and will call
+  the round closed after 11 PM ET tonight: display only, and the vendored
+  copy is not edited for a temporary change. The level knob's merge
+  (this branch) still waits on Ely, with a day more for it.
 - 2026-11-11 (07:27 UTC): THE ORACLE KEEPS `larger`; THREE POINTS FROM
   APP FOR TODAY'S REVIEW. The Model lane's check on the PC (model.md, For
   other lanes, 07:10 UTC, dev 13e6b969): output.tail_level larger for
