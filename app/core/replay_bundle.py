@@ -963,7 +963,9 @@ def _import_into(path: Path, m: dict, dst: Path, replace: bool, build: str,
                             _check_offset(z.getinfo(f), name)
                             _extract_member(z, f, tmp / f, files[f]["sha256"],
                                             files[f]["bytes"], name)
-                        except _UNREADABLE:
+                        except _UNREADABLE + (KeyError,):
+                            # KeyError: a member gone from the file since
+                            # it was inspected (z.getinfo, z.open)
                             raise BundleError(
                                 f"{name}: {f} could not be unpacked; the "
                                 "bundle is damaged or altered.") from None
