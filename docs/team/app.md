@@ -6,6 +6,71 @@ pages (TEAM.md, team/README.md, FLUSIGHT-2026-27.md). Works on `dev`.
 
 ## Now
 
+- 2026-11-10 (night): four more things are known and left as they are
+  (pass 7's independent checks of the review of #93). Two are in the
+  "more earlier seasons" hint of Your data's check
+  (app/core/datasets/checks.py, worded by app/ui/datasets_ui.py), two in
+  the old run a Replace import sets aside (app/core/replay_bundle.py).
+  - **A first season that holds part of the donor window counts as a
+    whole one.** `groundhog_donors` divides the donor weeks by the
+    earlier seasons in which some group with a case holds a week of the
+    window (the newest week's MMWR week, give or take
+    `DEFAULT_BANDWIDTH`, 2), and `more_seasons` takes each of them to
+    give an equal share. A file that starts inside its first earlier
+    season's window counts that season as one, though it holds a week or
+    two of the window, so the figure can be too large. One series with
+    cases throughout, from 2023-04-01 (MMWR week 13) to 2025-03-15 (week
+    11), counts 6 donor weeks at each horizon and says "give about 8
+    more earlier seasons of data"; the same series started five years
+    earlier counts 30. Left as is: the figure errs large, more seasons
+    still reach it, and "about" covers it.
+  - **Zeros that fall by chance can say "would not help".** At a horizon
+    with no donor week, `_seasons_heard` takes each earlier season with a
+    case that holds a pair there (a week of the window and the week that
+    horizon later) to show that seasons like it give the horizon
+    nothing; when each group shows it through two such seasons or more,
+    the hint says "more seasons like these would not help". The rule
+    cannot tell zeros that come every season (a summer off) from zeros
+    that fall by chance in low counts. One series of low counts from
+    2023-04-15 to 2025-04-05, 0 in its winter weeks and, at random, in
+    about half of the others, counts (0, 1, 1, 1) and says "At 1 horizon
+    no earlier season in the file has a week like it, so more seasons
+    like these would not help there"; the same series started eight
+    years earlier counts 15 at that horizon. Left as is.
+  - **A Replace's old run can stay beside the new one for good.** As
+    app-final has it from 8a7a4dd7 (this branch takes it at its next
+    merge; until then the sweep here deletes a set-aside run once any
+    whole import is at the run's name): a Replace renames the old run to
+    `<run>.replaced-<pid>-<hex>`, renames the new one in, and then lets
+    the old one go. A later import's sweep deletes a set-aside run only
+    when the run's name holds a whole import of the same bundle (both
+    imported.json files name one `bundle_sha256`; a value missing or
+    unreadable on either side is never a match), and with nothing at the
+    name puts the newest whole one back under it. A Replace with another
+    bundle file of the same season and stamp, stopped after its new run
+    went in and before it let the old one go, so leaves the old run
+    aside for good while that import stands at the name. Nothing is
+    lost: Storage lists no row for it, Storage's reclaim passes over it
+    (`is_temp_name`), and every import of that season and stamp, refused
+    or not, says where it is ("An earlier Replace set a run of <season>
+    aside in <folder>, and the console keeps it there: it can be deleted
+    by hand once the run imported as <stamp> is the one wanted."). It is
+    deleted by hand.
+  - **Builds a003431d to 1ce301ed deleted a set-aside run with its
+    imported.json in place.** Their `_drop_aside` (`retro.delete_tree`)
+    and their sweep (`_remove_quietly`, `shutil.rmtree`) removed a
+    `.replaced-` tree in whatever order the walk took, so one stopped
+    part way could leave part of a run under that name with its
+    imported.json still there. The sweep from 0433736d on takes such a
+    tree for a whole run: with nothing at the run's name, it renames it
+    back to the name, and a plain import is refused as already imported
+    and says the run "is back under its own name now", though part of
+    its weeks are gone. From 0433736d on a set-aside run's imported.json
+    is removed first (and app-final's 8a7a4dd7 renames a run it lets go
+    to `<run>.dropping-<pid>-<hex>` before deleting it).
+    Not fixed: those builds were never released (no tag, and neither
+    `dev` nor `main` has them), so no install made such a tree.
+
 - 2026-11-10 (evening): two launcher wordings are known and left as they
   are (review of #93 at ac51731d, and the independent check of pass 6).
   Each is a sentence a user cannot act on as written, met only when a
