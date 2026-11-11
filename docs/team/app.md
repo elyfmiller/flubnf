@@ -6,6 +6,31 @@ pages (TEAM.md, team/README.md, FLUSIGHT-2026-27.md). Works on `dev`.
 
 ## Now
 
+- 2026-11-11 (early): two more things are known, from pass 8's check of
+  the import, recorded as they are (the reviewer's ruling, eighth pass).
+  - **A Replace's refusals say "from this bundle" whatever is at the
+    name.** `_protected_words` and the two refusals while the run is held
+    (its results still being prepared, or the run already being deleted
+    or replaced) in `app/core/replay_bundle.py` begin "<season> from this
+    bundle is imported as <stamp>" without asking whose run that is.
+    Since pass 8 a plain import says whose it is ("<season> is imported
+    as <stamp> from another file; a Replace import puts this bundle's run
+    in its place."), and with the retro root in FLUBNF_PROTECT_ROOTS that
+    Replace is then refused in a protected folder. A fix, if taken, is
+    words only: drop "from this bundle" from the three openings, and
+    leave the Replace clause out where `reclaim.is_protected(dst)`.
+  - **A run's Delete that fails says "Nothing else changed." when part of
+    it may be gone.** The archived run's Delete (`app/ui/routes/retro.py`)
+    and Storage's Delete (`app/ui/routes/storage.py`) answer an error
+    from `retro.delete_tree` with that detail. A delete that fails part
+    way has removed some of the run; since pass 8 (e42fa8ae) the run's
+    imported.json goes first, so even a delete that fails on its first
+    other file leaves every data file but no import record, and the run
+    no longer shows as imported. The order is right (a part run is never
+    taken for a whole import); the sentence is not. A fix, if taken: the
+    detail "Part of it may be gone; delete it again." in both places.
+    imported.json is not written back.
+
 - 2026-11-10 (late night): nine more things are known (pass 8's checks,
   and three findings of pass 7 left open), read on this branch at 340e7d76
   (its hint change was then taken back in fbefd383; see the last item)

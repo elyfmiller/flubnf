@@ -554,3 +554,33 @@ def test_one_summer_that_straddles_1_august_counts_as_two(engine_ready):
         got, fix = straddle(end)
         assert got == (0, 0, 0, 0), end
         assert "only one season says so, and more seasons may." in fix
+
+
+# ---------------------------------------- pass 8's two, as recorded
+
+def _note_pass8_check() -> str:
+    """The App notes' entry on the two things pass 8's check left."""
+    notes = _read("docs/team/app.md")
+    now = notes[notes.index("## Now"):notes.index("## Decided")]
+    at = now.index("- 2026-11-11 (early): two more things are known")
+    return _flat(now[at:now.index("\n- ", at + 1)])
+
+
+def test_the_app_notes_record_pass_8_s_two_and_the_code_is_as_they_say():
+    note = _note_pass8_check()
+    assert ('**A Replace\'s refusals say "from this bundle" whatever is at '
+            'the name.**') in note
+    assert ('**A run\'s Delete that fails says "Nothing else changed." when '
+            'part of it may be gone.**') in note
+    assert "imported.json is not written back." in note
+    src = _flat(_read("app/core/replay_bundle.py"))
+    # the three Replace refusals open so, and a plain refusal names the file
+    assert src.count('from this bundle is imported as "') == 2
+    assert 'f"{season} from this bundle is imported as {stamp} in a "' in src
+    assert 'f"{season} is imported as {stamp} from another file; a "' in src
+    for route in ("app/ui/routes/retro.py", "app/ui/routes/storage.py"):
+        body = _flat(_read(route))
+        at = body.index("retro.delete_tree(p)")
+        tail = body[at:at + 400]
+        assert 'detail="Nothing else changed."' in tail, route
+
