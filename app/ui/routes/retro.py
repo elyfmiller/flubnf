@@ -1589,6 +1589,13 @@ def _removal_busy(root: Path, season: str, what: str):
     is not done ("week 2098-01-10 is not shown")."""
     if not retro_prep._being_removed(root):
         return None
+    return _busy_answer(season, what)
+
+
+def _busy_answer(season: str, what: str):
+    """_removal_busy's answer: 503 with Retry-After. Also the answer when
+    the mark comes while the work is under way and its write is refused
+    (retro_store.TreeBusy)."""
     return PlainTextResponse(
         f"{season}: the run is being deleted or moved, so {what} while "
         "it is.", status_code=503,
@@ -1647,8 +1654,11 @@ def _season_report(season: str, archive: str):
     """Build (cached by mtime) the self-contained season report (player
     plus every week's data, one HTML file); `archive` = that run's. The
     path, or the refusal: 404 for an unknown identifier or week, 503
-    while a delete or a move holds the run (_removal_busy)."""
+    while a delete or a move holds the run (_removal_busy), whether it
+    held it before the build or took it during the build, which then
+    writes nothing (retro_store.TreeBusy)."""
     from app.core import playback, report_season
+    from app.core.retro_store import TreeBusy
     if archive and not (_valid_season(season) and _valid_archive(archive)):
         return PlainTextResponse("unrecognized archived run identifier",
                                  status_code=404)
@@ -1665,6 +1675,9 @@ def _season_report(season: str, archive: str):
         return PlainTextResponse(str(e), status_code=404)
     except FileNotFoundError:
         return PlainTextResponse(NO_TRUTH, status_code=503)
+    except TreeBusy:
+        # the mark came during the build: as for a marked tree before it
+        return _busy_answer(season, "its season report is not built")
 
 
 @router.get("/retro/{season}/report")

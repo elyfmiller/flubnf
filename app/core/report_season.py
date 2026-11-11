@@ -251,7 +251,9 @@ def build_season_report(root: Path, season: str, archive: str = "",
     that exported it, and the engine build recorded with the season (its
     run settings), never this machine's installed engine. `progress(phase,
     done, total)`, when given, hears each step of a build (the page's
-    progress bar, app/ui/season_export.report_job)."""
+    progress bar, app/ui/season_export.report_job). A delete or a move
+    that holds the tree when the file is to be written: nothing is
+    written, and retro_store.TreeBusy says so."""
     root = Path(root)
     weeks = playback.season_weeks(root)
     if not weeks:
@@ -271,12 +273,12 @@ def build_season_report(root: Path, season: str, archive: str = "",
     # atomic, and a temporary file per builder: two concurrent builds must
     # never interleave a garbled file
     import threading
-    from app.core.retro_store import writing_into
+    from app.core.retro_store import TreeBusy, writing_into
     tmp = out.with_suffix(f".html.{os.getpid()}.{threading.get_ident()}.tmp")
     # nothing is written into a tree a delete or a move took meanwhile
     with writing_into(root) as ok:
         if not ok:
-            raise RuntimeError(
+            raise TreeBusy(
                 f"{season}: the run is being deleted or moved, so its season "
                 "report was not written.")
         # LF pinned: served as text and downloaded raw, which must match on

@@ -50,6 +50,15 @@ def writing_into(root: Path):
     rp = sys.modules.get("app.ui.retro_prep")
     return rp._writing_into(root) if rp is not None else nullcontext(True)
 
+
+class TreeBusy(RuntimeError):
+    """What a writer raises when writing_into says no and it has nothing
+    to give without its write (the season report, the national
+    aggregate): nothing was written, and the words say what was not done.
+    The season page's APIs answer it as they answer a marked tree before
+    the work began: 503 with Retry-After."""
+
+
 SAMPLES_JSON = "samples.json"
 SAMPLES_GZ = "samples.json.gz"
 #: per-week quantile sidecar (each member's 23 levels, a few hundred KB beside

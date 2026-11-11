@@ -1431,7 +1431,10 @@ def _national_week(root: Path, sp: Path, levels: list) -> tuple:
     """(asof, pf_nat, an_nat) for one stored week (national_week_quantiles),
     from playback_cache/us_quantiles/<week>.json while its key holds, else
     from the forecasting samples, then cached. A cache that cannot be read is a miss;
-    one that cannot be written (a sealed or read-only tree) is skipped."""
+    one that cannot be written (a sealed or read-only tree) is skipped, as
+    is one for a tree a delete or a move holds (retro_store.writing_into)
+    or a tree deleted meanwhile: no folder is made for either."""
+    from app.core.retro_store import writing_into
     cf = (root / "playback_cache" / US_QUANTILES_DIRNAME
           / f"{sp.parent.name}.json")
     try:
@@ -1458,14 +1461,16 @@ def _national_week(root: Path, sp: Path, levels: list) -> tuple:
         # a name per writer: two threads finishing one week never share it
         tmp = cf.with_name(
             f"{cf.name}.{os.getpid()}.{threading.get_ident()}.tmp")
+        text = json.dumps({"key": key, "asof": asof,
+                           "pf": pf_nat, "analogue": an_nat})
         try:
-            # never re-create a tree deleted meanwhile: no parents=True
-            cf.parent.parent.mkdir(exist_ok=True)
-            cf.parent.mkdir(exist_ok=True)
-            tmp.write_text(json.dumps({"key": key, "asof": asof,
-                                       "pf": pf_nat, "analogue": an_nat}),
-                           encoding="utf-8")
-            os.replace(tmp, cf)
+            with writing_into(root) as ok:
+                # never re-create a tree deleted meanwhile: no parents=True
+                if ok and Path(root).is_dir():
+                    cf.parent.parent.mkdir(exist_ok=True)
+                    cf.parent.mkdir(exist_ok=True)
+                    tmp.write_text(text, encoding="utf-8")
+                    os.replace(tmp, cf)
         except OSError:
             try:
                 tmp.unlink(missing_ok=True)
@@ -1490,6 +1495,12 @@ def national_aggregate(root: Path) -> dict | None:
     Returns {member: relWIS, "cells": {member: n}, "log_rel": {member:
     log-scale relWIS}, "cov": {member: {"50", "80", "95"}}, "weeks",
     "seconds"} (scoring.pooled_metrics over the member's national cells).
+
+    A delete or a move that holds the tree when the result is to be cached
+    (a results page or a report that passed its checks before the delete
+    began): nothing is written, neither the week caches nor this one, and
+    retro_store.TreeBusy is raised, as the weeks read may be a part of the
+    season. A tree deleted meanwhile is not made again.
     """
     from datetime import timedelta
     from app.core import scoring
@@ -1547,14 +1558,26 @@ def national_aggregate(root: Path) -> dict | None:
             result["log_rel"][model] = pm["log_rel"]
             result["cov"][model] = pm["cov"]
     result["seconds"] = round(time.monotonic() - t0, 1)
-    # atomic; an unwritable tree (sealed, read-only) just recomputes next time
-    try:
-        cf.parent.mkdir(parents=True, exist_ok=True)
-        tmp = cf.with_name(cf.name + ".tmp")
-        tmp.write_text(json.dumps({"key": key, "result": result}), encoding="utf-8")
-        os.replace(tmp, cf)
-    except OSError:
-        pass
+    # atomic; an unwritable tree (sealed, read-only) just recomputes next
+    # time. Nothing is written into a tree a delete or a move holds
+    # (retro_store.writing_into), and no folder is made for a tree deleted
+    # meanwhile (no parents=True)
+    from app.core.retro_store import TreeBusy, writing_into
+    text = json.dumps({"key": key, "result": result})
+    with writing_into(root) as ok:
+        if ok and root.is_dir():
+            try:
+                cf.parent.mkdir(exist_ok=True)
+                tmp = cf.with_name(cf.name + ".tmp")
+                tmp.write_text(text, encoding="utf-8")
+                os.replace(tmp, cf)
+            except OSError:
+                pass
+    if not ok:
+        # its weeks were going while it was worked out: no figure is given
+        # for them (us_national.aggregate_row says why)
+        raise TreeBusy("the run is being deleted or moved, so its national "
+                       "aggregate was not built")
     return result
 
 
