@@ -6,6 +6,68 @@ and CDC's rules. The season's facts are in
 
 ## Now
 
+- 2026-11-11 (18:16 UTC): ROUND 2026-11-14 READINESS (App's check of
+  ~18:15 UTC), ANSWERED POINT BY POINT; Ely decides the open points.
+  (1) THE HUB'S POPULATION CHECK IS 0.1%. Confirmed on cdcepi main:
+  validations.yml max_hosp_popn_frac, popn_frac 0.001
+  (cstm_check_tbl_value_max_popn_frac: a quantile value above 0.001 x the
+  location's population fails; equal passes). FluBNF's app/core/hubcheck
+  (0.30) misses it; this lane's scratchpad tools/popn_check.py reproduces
+  it. Round 11-07 as submitted: Puerto Rico h3 q0.99 3,125 of 3,203
+  (0.976) in the Groundhog, 2,667 (0.833) in the Oracle; Florida 0.58.
+  The cap bounds the 97.5% quantile, not the 0.99: in those Puerto Rico
+  blocks q0.99 ran 1.23-1.32x q0.975. Estimate on data through 10-31
+  (q0.99 about 1.3 x 10x the larger level, over the limit): Puerto Rico
+  1.19 (the larger level 294, so the 97.5% may reach 2,940 and the 0.99
+  about 3,800 against 3,203; 0.96 on the mean), Florida 0.67, Louisiana
+  0.66, Hawaii 0.62. So a RED on Puerto Rico is likely wherever its upper
+  tail reaches the cap. The review runs the check on both files and gives
+  Ely the list. Ely's options: accept the RED and the hub team's review;
+  leave Puerto Rico out of the failing file(s); or clip at 0.1% (a new,
+  unregistered change). This lane's suggestion: leave it out of the
+  failing file, the practice we already use, no new method.
+  (2) THE FORM OPENS AT 15x AND THE MEAN (last_form.json from 11-04): Ely
+  sets 10 and larger by hand. Catch: the run record's tail_cap (n 10,
+  mode shrink, level larger, levels pf and analogue larger, cells above 0
+  for both), and the files themselves: no h3 97.5% above 10x the larger
+  level (half an admission allowed), and some blocks between 10x the mean
+  and 10x the larger where the last week is above the mean, which a run
+  on the mean cannot produce.
+  (3) THE ENGINE COMPARISON. Agreed: the 95% widths now mix the engine
+  and the level change. Definition (left out of the 2026-11-10 entry):
+  the ratio of log(q97.5/q2.5), q2.5 floored at 1, new round over old at
+  the same horizon, median over states (h0 0.88, h3 0.89 on 10-31 to
+  11-07). Added the lower half, log(q50/q2.5), which the upper cap never
+  touches: on 10-31 to 11-07, h0 0.93 (10th-90th 0.83-0.99), h3 0.93
+  (0.85-1.06). For the engine the review reads the medians (the shift
+  over the newest week's surprise, 1.06 on 10-31 to 11-07) and the lower
+  half; the 95% widths are reported, not read as the engine's.
+  (4) CODE: noted; the laptop runs #5's merge commit. This lane's gate
+  fix (935fd08, below) is on its branch for a later merge; today's data
+  cannot reach the edge.
+  (5) THURSDAY: tasks.json is re-checked on cdcepi main before the pull
+  request. The card changes (A, B, C under Open) go as their own hub pull
+  request after the forecast files are in. Agreed.
+  (6) FOR ELY, this lane's input:
+  - Cutoff: the full review (structure, hub checks with the 0.1% check,
+    the gate, Spencer's flags, flat or higher, state by state, the
+    engine, the run record) takes about 30-45 minutes from the files. If
+    the files reach this lane by 9 PM ET (02:00 UTC Friday), the full
+    review without the member table; the pull request opens by 10 PM ET
+    (03:00 UTC) at the latest, an hour before 11 PM ET for the validation
+    and one recommit.
+  - Waiting for three members: suggest not. Last round they arrived
+    between 21:25 UTC Wednesday and 01:00 UTC Thursday, two hours before
+    that deadline; with Thursday's deadline, likely Thursday evening. The
+    member table runs on whatever is in (epymorph usually first), with
+    last week's members as a guide, and the 1.5x rule applies before the
+    pull request if three are in by the cutoff (how to read it: Open,
+    2026-11-05).
+  - Hub names: rounds 10-31 and 11-07 used Ely's -modified uploads
+    renamed here (contents unchanged, sha256 recorded); both routes have
+    worked. Same as last week unless Ely prefers the console's override.
+  - Fork access: a dry-run push to elyfmiller/FluSight-forecast-hub
+    (FluBNF_submission) went through today; the real push confirms it.
 - 2026-11-11 (17:12 UTC): ROUND 2026-11-14 DEADLINE MOVED TO THURSDAY;
   NO NEW TARGET DATA YET (from App, checked here on cdcepi main). Hub
   commit d0357402 (2026-11-06, "Temporary submission deadline edit"):
@@ -3956,13 +4018,6 @@ and CDC's rules. The season's facts are in
 
 ## Open
 
-- 2026-11-11: scripts/sense_check.py's gate compares ratio > 30 in
-  floating point, so a file capped at 10x the larger level fails at an
-  exact 30x where a state's two earlier weeks are 0 (Now, 2026-11-11,
-  point 1). Fix with a tolerance (3 x upper > 30 x sum, or ratio > 30
-  (1 + 1e-9)) and a test with weeks 0, 0, 13, in a commit on this lane's
-  branch after Ely merges it (App's request). Not reachable on today's
-  data.
 - 2026-11-10 (App lane's requests; Ely approves in the hub pull
   request): THE ORACLE SIHRS CARD FOR ROUND 2026-11-14, THREE SEPARATE
   CHANGES TO methods_long (model-metadata/NAU_PyBNF-OracleSIHRS.yml line
