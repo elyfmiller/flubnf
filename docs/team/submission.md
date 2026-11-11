@@ -6,6 +6,21 @@ and CDC's rules. The season's facts are in
 
 ## Now
 
+- 2026-11-11 (01:30 UTC): THE ENGINE LANE'S 11-07 GATE PASSED (read in
+  docs/team/engine.md on dev, 6647862, before the move). Round 2026-11-14
+  runs on the public engine; no fallback. The PC's private engine
+  reproduced the submitted 11-07 Oracle file exactly (0 of 4,692 values
+  differ); the public run sat within the noise of a reseeded private run
+  on every measure (within 1.15x); public medians 0.25% higher on
+  average against 0.01% for the reseed (passed on its 0.01 floor,
+  reported for the 11-18 side-by-side); 159 of 159 cells ok; Hawaii and
+  Delaware alike on both engines. Time: 820 s public against about 385 s
+  private on the PC (2.1x; the console's PUBLIC_COST_RATIO is 2.4), so
+  allow 2.1-2.4x the laptop's usual run. Wednesday's review still sets
+  the Oracle against round 2026-11-07 (entry below); expected: an
+  ordinary week's movement. Freeze for the move from 01:45 UTC: nothing
+  pushed to elyfmiller/flubnf until the App lane says it is done, then
+  every copy is reset first (entry below).
 - 2026-11-10 (17:56 UTC): THE REPOSITORY MOVES TONIGHT (from the App
   lane), before Wednesday's round. elyfmiller/flubnf becomes a new
   repository with the same name; the old one becomes
