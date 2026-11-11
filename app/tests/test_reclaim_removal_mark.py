@@ -34,8 +34,8 @@ from app.core import replay_bundle as rb                     # noqa: E402
 from app.core import retro_store                             # noqa: E402
 from app.ui import retro_prep as RP                          # noqa: E402
 from app.ui import server as srv                             # noqa: E402
+from app.ui import shared as ui_shared                       # noqa: E402
 from app.ui import state as ui_state                         # noqa: E402
-from app.ui.routes import storage as ui_storage              # noqa: E402
 from test_reclaim import (SEASON, W1, _mk_week, _snapshot,   # noqa: E402
                           routed, world)                     # noqa: F401
 from test_retro_import_directory_and_swap import (           # noqa: E402
@@ -45,17 +45,33 @@ TREE = "2095-96"
 TREE_WEEKS = ["2096-01-03", "2096-01-10", "2096-01-17"]
 
 
+class _Log(list):
+    """The console's log (_status["log"]) for one test: a list as the
+    console's, which also keeps (message, kind, detail) of each notice
+    shared._flash gives, read from that call itself. Several route
+    modules import _flash, so patching Storage's copy breaks
+    test_ui_layout's one-home rule; nothing is patched here, and each
+    route's own _flash is the one that runs."""
+
+    def __init__(self, lines, said: list):
+        super().__init__(lines)
+        self.said = said
+
+    def append(self, line):
+        caller = sys._getframe(1)
+        if caller.f_code is ui_shared._flash.__code__:
+            at = caller.f_locals
+            self.said.append((at["msg"], at["kind"], at["detail"]))
+        super().append(line)
+
+
 @pytest.fixture
 def flashes(monkeypatch):
     """Every flash Storage's routes give, in order: (message, kind,
     detail). Two requests at once both flash; the page keeps one."""
     said = []
-    real = ui_storage._flash
-
-    def flash(msg, kind="ok", detail=""):
-        said.append((msg, kind, detail))
-        real(msg, kind, detail=detail)
-    monkeypatch.setattr(ui_storage, "_flash", flash)
+    monkeypatch.setitem(ui_state._status, "log",
+                        _Log(ui_state._status["log"], said))
     return said
 
 
