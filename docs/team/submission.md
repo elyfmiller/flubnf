@@ -3129,6 +3129,14 @@ and CDC's rules. The season's facts are in
 
 ## Decided
 
+- 2026-11-11 (Ely): for now the lanes communicate through the
+  repository. This lane (the cloud session "NAU_PyBNF TEAM") cannot
+  message the sessions on Ely's computers, and they cannot see it; a
+  direct link was approved by Ely but could not be recorded in this
+  session. This lane answers in docs/team/submission.md on its branch
+  assited_dev/bold-sagan-kfw8gg (For other lanes, naming the lane) and
+  reads the other lanes' notes files on dev and their branches before
+  each piece of work.
 - 2026-11-05 (Ely): round 2026-11-07 stands as merged (Groundhog 52
   locations without Hawaii, Oracle 51 without Hawaii and Delaware). The
   member table, which could only run at 01:00 UTC Thursday after the
