@@ -6,6 +6,37 @@ and CDC's rules. The season's facts are in
 
 ## Now
 
+- 2026-11-11 (07:27 UTC): THE ORACLE KEEPS `larger`; THREE POINTS FROM
+  APP FOR TODAY'S REVIEW. The Model lane's check on the PC (model.md, For
+  other lanes, 07:10 UTC, dev 13e6b969): output.tail_level larger for
+  both members, 10x, mode shrink, not larger_groundhog; on the Oracle's
+  own October rounds the larger level costs the two members alike.
+  (1) CORRECTION to the 07:02 entry: the gate can fail on floating point
+  at exactly 30x. With weeks 0, 0, x the capped h3 97.5% is 10x, and
+  10x / (x / 3) comes out 30.000000000000004 for 511 of x = 1..5000
+  (13, 26, 29, 49, ...); scripts/sense_check.py fails on ratio > 30
+  while printing "30x" (App reproduced it end to end: "FAIL (1 at
+  horizon 3): Vermont 30x"). Not possible today: the two weeks before
+  today's last week (10-24, 10-31) are at least 4 in every state (the
+  minimum is the District of Columbia's 4), so every ratio is well under
+  30. The fix, a tolerance (3 x upper > 30 x the three weeks' sum, or
+  ratio > 30 (1 + 1e-9)), comes in a commit after Ely merges this branch
+  (Open), since App tested the branch at f2674500.
+  (2) THE REVIEW CHECKS THE RUN RECORD'S tail_cap: n 10, mode shrink,
+  level larger, levels pf larger and analogue larger, and cells above 0
+  for BOTH pf and analogue. app/ui/pipeline.py builds the observed weeks
+  inside a try/except that passes; if that block failed, every limit
+  would be NaN and the cap would do nothing while the record still says
+  larger. The cells counts include the US blocks. (App ran the branch's
+  obs and cap blocks on the October rounds: the Model lane's arms
+  exactly, 0 values differ.)
+  (3) THE MEASURE: this lane's 2026-11-04 "relative WIS" figures (10x
+  against 15x, the mirrored shrink) are pairwise relative skill against
+  every team (scripts/dashboard_score.py, the dashboard's measure). The
+  Model lane's amendment 2 uses a ratio of WIS sums against
+  FluSight-baseline; per-cell WIS is the same, and the method explains
+  most of the 0.014-0.017 gap on the Oracle. Name the measure when
+  quoting either.
 - 2026-11-11 (07:02 UTC): THE ROUND'S CHECKS ON THE LARGER LEVEL (Decided,
   2026-11-11). The Model lane checked the knob against its cap screen
   before the merge: the same limits, 0 of 28,416 differ (model.md, For
@@ -19,7 +50,9 @@ and CDC's rules. The season's facts are in
   30x) and Spencer's red flag (over the last week, 30x). The larger level
   cannot trip the gate: the last week is at most three times the
   three-week mean that contains it, so 10x the larger is at most 30x the
-  mean, and exactly 30x only where the two earlier weeks were 0. Before
+  mean, and exactly 30x only where the two earlier weeks were 0 (in
+  floating point that exact case can read just over 30 and fail the gate;
+  corrected in the entry above). Before
   the review: the Model lane's answer on the Oracle (model.md, For other
   lanes) and the Engine lane's notes.
 - 2026-11-11 (05:39 UTC): THE TAIL CAP'S LEVEL KNOB, CODED (the Model
@@ -3908,6 +3941,13 @@ and CDC's rules. The season's facts are in
 
 ## Open
 
+- 2026-11-11: scripts/sense_check.py's gate compares ratio > 30 in
+  floating point, so a file capped at 10x the larger level fails at an
+  exact 30x where a state's two earlier weeks are 0 (Now, 2026-11-11,
+  point 1). Fix with a tolerance (3 x upper > 30 x sum, or ratio > 30
+  (1 + 1e-9)) and a test with weeks 0, 0, 13, in a commit on this lane's
+  branch after Ely merges it (App's request). Not reachable on today's
+  data.
 - 2026-11-10 (App lane's requests; Ely approves in the hub pull
   request): THE ORACLE SIHRS CARD FOR ROUND 2026-11-14, THREE SEPARATE
   CHANGES TO methods_long (model-metadata/NAU_PyBNF-OracleSIHRS.yml line
