@@ -9,7 +9,9 @@ histories), while the medians sat with the other members'.
 
 The cap clips every quantile ABOVE THE MEDIAN of a (location, horizon)
 block at `n` times the recent level, the mean of the last `RECENT_WEEKS`
-reported weeks at the forecast date, and never below the block's own median:
+reported weeks at the forecast date (or, by the knob output.tail_level, the
+last reported week or the larger of the two; LEVELS), and never below the
+block's own median:
 the median and every lower quantile are untouched, order is preserved
 (clipped levels tie at the limit), and a block whose recent level is 0 or
 unknown is left alone. It runs on the hub rows at the output stage, after
@@ -46,6 +48,26 @@ MODE_PRODUCTION = "clip"
 MODES = ("clip", "shrink")
 #: the recent level is the mean of this many newest reported weeks
 RECENT_WEEKS = 3
+#: the level the cap's limit multiplies (knob output.tail_level; the Model
+#: lane's cap screen of 2026-11-11, docs/team/model-cap-both-halves-2026-11):
+#: "mean" the mean of the last RECENT_WEEKS reported weeks, the registered
+#: form; "last" the last reported week; "larger" the larger of the two, so a
+#: jump in the newest week raises the limit with it (Delaware on 2026-11-07:
+#: 48 against a three-week mean of 23, so 10x is 230 on the mean and 480 on
+#: the larger). The limit is n times the level either way.
+LEVEL_PRODUCTION = "mean"
+LEVELS = ("mean", "last", "larger")
+#: the knob's choices, each a level per member ("pf" the Oracle SIHRS,
+#: "analogue" the Groundhog, as app/ui/pipeline.py names them): one level for
+#: both, or "larger_groundhog", the per-member form, the Groundhog's limit on
+#: the larger level and the Oracle SIHRS's on the mean (the screen scored the
+#: Groundhog only)
+LEVEL_CHOICES = {
+    "mean": {"pf": "mean", "analogue": "mean"},
+    "last": {"pf": "last", "analogue": "last"},
+    "larger": {"pf": "larger", "analogue": "larger"},
+    "larger_groundhog": {"pf": "mean", "analogue": "larger"},
+}
 #: the historical ceiling (knob output.tail_hist; Spencer Fox's bound read
 #: on our data, 2026-10-25): per horizon, the upper quantiles are clipped at
 #: the recent level times a quantile of the growth history has produced,
@@ -72,12 +94,48 @@ def recent_level(values: Iterable[float], weeks: int = RECENT_WEEKS) -> float:
     return float(sum(tail) / len(tail))
 
 
-def limit_for(n: float, values: Iterable[float], weeks: int = RECENT_WEEKS) -> float:
-    """The cap for one location: n times its recent level; NaN (no cap) when
-    n is 0 or the recent level is unknown or 0."""
+def last_level(values: Iterable[float]) -> float:
+    """The last finite value (the newest reported week); NaN when none."""
+    v = [float(x) for x in values if x is not None and math.isfinite(float(x))]
+    return v[-1] if v else float("nan")
+
+
+def cap_level(values: Iterable[float], level: str = LEVEL_PRODUCTION,
+              weeks: int = RECENT_WEEKS) -> float:
+    """The level the cap's limit multiplies, by `level` (LEVELS): the mean of
+    the newest `weeks` finite values, the newest one, or the larger of the
+    two; NaN when there are none."""
+    if level not in LEVELS:
+        raise ValueError(f"tail cap level must be one of {LEVELS}, got {level!r}")
+    v = list(values)
+    if level == "mean":
+        return recent_level(v, weeks)
+    if level == "last":
+        return last_level(v)
+    r, last = recent_level(v, weeks), last_level(v)
+    if not math.isfinite(r):
+        return last
+    if not math.isfinite(last):
+        return r
+    return max(r, last)
+
+
+def member_levels(choice: str = LEVEL_PRODUCTION) -> dict:
+    """{"pf": level, "analogue": level} for a knob choice (LEVEL_CHOICES)."""
+    if choice not in LEVEL_CHOICES:
+        raise ValueError(f"tail cap level must be one of "
+                         f"{tuple(LEVEL_CHOICES)}, got {choice!r}")
+    return dict(LEVEL_CHOICES[choice])
+
+
+def limit_for(n: float, values: Iterable[float], weeks: int = RECENT_WEEKS,
+              level: str = LEVEL_PRODUCTION) -> float:
+    """The cap for one location: n times its level (cap_level: the recent
+    level by default); NaN (no cap) when n is 0 or the level is unknown
+    or 0."""
     if not n or n <= 0:
         return float("nan")
-    r = recent_level(values, weeks)
+    r = cap_level(values, level, weeks)
     if not math.isfinite(r) or r <= 0:
         return float("nan")
     return float(n) * r

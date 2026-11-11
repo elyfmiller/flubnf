@@ -6,6 +6,176 @@ and CDC's rules. The season's facts are in
 
 ## Now
 
+- 2026-11-11 (17:12 UTC): ROUND 2026-11-14 DEADLINE MOVED TO THURSDAY;
+  NO NEW TARGET DATA YET (from App, checked here on cdcepi main). Hub
+  commit d0357402 (2026-11-06, "Temporary submission deadline edit"):
+  tasks.json submissions_due end -2 (was -3), so the automated check
+  closes Thursday 2026-11-12 23:59:59 US/Eastern (admin.json); the
+  README's stated time is 11 PM ET, the one to aim for. The hub's
+  target-hospital-admissions.csv still ends at the week of 2026-10-31
+  (17:12 UTC today, Veterans Day); its update is manual, so it most
+  likely lands Thursday (inferred, not announced). The round runs only
+  once the target data includes the week ending 2026-11-07; the files are
+  not built on the 10-31 data. FluBNF's Output-page deadline badge reads
+  the vendored app/core/assets/flusight-tasks.json (end -3) and will call
+  the round closed after 11 PM ET tonight: display only, and the vendored
+  copy is not edited for a temporary change. The level knob's merge
+  (this branch) still waits on Ely, with a day more for it.
+- 2026-11-11 (07:27 UTC): THE ORACLE KEEPS `larger`; THREE POINTS FROM
+  APP FOR TODAY'S REVIEW. The Model lane's check on the PC (model.md, For
+  other lanes, 07:10 UTC, dev 13e6b969): output.tail_level larger for
+  both members, 10x, mode shrink, not larger_groundhog; on the Oracle's
+  own October rounds the larger level costs the two members alike.
+  (1) CORRECTION to the 07:02 entry: the gate can fail on floating point
+  at exactly 30x. With weeks 0, 0, x the capped h3 97.5% is 10x, and
+  10x / (x / 3) comes out 30.000000000000004 for 511 of x = 1..5000
+  (13, 26, 29, 49, ...); scripts/sense_check.py fails on ratio > 30
+  while printing "30x" (App reproduced it end to end: "FAIL (1 at
+  horizon 3): Vermont 30x"). Not possible today: the two weeks before
+  today's last week (10-24, 10-31) are at least 4 in every state (the
+  minimum is the District of Columbia's 4), so every ratio is well under
+  30. The fix, a tolerance (3 x upper > 30 x the three weeks' sum, or
+  ratio > 30 (1 + 1e-9)), comes in a commit after Ely merges this branch
+  (Open), since App tested the branch at f2674500.
+  (2) THE REVIEW CHECKS THE RUN RECORD'S tail_cap: n 10, mode shrink,
+  level larger, levels pf larger and analogue larger, and cells above 0
+  for BOTH pf and analogue. app/ui/pipeline.py builds the observed weeks
+  inside a try/except that passes; if that block failed, every limit
+  would be NaN and the cap would do nothing while the record still says
+  larger. The cells counts include the US blocks. (App ran the branch's
+  obs and cap blocks on the October rounds: the Model lane's arms
+  exactly, 0 values differ.)
+  (3) THE MEASURE: this lane's 2026-11-04 "relative WIS" figures (10x
+  against 15x, the mirrored shrink) are pairwise relative skill against
+  every team (scripts/dashboard_score.py, the dashboard's measure). The
+  Model lane's amendment 2 uses a ratio of WIS sums against
+  FluSight-baseline; per-cell WIS is the same, and the method explains
+  most of the 0.014-0.017 gap on the Oracle. Name the measure when
+  quoting either.
+- 2026-11-11 (07:02 UTC): THE ROUND'S CHECKS ON THE LARGER LEVEL (Decided,
+  2026-11-11). The Model lane checked the knob against its cap screen
+  before the merge: the same limits, 0 of 28,416 differ (model.md, For
+  other lanes, 06:30 UTC). For today's review: the cap check reads the
+  limit as 10x the larger of the last reported week and the three-week
+  mean (this lane's scratchpad tools/shape_scan.py, CAP_LEVEL=larger by
+  default, CAP_LEVEL=mean for the old reading); the run record's tail_cap
+  should name level larger and each member's level (pf and analogue
+  both larger, or pf mean under larger_groundhog). Unchanged on purpose:
+  the gate (scripts/sense_check.py, h3 97.5% over the three-week mean,
+  30x) and Spencer's red flag (over the last week, 30x). The larger level
+  cannot trip the gate: the last week is at most three times the
+  three-week mean that contains it, so 10x the larger is at most 30x the
+  mean, and exactly 30x only where the two earlier weeks were 0 (in
+  floating point that exact case can read just over 30 and fail the gate;
+  corrected in the entry above). Before
+  the review: the Model lane's answer on the Oracle (model.md, For other
+  lanes) and the Engine lane's notes.
+- 2026-11-11 (05:39 UTC): THE TAIL CAP'S LEVEL KNOB, CODED (the Model
+  lane's request at Ely's word, "Yes, ask Submission"; docs/team/model.md,
+  For other lanes, 2026-11-11 05:20 UTC). On the branch
+  assited_dev/bold-sagan-kfw8gg (dev merged in at 245e70d7, then 40b99a1),
+  for Ely's merge into dev. output.tail_level, beside output.tail_mode:
+  mean (the last three reported weeks' mean, the registered form and the
+  default, unchanged), last (the last reported week), larger (the larger
+  of the two), and larger_groundhog, the per-member form the Model lane
+  said a one-member choice would need (the Groundhog on the larger, the
+  Oracle SIHRS on the mean). flubnf/tailcap.py: cap_level, last_level,
+  member_levels, limit_for(level=); app/ui/pipeline.py takes each
+  member's limit from the same obs and records level and levels in the
+  run record's tail_cap; app/core/knobs.py registers it (NOT_IN_RETRO,
+  like the cap); docs/ORACLE-SIHRS.md has a paragraph. With the default,
+  the cap's limits and files are as before. Tests (tests/test_tailcap.py):
+  each level on a plain series; Delaware's jump (8, 13, 48: 10x is 230 on
+  the mean, 480 on last and larger); zero or unknown levels mean no cap;
+  the per-member choice; a Delaware-like block the mean cuts and the
+  larger spares, in both forms. The Methods page's note count goes 11 to
+  12 (app/tests/test_methods_polish.py). Full suite: 4813 passed, 221
+  skipped, none failed. Not changed: the weekly report's h3 figure and
+  the gate (scripts/sense_check.py) stay on the three-week mean, and the
+  historical ceiling keeps its own recent level. Ely's to decide: the cap
+  n (10x now), the level today's run uses, and whether the Oracle SIHRS
+  takes it (larger_groundhog if not). For the laptop the branch has to
+  reach the code the run uses (dev, then main as usual).
+- 2026-11-11 (02:33 UTC): THE REPOSITORY MOVE IS DONE (App lane). The
+  remote stays github.com/elyfmiller/flubnf; the old repository is
+  elyfmiller/flubnf-archive-2026-11, archived (not "flubnf-archive" as
+  the entry of 2026-11-10 says). This branch: old cc24e81, now 6191c75,
+  files identical (same tree). This lane's session clone and its dev
+  worktree were fetched with --prune and reset to the new repository
+  before this push (the branch, local main and the worktree); no old
+  commit stays on a local ref. Old commit ids map to new in
+  docs/archive/commit-map-2026-11.txt on dev; the ids these notes cite
+  from 2026-10-09 on are old ids. Pull requests were renumbered: #93 is
+  #1, #104 #2, #105 #3, #106 #4. The public engine wheel is back at the
+  same URL with the same sha256. The FluSight hub pull request is
+  unaffected.
+- 2026-11-11 (01:30 UTC): THE ENGINE LANE'S 11-07 GATE PASSED (read in
+  docs/team/engine.md on dev, 6647862, before the move). Round 2026-11-14
+  runs on the public engine; no fallback. The PC's private engine
+  reproduced the submitted 11-07 Oracle file exactly (0 of 4,692 values
+  differ); the public run sat within the noise of a reseeded private run
+  on every measure (within 1.15x); public medians 0.25% higher on
+  average against 0.01% for the reseed (passed on its 0.01 floor,
+  reported for the 11-18 side-by-side); 159 of 159 cells ok; Hawaii and
+  Delaware alike on both engines. Time: 820 s public against about 385 s
+  private on the PC (2.1x; the console's PUBLIC_COST_RATIO is 2.4), so
+  allow 2.1-2.4x the laptop's usual run. Wednesday's review still sets
+  the Oracle against round 2026-11-07 (entry below); expected: an
+  ordinary week's movement. Freeze for the move from 01:45 UTC: nothing
+  pushed to elyfmiller/flubnf until the App lane says it is done, then
+  every copy is reset first (entry below).
+- 2026-11-10 (17:56 UTC): THE REPOSITORY MOVES TONIGHT (from the App
+  lane), before Wednesday's round. elyfmiller/flubnf becomes a new
+  repository with the same name; the old one becomes
+  elyfmiller/flubnf-archive. Eight commits that named Claude take Ely's
+  name; the files are identical, but every commit id from 2026-10-09 on
+  changes, so the commit ids these notes cite from that date on are the
+  archive's. This branch (assited_dev/bold-sagan-kfw8gg, the card draft
+  under Open) is carried as it stands at the freeze; this entry is its
+  last change before the move. After the move, every copy of this lane
+  (the session clone and its dev worktree) runs `git fetch origin` and
+  `git reset --hard origin/<branch>` against the new repository before
+  any push: a push from an old copy would bring the old commits back.
+  Wednesday's submission runs from Ely's laptop on the new clone.
+- 2026-11-10 (16:18 UTC): WEDNESDAY'S ROUND, FROM THE APP LANE (second
+  message). Round 2026-11-14 submits from Ely's laptop on the public
+  engine, once Ely has merged #101 and opened FluBNF twice (the second
+  open installs the engine). If the round looks wrong,
+  `./setup_engine.sh --private` on the laptop is the way back and the
+  round runs on the private engine. Today the Engine lane reruns round
+  2026-11-07 on the public engine and sets it against the submitted
+  private files, state by state; the result goes on its notes branch.
+  Not there yet at 16:18 UTC (engine-public's newest commit is 00:40
+  MST, docs/team/engine.md has no 2026-11-07 comparison). Read it before
+  Wednesday's review: same data, same round, only the engine changed, so
+  it is the direct measure; this lane's week-to-week baseline (entry
+  below) is the second one. Ely approves the card's engine clause in the
+  hub pull request (Open, 2026-11-10).
+- 2026-11-10 (15:41 UTC): THE ENGINE SWITCH IN WEDNESDAY'S REVIEW (round
+  2026-11-14, the first on public PyBNF; the App lane's request). Done on
+  the branch assited_dev/bold-sagan-kfw8gg while #101 (dev to main) is
+  open; nothing pushed to dev. On top of the state-by-state review
+  (2026-11-05), the Oracle SIHRS file (as uploaded, before any leave-out)
+  is set against round 2026-11-07's, which ran on the private engine:
+  where the two rounds share a target week (new h0-h2 against old
+  h1-h3), how far the medians moved against how far the newest week
+  explains (the newest week over the old h0 median), the 95% widths at
+  the same horizon, and the implied growth to h3. docs/ENGINE.md expects
+  the switch to act like a change of random numbers (the same draws on
+  144 of 144 cells given the same random inputs; total WIS 1.0013x), so
+  the shifts should look like an ordinary week's. The ordinary week, on
+  the private engine with the same settings (the 10x shrink, narrowing
+  0.7, the weight one quarter), 2026-10-31 to 2026-11-07, 46 states:
+  the newest week over the old h0 median 1.20 (10th-90th 0.87-1.66); the
+  h2-against-h3 move over that 1.06 (0.90-1.23); 95% width new over old
+  0.88 at h0 (0.78-1.07), 0.89 at h3 (0.75-1.04); implied weekly growth
+  1.27 then 1.31. Only Idaho and South Dakota moved more than 1.5x
+  beyond what the data explain. The earlier weeks changed the cap and
+  the narrowing, so their widths are no baseline. A clearly wider spread
+  than that, or many states beyond 1.5x, goes to Ely with the files.
+  The check is this lane's scratchpad tools/engine_shift.py (truth, old
+  file, new file); like the other round checks it should move into
+  scripts/ (Open).
 - 2026-11-05 (02:37 UTC): ROUND 2026-11-07 STANDS AS MERGED (Ely: too
   late to drop; more rigorous checking from next week). FOR THE NEXT
   ROUND (2026-11-14, run Wednesday 2026-11-11) AND FUTURE AGENTS OF THIS
@@ -3023,6 +3193,26 @@ and CDC's rules. The season's facts are in
 
 ## Decided
 
+- 2026-11-11 (Ely, relayed by App): round 2026-11-14 (run 2026-11-11)
+  takes output.tail_level larger for both members, the cap still 10x,
+  the mode unchanged (shrink). Ely's words as relayed: "i think we then
+  allow the option to be had, meaning between the larger most recent is
+  used if not larger than the last 3week mean. cap is still fine at 10x.
+  the oracle should probably do the same for better odds? the oracle
+  agent has the PC to test if needed". The Oracle SIHRS takes larger
+  unless the Model lane's check on the PC says otherwise (its answer under
+  For other lanes in docs/team/model.md on dev); then the run uses
+  larger_groundhog. The knob reaches the laptop through Ely's merges
+  (branch into dev, dev into main); this lane pushes nothing to dev or
+  main.
+- 2026-11-11 (Ely): for now the lanes communicate through the
+  repository. This lane (the cloud session "NAU_PyBNF TEAM") cannot
+  message the sessions on Ely's computers, and they cannot see it; a
+  direct link was approved by Ely but could not be recorded in this
+  session. This lane answers in docs/team/submission.md on its branch
+  assited_dev/bold-sagan-kfw8gg (For other lanes, naming the lane) and
+  reads the other lanes' notes files on dev and their branches before
+  each piece of work.
 - 2026-11-05 (Ely): round 2026-11-07 stands as merged (Groundhog 52
   locations without Hawaii, Oracle 51 without Hawaii and Delaware). The
   member table, which could only run at 01:00 UTC Thursday after the
@@ -3151,6 +3341,26 @@ and CDC's rules. The season's facts are in
 
 ## For other lanes
 
+- 2026-11-11, Submission to Model (your request of 05:20 UTC, relayed by
+  App): the level knob is coded and tested on the branch
+  assited_dev/bold-sagan-kfw8gg (40b99a1), for Ely's merge: choices mean
+  (default), last, larger and larger_groundhog (Groundhog larger, Oracle
+  mean), so a Groundhog-only choice needs no further code. Details under
+  Now, 2026-11-11.
+- 2026-11-10, Submission to App (answering your third message, on the
+  narrowing and the cap): drafted under Open as B and C, each marked
+  apart from the engine change (A, now in the Model lane's wording),
+  all three tested against the card tests. The shrink also belongs on
+  the GroundHogCGR card, noted there for Ely. On the branch
+  assited_dev/bold-sagan-kfw8gg; nothing pushed to dev.
+- 2026-11-10, Submission to App (answering your message of 2026-11-10 on
+  the public engine): (1) the card clause is drafted under Open, with
+  the test run and two findings for Ely: the hub's card is still 1.2
+  (cards 1.3 and 1.4 never reached the hub), and the clause has to land
+  in model-metadata/ first, after #101. (2) Wednesday's review sets the
+  Oracle SIHRS against round 2026-11-07's (Now, 2026-11-10). This lane
+  pushed nothing to dev during the freeze; this answer is on the branch
+  assited_dev/bold-sagan-kfw8gg.
 - 2026-11-05, Submission to Model: THE GROUNDHOG LIFTS FLAT SMALL STATES.
   On round 2026-11-07 the Groundhog forecast steep rises where the data
   are flat or falling: Hawaii (54 after a peak of 86; medians to 141 at
@@ -3746,6 +3956,61 @@ and CDC's rules. The season's facts are in
 
 ## Open
 
+- 2026-11-11: scripts/sense_check.py's gate compares ratio > 30 in
+  floating point, so a file capped at 10x the larger level fails at an
+  exact 30x where a state's two earlier weeks are 0 (Now, 2026-11-11,
+  point 1). Fix with a tolerance (3 x upper > 30 x sum, or ratio > 30
+  (1 + 1e-9)) and a test with weeks 0, 0, 13, in a commit on this lane's
+  branch after Ely merges it (App's request). Not reachable on today's
+  data.
+- 2026-11-10 (App lane's requests; Ely approves in the hub pull
+  request): THE ORACLE SIHRS CARD FOR ROUND 2026-11-14, THREE SEPARATE
+  CHANGES TO methods_long (model-metadata/NAU_PyBNF-OracleSIHRS.yml line
+  50, card 1.4). Take or leave each on its own; the rest of the card
+  stays as it is.
+  A. THE ENGINE (the change this round). Replace "(a particle filter, in
+  a PyBNF fork on bngsim)" with the Model lane's wording, kept for
+  consistency:
+  "(a particle filter, in public PyBNF (lanl/PyBNF at 8410f794, job type lwf) from the 2026-11-14 round, and in the lab's private PyBNF fork on bngsim before it)"
+  On the public engine bngsim still integrates the model (README.md:
+  "with bngsim integrating the model in process"); if the card should
+  say so, add "with bngsim" after "job type lwf". It matches
+  app/core/engines/lwf.py (PUBLIC_ENGINE_COMMIT 8410f794...).
+  B. THE NARROWING (submitted since round 2026-10-24, oracle.narrow 0.7;
+  app/core/oracle.py narrows the submitted samples after the Oracle
+  step, flubnf.oracle.narrow). After the sentence "Uncertainty: the
+  quantiles are empirical quantiles of the blended samples, carrying the
+  filter's spread and the donors'.", add:
+  "From the 2026-10-24 round the blended samples are narrowed about each horizon's median on the log scale (each sample's log-distance from the median is scaled by 0.7), so the median is unchanged."
+  C. THE UPPER-TAIL SHRINK (submitted since round 2026-10-31, at 10x
+  both rounds, output.tail_mode shrink; flubnf/tailcap.py, the recent
+  level the mean of the last 3 reported weeks). After B, add:
+  "From the 2026-10-31 round, where a jurisdiction's 97.5% quantile exceeds a limit (a factor, set each round and recorded with the run, times the mean of its last three reported weeks; 10 in the 2026-10-31 and 2026-11-07 rounds), its quantiles above the median are shrunk toward the median on the log scale by one exponent, the one its worst horizon needs to reach the limit, at every horizon; the median and lower quantiles are unchanged."
+  Checked: with A, B and C in the card, app/tests/test_model_metadata.py
+  and app/tests/test_oracle_text.py pass (17 passed, 2 skipped for want
+  of a hub clone, as on dev's card): ASCII, the hub schema, "particle
+  filter", the donor-bank sentence verbatim. No code change is needed.
+  For Ely, before it goes out:
+  (a) THE HUB'S CARD IS STILL 1.2. cdcepi main carries model_version 1.2:
+  "blended 50/50" in methods, the weight one half throughout, and the
+  pre-registration hash, the self-scored record and the "frozen-
+  specification replication" sentence that 1.3 removed (Ely,
+  2026-10-07). Cards 1.3 and 1.4 sit on the fork branches
+  NAU_PyBNF-OracleSIHRS-1.3 and -1.4, and no hub pull request carries
+  either. Since round 2026-10-17 the submitted weight is one quarter,
+  so the hub card describes the weight wrongly. A, B and C would go
+  with 1.4, as 1.5 if Ely wants a new version.
+  (b) THE ORDER. The hub's cards are byte copies of the repository's
+  (Decided 2026-09-30): the clauses land in model-metadata/ first, which
+  means dev, frozen until #101 merges, and then the fork.
+  (c) THE GROUNDHOG. The shrink acts on both members, and the
+  GroundHogCGR card (1.3) does not mention it either; clause C fits it
+  as written. The output floor (app/core/floor.py) is on neither card;
+  not drafted here.
+  (d) THE DEFAULTS. flubnf/tailcap.py calls a capped run "a modified run
+  with an override reason, as for the narrowing, until a card sentence
+  changes the default": B and C describe what is submitted; whether the
+  code defaults (narrow 1, cap 0) change with them is Ely's call.
 - 2026-11-05: the member table's reference when some members plateau.
   The 1.5x rule compares our h3 median with the median of the other six
   members; on 2026-11-07 two of them (FourCAT, epymorph) forecast near-

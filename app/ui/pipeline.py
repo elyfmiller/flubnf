@@ -921,14 +921,22 @@ def _run_all(spec: RunSpec) -> None:
         _cap_n = _knobs.value_of(spec.extra, "output.tail_cap")
         if _cap_n:
             from flubnf import tailcap as _tc
-            _lim = {n2f[loc]: _tc.limit_for(float(_cap_n),
-                                            [v for _, v in obs.get(loc, [])])
-                    for loc in set(pf_samples) | set(an_q) if loc in n2f}
+            # the level the limit multiplies, per member (knob
+            # output.tail_level; the mean of the last three weeks when shipped)
+            _level = str(_knobs.value_of(spec.extra, "output.tail_level")
+                         or _tc.LEVEL_PRODUCTION)
+            _levels = _tc.member_levels(_level)
+            _lim = {m: {n2f[loc]: _tc.limit_for(float(_cap_n),
+                                                [v for _, v in obs.get(loc, [])],
+                                                level=_levels[m])
+                        for loc in set(pf_samples) | set(an_q) if loc in n2f}
+                    for m in ("pf", "analogue")}
             _mode = (_knobs.value_of(spec.extra, "output.tail_mode")
                      or _tc.MODE_PRODUCTION)
-            pf_rows, _cap_pf = _tc.cap_rows(pf_rows, _lim, mode=str(_mode))
-            an_rows, _cap_an = _tc.cap_rows(an_rows, _lim, mode=str(_mode))
+            pf_rows, _cap_pf = _tc.cap_rows(pf_rows, _lim["pf"], mode=str(_mode))
+            an_rows, _cap_an = _tc.cap_rows(an_rows, _lim["analogue"], mode=str(_mode))
             outcome["tail_cap"] = {"n": float(_cap_n), "mode": str(_mode),
+                                   "level": _level, "levels": _levels,
                                    "recent_weeks": _tc.RECENT_WEEKS,
                                    "cells": {"pf": _cap_pf, "analogue": _cap_an}}
         for model, rows in (("pf", pf_rows), ("analogue", an_rows)):
