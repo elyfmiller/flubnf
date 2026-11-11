@@ -13,7 +13,39 @@ until 2026-11-09 and on the Windows PC since then.
 
 ## Now
 
-- 2026-11-11 (02:35 UTC): THE TAIL CAP ON BOTH HALVES, PRE-REGISTERED
+- 2026-11-11 (02:50 UTC): THE TAIL CAP ON BOTH HALVES, THE GROUNDHOG HALF:
+  THE LEVEL MATTERS, NOT THE LOWER HALF. Scored after the freeze (entry
+  below), per the prereg; records in
+  [model-cap-both-halves-2026-11/](model-cap-both-halves-2026-11/README.md)
+  (README, report.txt, RUNLOG.md). Gate: the record reproduces exactly
+  (0.6802, 0.6272, 0.6448, pooled 0.6423 on 17,116 cells); code check
+  clean in all three seasons.
+  - The level. Taking the larger of the last week and the three-week mean
+    (RX) beats the three-week mean at both caps: 10x -0.0135 [-0.0220,
+    -0.0053] pooled (0.6642 to 0.6507), -0.028 on the first 8 weeks of
+    each season, -0.042 on the corrected-seed windows; 15x -0.0055
+    [-0.0099, -0.0014] (0.6491 to 0.6437). 95% coverage rises (10x 0.904
+    to 0.923). The one cost is October 2023, where the tight cap had
+    helped (Sep-Oct 0.8555 to 0.8865).
+  - The lower half. The mirror (M) and the separate exponent (B) gain a
+    little against the one-sided shrink at the same cap (10x R3: -0.0030
+    and -0.0050). They lose on the log scale and lower 95% coverage (10x
+    0.904 to 0.884 and 0.876), most in October 2023, where the truth
+    already fell below the band. The lower narrowing (LN) is -0.0003
+    [-0.0065, +0.0070] with 95% coverage 0.867 at 10x.
+  - Predictions: G1, G5 and G7 hold; G2, G3, G4 and G6 fail (README).
+  - The rule. At 15x, S15-RX passes every test and is RECOMMENDED. At 10x
+    no arm passes: every 10x arm fails the EARLY 95% coverage floor of
+    0.85, where production stands at 0.778. So S10-R3 stays. Outside the
+    rule: S10-RX fails only that floor (0.843), and it beats production
+    pooled, in two of three seasons, early, on the corrected-seed windows,
+    on the log scale and in coverage; 2023-24 is +0.0027. No lower-half
+    rule passes at either cap.
+  - For Ely (Open, same time): the level is one setting per location for
+    both members, and the Oracle half (Part 2) waits for the lab Mac's
+    research tree.
+
+- 2026-11-11 (02:33 UTC): THE TAIL CAP ON BOTH HALVES, PRE-REGISTERED
   (warm start task 3, Ely's go of 2026-11-10; Ely's item of 2026-11-04 and
   the Submission lane's handoff of 2026-11-04 19:11 UTC, submission.md).
   Frozen 2026-11-11 01:31 UTC, before any score:
@@ -1482,6 +1514,13 @@ until 2026-11-09 and on the Windows PC since then.
 
 ## For other lanes
 
+- 2026-11-11 (02:50 UTC), Submission: the cap screen you handed over on
+  2026-11-04 (Now, same time). For the Groundhog, the level matters and
+  the lower half does not. If Ely takes it, the code is yours: a level
+  option beside output.tail_mode in flubnf/tailcap.py, with tests. That
+  is the three-week mean (as now), the last week, or the larger of the
+  two (the screen's RX, recommended at 15x). No lower-half mode is needed
+  on the Groundhog's evidence. The Oracle half waits for C0's weeks.
 - 2026-11-10 (21:05 UTC), App, a G21 (WI-04) leftover, for you to place:
   `flubnf groundhog retro` writes its seasons to the clone's
   `app\state\groundhog` (app/core/groundhog.py `STATE`) and its FluSurv
@@ -1839,6 +1878,18 @@ until 2026-11-09 and on the Windows PC since then.
 
 ## Open
 
+- 2026-11-11 (02:50 UTC), for Ely, from the cap screen's Groundhog half
+  (Now, same time):
+  - At 15x: take the level as the larger of the last week and the
+    three-week mean (S15-RX, passed every test)? It needs Submission's
+    code (For other lanes).
+  - At 10x, the current setting: the rule keeps the three-week mean, since
+    every 10x arm fails the early-weeks coverage floor that production
+    fails by more. S10-RX is better than production on every measure but
+    October 2023. Weigh it, or wait for the Oracle half?
+  - The level is one setting per location for both members. Apply it to
+    the Oracle before Part 2, or wait for C0's weeks (the lab Mac's tree,
+    the item below)?
 - 2026-11-10 (04:40 UTC), for Ely, from the move:
   - Can the lab Mac's research tree be copied to the PC (C0's stored
     replays and per-cell tables, `scorehub`, `groundhog-beta/` whole,

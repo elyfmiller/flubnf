@@ -256,13 +256,13 @@ def report():
     # EARLY: the first 8 as-of weeks of each season with a scored state cell
     early = set()
     for s in SEAS:
-        wk = sorted(CC["N"][CC["N"].season == s].asof.unique())[:8]
+        wk = sorted(CC["N"][CC["N"].season == s]["asof"].unique())[:8]
         early |= {(s, w) for w in wk}
     in_csw = lambda a: any(lo <= str(a) <= hi for lo, hi in CSW)
     for a in CC:
         for X in (CC[a], VV[a]):
             X["mo"] = X["asof"].map(month)
-            X["early"] = [(s, w) in early for s, w in zip(X.season, X.asof)]
+            X["early"] = [(s, w) in early for s, w in zip(X.season, X["asof"])]
             X["csw"] = X["asof"].map(in_csw)
     print("\nREPRODUCTION GATE (K0, the stored quantiles, states): record 0.6802, 0.6272, 0.6448, pooled 0.6423 (17,116)")
     g = {s: rel(CC["K0"][CC["K0"].season == s]) for s in SEAS}
