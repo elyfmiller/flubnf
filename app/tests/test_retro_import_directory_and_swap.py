@@ -172,11 +172,19 @@ def test_a_members_changed_directory_entry_is_refused_in_words(world, how):
     nothing written, no temp tree left."""
     member = f"weeks/{W3}/samples.json"
     bad = _changed(world["bundle"], member, how, world["tmp"] / "bad.zip")
-    rb.inspect_bundle(bad)             # the manifest itself reads
+    words = (f"mine.flubnf-replay.zip: {member} could not be unpacked; the "
+             "bundle is damaged or altered.")
+    if how == "method":
+        # a method no FluBNF bundle uses is refused from the member's
+        # entry when the bundle is inspected, in the same words
+        with pytest.raises(rb.BundleError) as e:
+            rb.inspect_bundle(bad, "mine.flubnf-replay.zip")
+        assert str(e.value) == words
+    else:
+        rb.inspect_bundle(bad)         # the manifest itself reads
     with pytest.raises(rb.BundleError) as e:
         rb.import_bundle(bad, world["rr"], name="mine.flubnf-replay.zip")
-    assert str(e.value) == (f"mine.flubnf-replay.zip: {member} could not "
-                            "be unpacked; the bundle is damaged or altered.")
+    assert str(e.value) == words
     _nothing_written(world["rr"])
 
 
@@ -428,8 +436,10 @@ def test_a_replace_killed_while_deleting_the_old_run_leaves_the_run_whole(
 def test_a_replace_killed_between_its_two_renames_leaves_whole_trees(run):
     """Killed after the old run was set aside and before the new one went
     in: no part of a run at the name (no run there), the old run whole
-    aside, the new one whole in its temp tree. A plain import then sweeps
-    both and lands whole."""
+    aside, the new one whole in its temp tree. A plain import then puts
+    the old run back under its name (the sixth pass's review, finding 1:
+    it used to delete it before anything new was known good), is refused
+    as already imported and says so, and sweeps the dead temp tree."""
     pid = _killed_at(run, "rename")
     dst, rr = run["dst"], run["rr"]
     assert not (dst.exists() or dst.is_symlink())
@@ -443,9 +453,16 @@ def test_a_replace_killed_between_its_two_renames_leaves_whole_trees(run):
     assert _files(rr / aside) == run["reference"]
     assert (rr / aside / rb.IMPORTED_MARK).is_file()
     assert _files(rr / imp) == run["reference"]
-    r = rb.import_bundle(run["bundle"], rr)
-    assert r.root == dst and r.weeks == WEEKS
+    marker = (rr / aside / rb.IMPORTED_MARK).read_bytes()
+    with pytest.raises(rb.BundleError) as e:
+        rb.import_bundle(run["bundle"], rr)
+    assert str(e.value) == (
+        f"{SEASON} from this bundle was already imported as {run['stamp']}. "
+        "An earlier Replace stopped part way and left the run imported as "
+        f"{run['stamp']} in {aside}; it is back under its own name now.")
     assert _files(dst) == run["reference"]
+    assert (dst / rb.IMPORTED_MARK).read_bytes() == marker   # the old run
+    assert retro.list_archive_dirs(rr, SEASON) == [dst]
     assert _beside(rr) == []
 
 
