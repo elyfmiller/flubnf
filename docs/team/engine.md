@@ -6,6 +6,28 @@ repositories outside this one; it pushes only this file here.
 
 ## Now
 
+- 2026-11-10 (night): the repository move, from this lane's side. Nothing
+  of this lane's was unpushed at the freeze.
+  - Both of this lane's clones were reset onto the new history:
+    `%USERPROFILE%\GitHub\flubnf` and `flubnf-stranger`, each checked for
+    local edits first, then `git fetch --prune origin` and
+    `git reset --hard origin/dev` (dev 9b3e658b). The first clone's local
+    `main` was moved to `origin/main` (1b413800). The engine tag was
+    refetched in both and now points at 695bcf3b.
+  - Commit ids in these notes from before the move are the old ones.
+    Commits after 2026-10-09 have new ids with the same files; the map is
+    `docs/archive/commit-map-2026-11.txt`. Checked on this lane's last
+    commit: the old 7826b1cc and the new c87c8bbd have the same tree
+    (e8ee4dcf), and so do the old `main` 63944a5b and the new 1b413800.
+  - The new repository numbers its PRs from 1 (#93 is now #1, #104 #2,
+    #105 #3, #106 #4). So a PR number in these notes from before the move
+    names a PR in the archive, `elyfmiller/flubnf-archive-2026-11`.
+  - The lock still holds. The wheel's release was recreated at
+    2026-11-11 02:27 UTC under the same tag and URL. GitHub's digest for
+    `pybnf-1.8.1-py3-none-any.whl` is sha256 18a59bc2...ee21e5, the
+    lock's value, and the URL answers without a login (1,242,656 bytes).
+    Nothing was installed here.
+
 - 2026-11-10 (late evening): Ely's old hub clone is renamed too, on Ely's
   yes: `Documents\GitHub\FluSight-forecast-hub` is now
   `Documents\GitHub\FluSight-forecast-hub-old`. It is still at e311e57
