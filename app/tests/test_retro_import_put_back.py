@@ -267,6 +267,74 @@ def test_ctrl_c_between_the_two_renames_puts_the_old_run_back(
     assert _beside(run["rr"]) == []
 
 
+@pytest.mark.parametrize("where", ["touch", "summary"])
+def test_ctrl_c_inside_the_set_aside_after_its_rename_puts_the_old_run_back(
+        run, monkeypatch, where):
+    """Ctrl-C lands inside _move_aside after its rename, while it touches
+    the old run or forgets the run's cached summary (the seventh pass's
+    check): the import named the aside before the rename, so the old run
+    is back under its name at once, the temp tree removed."""
+    dst = run["dst"]
+    marker = (dst / rb.IMPORTED_MARK).read_bytes()
+    if where == "touch":
+        real = os.utime
+
+        def utime(p, *a, **k):
+            if ".replaced-" in Path(p).name:
+                raise KeyboardInterrupt
+            return real(p, *a, **k)
+        monkeypatch.setattr(os, "utime", utime)
+    else:
+        class Summaries(dict):
+            def pop(self, k, *d):
+                if k == str(dst) and not (dst.exists() or dst.is_symlink()):
+                    raise KeyboardInterrupt
+                return super().pop(k, *d)
+        monkeypatch.setattr(retro, "_SUMMARY_CACHE", Summaries())
+    with pytest.raises(KeyboardInterrupt):
+        rb.import_bundle(run["bundle"], run["rr"], replace=True)
+    monkeypatch.undo()
+    assert _files(dst) == run["reference"]
+    assert (dst / rb.IMPORTED_MARK).read_bytes() == marker
+    assert _beside(run["rr"]) == []
+
+
+def test_a_second_ctrl_c_while_the_temp_tree_goes_leaves_the_old_run_back(
+        run, monkeypatch):
+    """Ctrl-C between the two renames, and a second one while the temp
+    tree is being removed (people press it twice): the old run went back
+    under its name first, so it is there, whole. The part of the temp tree
+    left the next import's sweep removes once this process has ended."""
+    dst, rr = run["dst"], run["rr"]
+    real_rename, real_rmtree = os.rename, shutil.rmtree
+
+    def rename(src, d, *a, **k):
+        if ".importing-" in Path(src).name:
+            raise KeyboardInterrupt                  # the first Ctrl-C
+        return real_rename(src, d, *a, **k)
+
+    def rmtree(p, *a, **k):
+        if ".importing-" in Path(p).name:
+            real_rmtree(Path(p) / "weeks", ignore_errors=True)
+            raise KeyboardInterrupt                  # the second
+        return real_rmtree(p, *a, **k)
+    monkeypatch.setattr(os, "rename", rename)
+    monkeypatch.setattr(shutil, "rmtree", rmtree)
+    with pytest.raises(KeyboardInterrupt):
+        rb.import_bundle(run["bundle"], rr, replace=True)
+    monkeypatch.undo()
+    assert _files(dst) == run["reference"]
+    left = _beside(rr)
+    assert len(left) == 1 and ".importing-" in left[0], left
+    os.rename(rr / left[0], rr / left[0].replace(f"-{os.getpid()}-",
+                                                 f"-{_ended_pid()}-"))
+    with pytest.raises(rb.BundleError) as e:
+        rb.import_bundle(run["bundle"], rr)
+    assert str(e.value) == _already(run)
+    assert _beside(rr) == []
+    assert _files(dst) == run["reference"]
+
+
 def test_a_put_back_that_fails_says_where_the_old_run_is(run, monkeypatch):
     """The new tree cannot go in and the old run cannot go back (two
     renames refused in a row): the refusal names the folder the old run is
@@ -408,8 +476,8 @@ def test_something_else_at_the_name_keeps_the_old_run_aside(
     real = rb._move_aside
     there = {}
 
-    def move(d):
-        a = real(d)
+    def move(d, *rest):
+        a = real(d, *rest)
         if what == "map card":
             there.update(_stray(d))
         else:
@@ -445,8 +513,8 @@ def test_a_run_put_back_then_kept_aside_is_not_said_to_be_back(
     _set_aside(run, _ended_pid())
     real = rb._move_aside
 
-    def move(d):
-        a = real(d)
+    def move(d, *rest):
+        a = real(d, *rest)
         _stray(d)
         return a
     monkeypatch.setattr(rb, "_move_aside", move)

@@ -669,15 +669,24 @@ def _asides_left_words(season: str, stamp: str, left: list) -> str:
             f"once the run imported as {stamp} is the one wanted.")
 
 
-def _move_aside(dst: Path) -> Path | None:
+def _aside_name(dst: Path) -> Path:
+    """A new <dst>.replaced-<pid>-<random> for a Replace to set the old run
+    aside under."""
+    return dst.with_name(f"{dst.name}.replaced-{os.getpid()}-"
+                         f"{secrets.token_hex(4)}")
+
+
+def _move_aside(dst: Path, aside: Path | None = None) -> Path | None:
     """A Replace's first step: the tree at `dst` renamed (one rename in its
-    own folder, so all or nothing) to <dst>.replaced-<pid>-<random>, a name
-    the sweep knows, and touched, so another import's sweep leaves it while
-    this process lives. A link is moved as a link. None when nothing is at
-    the name any more (another process's Replace moved it first)."""
+    own folder, so all or nothing) to `aside` (_aside_name's
+    <dst>.replaced-<pid>-<random>), a name the sweep knows, and touched,
+    so another import's sweep leaves it while this process lives. A link
+    is moved as a link. None when nothing is at the name any more (another
+    process's Replace moved it first). The import names `aside` before
+    the call, so a Ctrl-C anywhere after the rename (here too) finds the
+    old run to put back."""
     from app.core import retro
-    aside = dst.with_name(f"{dst.name}.replaced-{os.getpid()}-"
-                          f"{secrets.token_hex(4)}")
+    aside = aside or _aside_name(dst)
     try:
         os.rename(dst, aside)
     except FileNotFoundError:
@@ -968,9 +977,12 @@ def _import_into(path: Path, m: dict, dst: Path, replace: bool, build: str,
                     raise BundleError(_already(season, stamp))
                 if reclaim.is_protected(dst):
                     raise BundleError(_protected_words(season, stamp))
-                aside = _move_aside(dst)
-                if aside is not None:
-                    mine.append(aside)
+                # named before the rename: a Ctrl-C at any point after it
+                # (inside _move_aside too) finds the old run to put back
+                aside = _aside_name(dst)
+                mine.append(aside)
+                if _move_aside(dst, aside) is None:
+                    aside = None
             # a run the sweep put back is replaced from here on (or kept
             # aside, in words of its own): "back under its name" no longer
             # holds
@@ -1014,11 +1026,13 @@ def _import_into(path: Path, m: dict, dst: Path, replace: bool, build: str,
                 old, aside = aside, None
                 _drop_aside(old, dst)        # the old run, now replaced
         except BaseException as e:
-            shutil.rmtree(tmp, ignore_errors=True)
             # stopped between the two renames (Ctrl-C): the old run goes
-            # back under its name
+            # back under its name, first, so a second Ctrl-C while the
+            # temp tree is removed finds it there (the temp tree a later
+            # sweep removes)
             if aside is not None and not (dst.exists() or dst.is_symlink()):
                 _put_back(aside, dst)
+            shutil.rmtree(tmp, ignore_errors=True)
             if back and isinstance(e, BundleError):
                 raise BundleError(f"{e} {back}") from None
             raise
