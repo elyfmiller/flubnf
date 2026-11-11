@@ -1385,6 +1385,16 @@ until 2026-11-09 and on the Windows PC since then.
 
 ## Decided
 
+- 2026-11-11 (Ely, relayed by App, for the 2026-11-11 run): the tail cap's
+  level is output.tail_level = larger, the larger of the last reported
+  week and the three-week mean, for both members. The cap stays at 10x
+  and the mode (shrink) is unchanged. Ely, verbatim: "i think we then
+  allow the option to be had, meaning between the larger most recent is
+  used if not larger than the last 3week mean. cap is still fine at 10x.
+  the oracle should probably do the same for better odds? the oracle
+  agent has the PC to test if needed". This lane reads it as App does:
+  the larger of the two. The Oracle check Ely offered is amendment 2 of
+  the cap screen (Now).
 - 2026-11-11 (Ely, to this lane: "you two will communicate on the repo for
   now"): this lane and the Submission lane talk through the repository.
   The Submission lane is a cloud session ("NAU_PyBNF TEAM") that cannot

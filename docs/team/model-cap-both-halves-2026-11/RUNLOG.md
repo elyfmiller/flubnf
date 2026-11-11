@@ -34,6 +34,15 @@ Amendment 1 (the lower half balanced in admissions, BN):
   written after the freeze and before its first score. It reads Part 1's
   arms from the same results folder.
 
+Amendment 2 (the level on the Oracle's own October rounds):
+- 2026-11-11, before the freeze: `amend2.py` written. This lane's hub
+  clone moved from 3a83d410 (Part 1's) to a73013aa (cdcepi main of
+  2026-11-09: the October rounds, their vintages, truth through 10-31).
+  `amend2.py --check` ran on the rounds' rows and vintages only, reading
+  no truth: 0 defects. Its counts are in AMENDMENT2.txt.
+- 2026-11-11 07:06:50: `AMENDMENT2.txt` frozen (sha256 f6ea323a...),
+  made read-only, and pushed with `amend2.py` before its first score.
+
 Read after the scores (descriptive, not in the rule):
 - LN against S gives the same difference at every cap and level (-0.0003
   pooled). WIS is a sum over the quantile levels, so a change below the
