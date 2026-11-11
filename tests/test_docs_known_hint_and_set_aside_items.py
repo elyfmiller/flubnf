@@ -13,12 +13,35 @@ states, read from the code as it is or worked out by it.
    imported.json in place; the sweep since 0433736d would put part of a
    run such a delete left back under the run's name as whole.
 
+And eight more recorded beside them (Now, 2026-11-10 late night), two
+with a fix to follow:
+
+5. A Replace whose rename of the old run to .dropping- is refused deletes
+   it where it is, and a delete stopped part way leaves part of a run
+   under its .replaced- name, which every import names for good.
+6. An import that fails with a disk error (OSError) does not name a kept
+   set-aside run.
+7. A Delete of a run leaves its set-aside and temp trees and says nothing
+   of them; the next import puts an older run back (fix to follow).
+8. A report build that meets a delete's mark at the national aggregate
+   goes on without it, and a refused delete lets the report be written
+   so (fix to follow).
+9. A report build that meets a delete which already removed weeks
+   answers with the no-observed-data sentence, a 404 or a 500.
+10. Nothing asks again after a 503 with Retry-After.
+11. For a file of the newest season only, the figure counts every group,
+    zeros and gaps alike.
+12. A season holding MMWR week 53 is taken for an ordinary one.
+
 When the code changes so that one no longer holds, a test here fails: the
 note is then to be brought up to date (or dropped, once it is fixed).
 """
 from __future__ import annotations
 
 import hashlib
+import json
+import re
+import time
 from datetime import date, timedelta
 from pathlib import Path
 
@@ -185,3 +208,303 @@ def test_a_set_aside_run_s_imported_json_goes_first_now():
     rq = rq[:rq.index("\ndef ")]
     assert rq.index("IMPORTED_MARK).unlink(missing_ok=True)") \
         < rq.index("shutil.rmtree(")
+
+
+# ---------------------------- 5 to 12: the eight recorded beside them
+
+def _note8() -> str:
+    """The App notes' entry on the eight items."""
+    notes = _read("docs/team/app.md")
+    now = notes[notes.index("## Now"):notes.index("## Decided")]
+    at = now.index("- 2026-11-10 (late night): eight more things are known")
+    return _flat(now[at:now.index("\n- ", at + 1)])
+
+
+def _body(src: str, start: str) -> str:
+    """One top-level def of `src`, from `start` to the next top-level
+    statement (or the end of the file)."""
+    at = src.index(start)
+    end = re.compile(r"\n(?=[A-Za-z_@#])").search(src, at + 1)
+    return src[at:end.start() if end else len(src)]
+
+
+def test_the_app_notes_record_the_eight_items():
+    note = _note8()
+    assert "A fix is to follow for two of them" in note
+    assert ("**A Replace's old run can stay, in part, beside the new one "
+            "for good.**") in note
+    assert "`<run>.dropping-<pid>-<hex>`" in note
+    assert "It is deleted by hand." in note
+    assert ("**An import that fails on a disk error does not name a kept "
+            "run.**") in note
+    assert '"Could not import: <error>."' in note
+    assert ("**A Delete of a run leaves the trees beside it, and says "
+            "nothing of them.**") in note
+    assert ('"<season> is imported as <stamp> from another file; a Replace '
+            'import puts this bundle\'s run in its place."') in note
+    assert ('"An earlier Replace stopped part way and left an earlier run '
+            'from another file in <folder>; it is back under its own name '
+            'now."') in note
+    assert "A fix is to follow that merge." in note
+    assert ("**A refused delete can leave a cached season report with no "
+            "national figures for the run.**") in note
+    assert ('("the run is being deleted or moved, so its national '
+            'aggregate was not built")') in note
+    assert ("Fix to follow: the report build raises `TreeBusy` there too, "
+            "and asks later.") in note
+    assert ('**A report build that meets a delete which already removed '
+            'weeks does not say "ask later".**') in note
+    assert ('("No observed data to score against. Update data from the '
+            'Data tab.", 503 with no Retry-After)') in note
+    assert '**Nothing asks again after "ask later".**' in note
+    assert "on a paused player left alone it never clears" in note
+    assert ("**For a file of the newest season only, the figure counts "
+            "every group, zeros and gaps alike.**") in note
+    assert '"give about 6 more earlier seasons of data"' in note
+    assert '"give about 1 more earlier season of data"' in note
+    assert ("**A season that holds MMWR week 53 is taken for an ordinary "
+            "one**") in note
+    assert ('count (8, 6, 4, 2) and say "about 14"; fourteen more seasons '
+            'give (96, 66, 36, 6)') in note
+
+
+# ----------------------------------- 5 to 7: the import and the Delete
+
+def _whole(p: Path, sha: str, weeks=("2098-01-03",)) -> Path:
+    from app.core import replay_bundle as rb
+    for w in weeks:
+        (p / "weeks" / w).mkdir(parents=True)
+        (p / "weeks" / w / "samples.json").write_text("{}", encoding="utf-8")
+    (p / rb.IMPORTED_MARK).write_text(json.dumps({"bundle_sha256": sha}),
+                                      encoding="utf-8")
+    return p
+
+
+def test_a_drop_whose_rename_is_refused_leaves_part_of_a_run_for_good(
+        tmp_path, monkeypatch):
+    """The note's case: the rename to .dropping- refused, the delete in
+    place stopped by a held file. What is left has no imported.json: it
+    is never put back, never swept, and named as a run set aside."""
+    from app.core import replay_bundle as rb
+    from app.core import retro
+    season, stamp = "2098-99", "20980101T000000Z"
+    dst = _whole(retro.archive_dir(tmp_path, season, stamp), "b" * 64)
+    aside = _whole(rb._aside_name(dst), "a" * 64,
+                   weeks=("2098-01-03", "2098-01-10"))
+    rename = rb.os.rename
+
+    def refused(src, to):
+        if ".dropping-" in str(to):
+            raise PermissionError(13, "a file is held open", str(src))
+        return rename(src, to)
+
+    def stopped(p):
+        (Path(p) / "weeks" / "2098-01-03" / "samples.json").unlink()
+        raise PermissionError(13, "a file is held open", str(p))
+    monkeypatch.setattr(rb.os, "rename", refused)
+    monkeypatch.setattr(retro, "delete_tree", stopped)
+    rb._drop_aside(aside, dst)
+    monkeypatch.undo()
+    assert not (aside / rb.IMPORTED_MARK).exists()
+    assert (aside / "weeks" / "2098-01-10" / "samples.json").is_file()
+    # never swept (it names no bundle), never put back (not whole)
+    assert rb._sweep_stale_temps(dst, now=time.time()
+                                 + 2 * rb.STALE_TEMP_S) == []
+    assert aside.is_dir() and rb._whole_import(dst, "b" * 64)
+    assert rb._restore_aside(dst.with_name("elsewhere"), [aside]) is None
+    # every import names it, as a run set aside
+    left = rb._asides_left(dst)
+    assert left == [aside]
+    src = _read("app/core/replay_bundle.py")
+    whole = ((True,) if "left: list,\n                       whole: bool)"
+             in src else ())
+    assert rb._asides_left_words(season, stamp, left, *whole).startswith(
+        f"An earlier Replace set a run of {season} aside in {aside}, and "
+        "the console keeps it there: ")
+
+
+def test_an_import_s_disk_error_gets_no_words_of_a_kept_run():
+    """import_bundle adds the kept run's sentence to a BundleError and to
+    a finished import's notes only; an OSError passes through, and the
+    console and the command line give it in a line of their own."""
+    rb = _read("app/core/replay_bundle.py")
+    body = _body(rb, "def import_bundle(")
+    assert "except BundleError as e:" in body
+    for other in ("except OSError", "except Exception", "except BaseException",
+                  "except:"):
+        assert other not in body, other
+    assert body.count("_asides_left_words(") == 2
+    assert ('return (f"Could not import: {type(e).__name__}: '
+            '{str(e)[:160]}.",') in _read("app/ui/routes/retro.py")
+    assert ('typer.echo(f"could not import: {type(e).__name__}: {e}", '
+            'err=True)') in _read("flubnf/cli_retro.py")
+
+
+def test_a_delete_of_a_run_takes_its_own_folder_alone():
+    """Both Deletes remove the run's folder by retro.delete_tree, which
+    looks at nothing beside it; neither names a set-aside or temp tree.
+    The import's sweep puts the newest whole one back at a free name."""
+    routes = {"app/ui/routes/retro.py": "def retro_archive_delete(",
+              "app/ui/routes/storage.py": "def storage_delete("}
+    for rel, start in routes.items():
+        body = _body(_read(rel), start)
+        assert "retro.delete_tree(p)" in body, rel
+        for beside in ("replaced", "importing", "_sweep_stale_temps",
+                       "_asides_left", "is_temp_name"):
+            assert beside not in body, (rel, beside)
+    tree = _body(_read("app/core/retro_archive.py"), "def delete_tree(")
+    assert "replaced" not in tree and "glob(" not in tree \
+        and "iterdir(" not in tree
+    rb = _read("app/core/replay_bundle.py")
+    assert "back = max(asides, key=lambda p: (_newest_mtime(p), p.name))" \
+        in rb
+
+
+# ------------------------- 8 to 10: the report and the page meeting a delete
+
+def test_a_report_build_takes_a_refused_aggregate_as_the_us_row_s_reason(
+        tmp_path, monkeypatch):
+    """The aggregate's TreeBusy is a reason, not a refusal: the report goes
+    on, and only its own write looks at the mark again."""
+    from app.core import retro, us_national
+    from app.core.retro_store import TreeBusy
+    words = ("the run is being deleted or moved, so its national "
+             "aggregate was not built")
+
+    def busy(root):
+        raise TreeBusy(words)
+    monkeypatch.setattr(retro, "national_aggregate", busy)
+    assert us_national.aggregate_row(tmp_path) == (None, words)
+    assert f'raise TreeBusy("{words[:46]}' in _read("app/core/retro.py")
+    build = _body(_read("app/core/report_season.py"),
+                  "def build_season_report(")
+    assert build.count("raise TreeBusy(") == 1
+    assert build.index("render_season_report(") \
+        < build.index("with writing_into(root) as ok:") \
+        < build.index("raise TreeBusy(")
+    # the aggregate's cache is one of the report's inputs
+    newest = _body(_read("app/core/report_season.py"), "def _newest_input(")
+    assert 'pc = root / "playback_cache"' in newest
+    assert 'pc.glob("*.json")' in newest
+
+
+def test_a_report_build_that_meets_removed_weeks_does_not_ask_later():
+    routes = _read("app/ui/routes/retro.py")
+    assert ('NO_TRUTH = "No observed data to score against. Update data '
+            'from the Data tab."') in routes
+    body = _body(routes, "def _season_report(")
+    assert body.index("except playback.UnknownWeek as e:\n        return "
+                      "PlainTextResponse(str(e), status_code=404)") \
+        < body.index("except FileNotFoundError:\n        return "
+                     "PlainTextResponse(NO_TRUTH, status_code=503)") \
+        < body.index("except TreeBusy:")
+    for other in ("except OSError", "except Exception", "except:"):
+        assert other not in body, other
+    job = _read("app/ui/season_export.py")
+    assert 'error=f"{type(e).__name__}: {str(e)[:300]}")' in job
+
+
+def test_nothing_asks_again_after_ask_later():
+    """Retry-After is read as there or not, never as a time; an answer to
+    ask later is kept for no week, and nothing re-asks on a timer."""
+    page = _read("app/ui/templates/retro_season.html")
+    assert page.count("Retry-After')") == 1
+    assert ("function later(r){ return !r.ok && "
+            "!!r.headers.get('Retry-After'); }") in page
+    assert ".catch(e => {if(!(e && e.later)) PAY[w] = null;" in page
+    assert ("if(e && e.later) SLATER[w] = e.message || ('map unavailable "
+            "for ' + w);") in page
+    player = _read("app/ui/static/player.js")
+    assert "headers.get(" not in player and "Retry-After" not in player
+    draw = player[player.index("function drawFC(){"):]
+    draw = draw[:draw.index("var loc = P.loc")]
+    assert "el.msg.textContent =\n          failMsg(w, " in draw
+    assert "setTimeout" not in draw
+
+
+# ------------------------------------------- 11 and 12: the donor hint
+
+def _file_hint(lines) -> tuple:
+    """(donor weeks per horizon, the hint's fix) for a file's lines."""
+    from app.core import datasets as D
+    from app.core.datasets import checks as CK
+    from app.ui import datasets_ui as DU
+    rep = D.validate(("\n".join(lines) + "\n").encode())
+    assert rep.ok, [str(p) for p in rep.problems]
+    return (CK.groundhog_donors(rep)["counts"],
+            DU.model_view(rep, {}, "count")["groundhog_fix"])
+
+
+def test_a_newest_season_file_counts_every_group_zeros_and_gaps_alike(
+        engine_ready):
+    """The note's file: one series with cases, alone "about 6"; with six
+    groups at 0 throughout, or six locations reported every other week,
+    "about 1", though one more season like the file's gives 5 of 30."""
+    from flubnf import analogue as AN
+    end = date(2026, 1, 17)
+    assert AN.epiweek(end) == 2
+    assert AN.season_of(date(2025, 8, 2)) == AN.season_of(end)
+
+    def grouped(zeros: int, start=date(2025, 8, 2)):
+        lines = ["week_ending,group,cases"]
+        for i, d in enumerate(_saturdays(start, end)):
+            lines.append(f"{d},A,{10 + (i * 7) % 40}")
+            lines += [f"{d},Z{j},0" for j in range(zeros)]
+        return lines
+
+    counts, fix = _file_hint(grouped(0))
+    assert counts == (0, 0, 0, 0)
+    assert "give about 6 more earlier seasons of data." in fix
+    counts, fix = _file_hint(grouped(6))
+    assert counts == (0, 0, 0, 0)
+    assert "give about 1 more earlier season of data." in fix
+    assert _file_hint(grouped(6, start=date(2024, 8, 3)))[0] == (5, 5, 5, 5)
+    hub = ["date,location,value"]
+    for i, d in enumerate(_saturdays(date(2025, 8, 2), end)):
+        hub.append(f"{d},01,{10 + (i * 7) % 40}")
+        hub += [f"{d},{j:02d},{'NA' if i % 2 else 10 + i % 20}"
+                for j in range(2, 8)]
+    assert "give about 1 more earlier season of data." in _file_hint(hub)[1]
+    ck = _read("app/core/datasets/checks.py")
+    assert "return -(-(need - n) // (ordinary * groups))" in ck
+    assert "max(1, len(s.get(\"groups\") or ()))," in ck
+
+
+def test_a_week_53_season_is_taken_for_an_ordinary_one(engine_ready):
+    """The review's two files (pass 7 of the review of #93 at d415a9fa,
+    finding 1), as the note gives them."""
+    from flubnf import analogue as AN
+    assert AN.epiweek(date(2026, 1, 3)) == 53
+
+    def one(end, more=0):
+        return _file_hint(["week_ending,cases"] + [
+            f"{d},{10 + (i * 7) % 40}" for i, d in
+            enumerate(_saturdays(date(2025 - more, 8, 2), end))])
+
+    for end, week in ((date(2026, 12, 26), 51), (date(2027, 1, 2), 52),
+                      (date(2027, 1, 9), 1), (date(2027, 1, 16), 2)):
+        assert AN.epiweek(end) == week
+        counts, fix = one(end)
+        assert counts == (6, 6, 6, 6), end
+        assert "give about 4 more earlier seasons of data." in fix
+    assert one(date(2026, 12, 26), more=4)[0] == (26, 26, 26, 26)
+    assert one(date(2026, 12, 26), more=5)[0] == (32, 32, 32, 32)
+    counts, fix = one(date(2026, 12, 19))
+    assert AN.epiweek(date(2026, 12, 19)) == 50
+    assert counts == (5, 5, 5, 5)
+    assert "give about 5 more earlier seasons of data." in fix
+
+    def two(more=0):
+        lines = ["week_ending,group,cases"]
+        for i, d in enumerate(_saturdays(date(2025 - more, 8, 2),
+                                         date(2026, 12, 26))):
+            for j, g in enumerate("AB"):
+                v = (0 if 1 <= AN.epiweek(d) <= 4
+                     else 10 + ((i + 5 * j) * 7) % 40)
+                lines.append(f"{d},{g},{v}")
+        return _file_hint(lines)
+
+    counts, fix = two()
+    assert counts == (8, 6, 4, 2)
+    assert "give about 14 more earlier seasons of data." in fix
+    assert two(more=14)[0] == (96, 66, 36, 6)

@@ -6,6 +6,135 @@ pages (TEAM.md, team/README.md, FLUSIGHT-2026-27.md). Works on `dev`.
 
 ## Now
 
+- 2026-11-10 (late night): eight more things are known (pass 8's checks,
+  and two findings of pass 7 left open), read on this branch at 340e7d76
+  and, for the import, on app-final at 435aa362 (pass 8's import fixes,
+  89693ba1 to 853ab768). Three are in the import of a replay bundle and
+  the console's Delete of a run (app/core/replay_bundle.py,
+  app/ui/routes/retro.py, app/ui/routes/storage.py), three in the season
+  report and the season page while a delete holds the run, and two in
+  the "more earlier seasons" hint of Your data's check
+  (app/core/datasets/checks.py). A fix is to follow for two of them, as
+  each says; the others are recorded as they are.
+  - **A Replace's old run can stay, in part, beside the new one for
+    good.** As app-final has it (this branch has the same code there):
+    once the new run is in, a Replace lets the old one go by renaming it
+    from `<run>.replaced-<pid>-<hex>` to `<run>.dropping-<pid>-<hex>` and
+    deleting that (`_drop_aside`). When the disk refuses that rename (on
+    Windows, a file in the old run held open by another program), the
+    old run is deleted where it is, its imported.json first, and a
+    delete stopped part way by the same file leaves part of the run
+    under its `.replaced-` name with no imported.json. The sweep never
+    puts such a tree back (only a whole import goes back) and never
+    deletes it (it names no bundle, so it never matches the import at
+    the name), so every import of that season and stamp names it as a
+    run an earlier Replace set aside ("An earlier Replace set a run of
+    <season> aside in <folder>, and the console keeps it there: ..."),
+    though it is part of one. Nothing is lost: the new run is whole at
+    the name, Storage lists no row for the part, and its reclaim passes
+    over it. It is deleted by hand.
+  - **An import that fails on a disk error does not name a kept run.**
+    `import_bundle` adds the sentence that names an old run a Replace
+    kept aside (`_asides_left_words`) to a refusal (`BundleError`) and
+    to a finished import's notes, never to an OSError (a full disk, a
+    folder it cannot write, a rename the disk refuses). The console then
+    says "Could not import: <error>." and `flubnf retro import` "could
+    not import: <error>", and neither names the kept run; the next
+    import that is refused or finishes names it again.
+  - **A Delete of a run leaves the trees beside it, and says nothing of
+    them.** The archived run's Delete (Retrospective) and Storage's
+    Delete remove the run's own folder (`retro.delete_tree`) and nothing
+    beside it: an old run a Replace kept aside
+    (`<run>.replaced-<pid>-<hex>`) and an import's dead temp tree
+    (`<run>.importing-<pid>-<hex>`) stay, the Delete's message names
+    neither, and their size is not in its "freed". The next import of
+    that season and stamp, from any file, sweeps the temp tree and puts
+    the newest whole run kept aside back under the name, so after a run
+    is deleted on purpose an older run can be back at its name. The
+    import says so: on app-final from a42a2948 (pass 8's R2), a plain
+    import of another file is refused with "<season> is imported as
+    <stamp> from another file; a Replace import puts this bundle's run
+    in its place." and "An earlier Replace stopped part way and left an
+    earlier run from another file in <folder>; it is back under its own
+    name now." (this branch takes those words at its next merge). The
+    Delete itself is silent. A fix is to follow that merge.
+  - **A refused delete can leave a cached season report with no national
+    figures for the run.** On this branch since 209ba54f, a report build
+    that meets a delete's mark while it works out the national aggregate
+    (the US row of a run that did not fit US itself: the sum of its
+    states) gets none: `retro.national_aggregate` raises `TreeBusy`, and
+    `us_national.aggregate_row` gives its sentence as the US row's
+    reason ("the run is being deleted or moved, so its national
+    aggregate was not built"). The build goes on. When the delete is
+    then refused (the run's results or week maps still being prepared,
+    say) or fails, the mark is lifted before the report is written, so
+    `build_season_report` writes it: a report whose US row carries the
+    CDC comparators alone, with that reason, though nothing was deleted.
+    It is the season's report until one of its inputs is newer
+    (`_newest_input`; the aggregate's cache,
+    playback_cache/us_aggregate.json, which the results page writes when
+    it next works the aggregate out, is one). Fix to follow: the report
+    build raises `TreeBusy` there too, and asks later.
+  - **A report build that meets a delete which already removed weeks
+    does not say "ask later".** `TreeBusy` comes only where a write is
+    refused. A build that passed its first look before the delete's mark
+    and then reads a week the delete has taken fails on that read, and
+    `_season_report` (app/ui/routes/retro.py, about lines 1674 to 1680)
+    answers a FileNotFoundError with the no-observed-data sentence ("No
+    observed data to score against. Update data from the Data tab.", 503
+    with no Retry-After), an UnknownWeek with a 404, and anything else
+    as a bare 500 (pass 7b's skeptic). The page's background build
+    (`season_export.report_job`) ends with the error's class name and
+    message.
+  - **Nothing asks again after "ask later".** The season page's map
+    (app/ui/templates/retro_season.html, about lines 1076 to 1086) and
+    the player's forecast panel (app/ui/static/player.js, about lines
+    1004 to 1011) show the sentence of a 503 with Retry-After (the run
+    is being deleted or moved) and keep nothing for the week, but
+    nothing asks again on its own: Retry-After is read only as there or
+    not, never as a time. The week is asked for again only when it is
+    drawn again (the player moves to it again, or a control of the
+    forecast panel redraws it). After a refused delete the panel keeps
+    the being-deleted sentence though the run is still there, and on a
+    paused player left alone it never clears.
+  - **For a file of the newest season only, the figure counts every
+    group, zeros and gaps alike.** With no earlier season to go by,
+    `groundhog_donors` gives an ordinary season of every group: the 30
+    donor weeks needed over `window_weeks_a_season` (five weeks of the
+    window, four around a week 53) for each group the file has
+    (`more_seasons`). A donor week needs a value above 0 and one above 0
+    the horizon later, so a group reading 0 in every week gives none,
+    and a hubverse location reported every other week (NA between)
+    gives none at horizons 1 and 3; each still counts as giving five.
+    One series with cases from 2025-08-02 to 2026-01-17 (MMWR week 2)
+    says "give about 6 more earlier seasons of data"; with six more
+    groups at 0 in every week it says "give about 1 more earlier season
+    of data", though one more season like the file's gives each horizon
+    5 of the 30. Six locations reported every other week beside the one
+    say "about 1" too.
+  - **A season that holds MMWR week 53 is taken for an ordinary one**
+    (pass 7 of the review of #93 at d415a9fa, finding 1; declined in the
+    pass that fixed its finding 2, 340e7d76). The figure takes what the
+    file's earlier seasons gave the fewest horizon, over those seasons,
+    as what each more season gives, and a season with a week 53 can give
+    more than an ordinary one, or give a horizon what an ordinary one
+    never does. One series from 2025-08-02 ending at MMWR week 51, 52, 1
+    or 2 (2026-12-26 to 2027-01-16) counts 6 at each horizon, from its
+    one earlier season, 2025-26, which holds week 53 of 2025, and says
+    "give about 4 more earlier seasons of data"; four more seasons
+    (2021-22 to 2024-25) bring it to 26, and five to 32. Ending at week
+    50 it says the right 5. Groups A and B with 0 at weeks 1 to 4,
+    ending 2026-12-26 (week 51), count (8, 6, 4, 2) and say "about 14";
+    fourteen more seasons give (96, 66, 36, 6): horizon 4 gets only the
+    2 group-weeks of each season with a week 53 (week 49 reading week
+    53), and an ordinary season gives it nothing. Left as is: taking the
+    rate from seasons with no week 53 changes neither file (neither has
+    such an earlier season); the first needs an ordinary season's five
+    weeks as its rate, where a file holding earlier seasons takes its
+    rate from them, and that rate gives the second "about 3", never
+    reached either; the second's right answer is no figure while every
+    horizon has some donor weeks, which the check has no words for.
+
 - 2026-11-10 (night): four more things are known and left as they are
   (pass 7's independent checks of the review of #93). Two are in the
   "more earlier seasons" hint of Your data's check
