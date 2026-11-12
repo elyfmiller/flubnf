@@ -5,6 +5,8 @@ import json
 import shutil
 import subprocess
 import sys
+import time
+import types
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[2]))
@@ -17,6 +19,8 @@ from app.ui import server as srv                      # noqa: E402
 from flubnf import cli                                # noqa: E402
 
 client = TestClient(srv.app)
+#: the threshold the app ships, read before any test patches it
+SHIPPED_SLOW_MS = perflog.SLOW_MS
 ROOT = Path(__file__).resolve().parents[2]
 CLI_SRC = (ROOT / "flubnf" / "cli.py").read_text()
 NAU = (ROOT / "app" / "ui" / "static" / "nau.css").read_text()
@@ -26,6 +30,10 @@ NAU = (ROOT / "app" / "ui" / "static" / "nau.css").read_text()
 def log(tmp_path, monkeypatch):
     p = tmp_path / "logs" / "slow_requests.log"
     monkeypatch.setattr(perflog, "log_path", lambda: p)
+    # No request is slow unless the test says so. On a slow runner a test's
+    # own request can pass SLOW_MS (a 337 ms POST /api/perf on Windows CI),
+    # and its "server" line would land in the log the test counts.
+    monkeypatch.setattr(perflog, "SLOW_MS", 1e9)
     return p
 
 
@@ -176,10 +184,34 @@ def test_the_shell_fills_wide_windows_and_the_map_keeps_to_the_screen():
 
 # ------------------------------------------------------ slow-request log
 
-def test_fast_requests_are_not_logged_but_carry_server_timing(log):
+def _clock(monkeypatch, *ticks):
+    """perflog's clock reads `ticks` in turn, then stays on the last: a
+    request then measures exactly what the test says, however slow the
+    runner (a 300 ms stall on Windows CI would otherwise be logged)."""
+    seq = list(ticks)
+
+    def perf_counter():
+        return seq.pop(0) if len(seq) > 1 else seq[0]
+    monkeypatch.setattr(perflog, "time", types.SimpleNamespace(
+        perf_counter=perf_counter, strftime=time.strftime))
+
+
+def test_fast_requests_are_not_logged_but_carry_server_timing(log,
+                                                              monkeypatch):
+    # the shipped threshold, against a clock the test sets
+    monkeypatch.setattr(perflog, "SLOW_MS", SHIPPED_SLOW_MS)
+    _clock(monkeypatch, 0.0, (SHIPPED_SLOW_MS - 1) / 1000)
     r = client.get("/api/busy")
-    assert r.headers["Server-Timing"].startswith("app;dur=")
+    assert r.headers["Server-Timing"] == f"app;dur={SHIPPED_SLOW_MS - 1:.0f}"
     assert not log.exists()
+
+
+def test_a_request_just_past_the_shipped_threshold_is_logged(log,
+                                                             monkeypatch):
+    monkeypatch.setattr(perflog, "SLOW_MS", SHIPPED_SLOW_MS)
+    _clock(monkeypatch, 0.0, (SHIPPED_SLOW_MS + 1) / 1000)
+    client.get("/api/busy")
+    assert f"{SHIPPED_SLOW_MS + 1:7.0f} ms  GET /api/busy" in log.read_text()
 
 
 def test_a_slow_request_is_logged_with_the_load(log, monkeypatch):

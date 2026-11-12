@@ -30,6 +30,7 @@ import app.core.runs as runs_mod                             # noqa: E402
 from app.core import horizons as hz                          # noqa: E402
 from app.core import playback, reclaim, retro, scoring       # noqa: E402
 from app.core.runs import run_display, run_id_time           # noqa: E402
+from app.ui import perflog                                   # noqa: E402
 from app.ui import server as srv                             # noqa: E402
 from app.ui import retro_prep as ui_retro_prep               # noqa: E402
 from app.ui import retro_seasons as ui_retro_seasons         # noqa: E402
@@ -476,9 +477,14 @@ def test_finalize_season_sweeps_leftover_intermediates(tmp_path, _stubbed,
 # ------------------------------------------------------- the storage routes
 
 @pytest.fixture
-def routed(world, monkeypatch):
-    """Point the app at the fixture world."""
+def routed(world, monkeypatch, tmp_path_factory):
+    """Point the app at the fixture world. The slow-request log
+    (app/ui/perflog.py, APP_STATE/logs) goes outside it: on a slow runner
+    a request of SLOW_MS or more writes a line there, which the
+    snapshots below would read as the request's own side effect."""
     monkeypatch.setattr(runs_mod, "APP_STATE", world["tmp"])
+    slow_log = tmp_path_factory.mktemp("slowlog") / "slow_requests.log"
+    monkeypatch.setattr(perflog, "log_path", lambda: slow_log)
     monkeypatch.setattr(ui_retro_seasons, "RETRO_ROOT", world["retro_root"])
     monkeypatch.setattr(ui_retro_seasons, "RETRO_SEAL", world["seal"])
     monkeypatch.setattr(reclaim, "RESEARCH_ROOTS", (world["research"],))

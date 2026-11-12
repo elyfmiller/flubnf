@@ -180,20 +180,36 @@ def test_archive_moves_the_tree_once_the_warm_has_stopped(world,
 def test_a_warm_still_on_its_week_refuses_and_removes_nothing(world,
                                                               monkeypatch):
     monkeypatch.setattr(RP, "_WARM_STOP_WAIT_S", 0.05)
+    # The warm is held on its week until both deletes are answered, so
+    # neither refusal depends on how fast a request is served (with WEEK_S
+    # alone, a slow runner let the warm leave before the second delete).
+    hold = threading.Event()
+
+    def held(fp):
+        world["reading"].set()
+        hold.wait(30)
+        return {"asof": Path(fp).parent.name, "pf": {}}
+    monkeypatch.setattr(retro, "read_samples", held)
     root = _season_tree(world["rr"], SEASON)
     weeks = sorted(p.name for p in (root / "weeks").iterdir())
-    _warm(world, root)
-    client.post("/retro/run", data=DISCARD, follow_redirects=False)
-    assert "week maps are still being prepared" in _flash(), _flash()
-    assert "Nothing was deleted" in (ui_state._status.get("flash_detail")
-                                     or "")
-    assert sorted(p.name for p in (root / "weeks").iterdir()) == weeks
-    ui_state._status["flash"] = ""
-    client.post("/storage/delete", data={
-        "kind": "retro-season", "ident": SEASON, "confirm": SEASON},
-        follow_redirects=False)
-    assert "week maps of 2098-99 are still being prepared" in _flash()
-    assert sorted(p.name for p in (root / "weeks").iterdir()) == weeks
+    try:
+        job = _warm(world, root)
+        client.post("/retro/run", data=DISCARD, follow_redirects=False)
+        assert "week maps are still being prepared" in _flash(), _flash()
+        assert "Nothing was deleted" in (ui_state._status.get("flash_detail")
+                                         or "")
+        assert sorted(p.name for p in (root / "weeks").iterdir()) == weeks
+        ui_state._status["flash"] = ""
+        client.post("/storage/delete", data={
+            "kind": "retro-season", "ident": SEASON, "confirm": SEASON},
+            follow_redirects=False)
+        assert "week maps of 2098-99 are still being prepared" in _flash()
+        assert sorted(p.name for p in (root / "weeks").iterdir()) == weeks
+    finally:
+        hold.set()          # the warm leaves its week; the fixture joins it
+    # a stopped warm leaves without writing a card
+    assert job["warm"].wait(5)
+    assert not (root / "playback_cache" / "map_cards").exists()
 
 
 @pytest.mark.parametrize("route", ["archive", "discard", "storage"])
@@ -224,10 +240,25 @@ def test_a_protected_delete_is_refused_and_leaves_the_warm_alone(
 
 # ------------------------------------------------------------- the warm
 
-def test_a_stopped_warm_writes_no_card_and_begins_no_week(world):
+def test_a_stopped_warm_writes_no_card_and_begins_no_week(world,
+                                                          monkeypatch):
     """Stopped while it works out a week: that week's card is not
     written, and no other week is begun."""
     root = _season_tree(world["rr"], SEASON)
+
+    def until_stopped(fp):
+        # on its week until the stop is asked, however late the test
+        # thread gets there (WEEK_S alone let a stalled runner finish it);
+        # a job no longer registered (the fixture's teardown) lets it go
+        world["reading"].set()
+        t0 = time.monotonic()
+        while time.monotonic() - t0 < 30:
+            held = RP._results_jobs.get(str(root))
+            if held is None or held.get("warm_stop"):
+                break
+            time.sleep(0.01)
+        return {"asof": Path(fp).parent.name, "pf": {}}
+    monkeypatch.setattr(retro, "read_samples", until_stopped)
     job = _warm(world, root)
     assert RP._stop_warm(root)
     assert job["warm"].is_set()
