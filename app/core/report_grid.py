@@ -181,7 +181,8 @@ def last_season(history: list, first: str, last: str) -> list:
 
 
 def grid_data(asof: str, locations: list, keys: dict, names: dict,
-              obs: dict, model_q: dict, history: dict) -> dict:
+              obs: dict, model_q: dict, history: dict,
+              tail_levels: dict | None = None) -> dict:
     """The bundle's "grid" field.
 
     locations: the run's location names; keys: name -> the report's key
@@ -189,7 +190,12 @@ def grid_data(asof: str, locations: list, keys: dict, names: dict,
     obs: name -> [(iso date, value)], the run's observed series.
     model_q: model -> name -> horizon -> {level: value}.
     history: name -> [(iso date, value)], settled counts reaching back a
-    season (empty when no vintage could be read)."""
+    season (empty when no vintage could be read).
+    tail_levels: the run's upper-tail cap level per model ({"pf": "larger",
+    "analogue": "larger"}; the run outcome's tail_cap "levels",
+    flubnf.tailcap.LEVELS), kept on every panel so its h3 97.5% figure
+    divides by the level the cap used (tail_ratios); None when no cap ran
+    (the figure then divides by the mean)."""
     base = date.fromisoformat(asof)
     times = [(base + timedelta(days=7 * (h + 1))).isoformat()
              for h in range(4)]
@@ -204,12 +210,16 @@ def grid_data(asof: str, locations: list, keys: dict, names: dict,
             f = model_fan((model_q.get(m) or {}).get(loc), times)
             if f:
                 fans[m] = f
-        panels.append({"key": keys.get(loc, loc),
-                       "name": names.get(loc, loc),
-                       "observed": o,
-                       "last_season": last_season(history.get(loc) or [],
-                                                  first, times[-1]),
-                       "models": fans})
+        panel = {"key": keys.get(loc, loc),
+                 "name": names.get(loc, loc),
+                 "observed": o,
+                 "last_season": last_season(history.get(loc) or [],
+                                            first, times[-1]),
+                 "models": fans}
+        if tail_levels:
+            panel["tail_levels"] = {m: str(tail_levels[m]) for m in MODELS
+                                    if m in tail_levels}
+        panels.append(panel)
     # US first, then by name
     panels.sort(key=lambda p: (p["key"] != "US", p["name"]))
     return {"asof": asof, "times": times,
@@ -268,27 +278,57 @@ def flags(panel: dict) -> list:
 TAIL_X = 15.0
 
 
+#: each upper-tail cap level (flubnf.tailcap.LEVELS) in the key's words
+LEVEL_WORDS = {"mean": "the mean of the last three weeks",
+               "last": "the last week",
+               "larger": "the larger of the last week and the mean of the "
+                         "last three weeks"}
+
+
+def tail_levels(panel: dict) -> dict:
+    """{model: level} each member's h3 97.5% figure divides by: the level
+    the run's upper-tail cap used for it (the panel's "tail_levels",
+    grid_data), else the mean (the cap's default level, and every bundle
+    written before the grid carried the levels)."""
+    got = panel.get("tail_levels") or {}
+    return {m: (got.get(m) if got.get(m) in LEVEL_WORDS else "mean")
+            for m in MODELS}
+
+
+def level_words(levels: dict | None = None) -> str:
+    """What the h3 97.5% figure divides by, in words: one level for both
+    members, or each member's ("each model's own level: Oracle SIHRS ...;
+    Groundhog ...")."""
+    lv = tail_levels({"tail_levels": levels or {}})
+    if len(set(lv.values())) == 1:
+        return LEVEL_WORDS[lv[MODELS[0]]]
+    return ("each model's own level (" + "; ".join(
+        f"{_SHORT[m]}: {LEVEL_WORDS[lv[m]]}" for m in reversed(MODELS))
+        + ")")
+
+
 def tail_ratios(panel: dict) -> dict:
-    """Each member's horizon-3 97.5% quantile over the location's recent
-    level, the upper-tail cap's own (flubnf.tailcap.recent_level: the mean
-    of the last three reported weeks), as {model: (ratio, over, filed)}:
-    `ratio` the model's own, before the output stage's upper-tail cap
-    (ui/pipeline.py hands the grid those; Ely, 2026-10-28, "I would still
-    like to see the growth itself"), `over` that above TAIL_X, so on a
-    capped run red is where the cap moved the file; `filed` the submitted
-    file's ratio where it differs, else None. {} when the level is 0 or
-    unknown."""
-    from flubnf.tailcap import recent_level
-    o = panel.get("observed") or []
-    r = recent_level([v for _, v in o])
-    if not r > 0:
-        return {}
+    """Each member's horizon-3 97.5% quantile over the location's level, the
+    one the upper-tail cap's limit multiplied for that member (tail_levels;
+    flubnf.tailcap.cap_level: the mean of the last three reported weeks by
+    default, or the last week, or the larger of the two), so a location the
+    cap held reads exactly the cap's factor as submitted. As {model: (ratio,
+    over, filed)}: `ratio` the model's own, before the output stage's
+    upper-tail cap (ui/pipeline.py hands the grid those; Ely, 2026-10-28,
+    "I would still like to see the growth itself"), `over` that above
+    TAIL_X, so on a capped run red is where the cap moved the file; `filed`
+    the submitted file's ratio where it differs, else None. A member is left
+    out when its level is 0 or unknown; {} when every one is."""
+    from flubnf.tailcap import cap_level
+    o = [v for _, v in panel.get("observed") or []]
+    levels = tail_levels(panel)
     own = panel.get("before") or panel.get("models") or {}
     filed = panel.get("submitted") or {}
     out = {}
     for m in MODELS:
         f = own.get(m)
-        if f:
+        r = cap_level(o, levels[m])
+        if f and r > 0:
             q = float(f["q"][3][4])
             s = filed.get(m)
             qs = float(s["q"][3][4]) if s else q
@@ -301,14 +341,17 @@ def _times(x: float) -> str:
     return f"{x:.1f}\u00d7" if x < 10 else f"{x:.0f}\u00d7"
 
 
-def flag_key(when: str = "the last target week") -> str:
+def flag_key(when: str = "the last target week",
+             levels: dict | None = None) -> str:
     """The flag words, explained once per page (a paper copy has no
-    hover). `when`: the last target week ("Oct 31")."""
+    hover). `when`: the last target week ("Oct 31"); `levels`: the run's
+    upper-tail cap level per model (tail_levels; None: the mean)."""
     return ("falls: a 4-week-ahead median below the latest count · "
             f"disagree: by {when} one model's median is outside the "
             "other's 95% interval · h3 97.5%: each model's own 4-week-ahead "
-            "97.5% quantile (before any upper-tail cap) over the mean of the "
-            f"last three weeks, red above {TAIL_X:.0f}\u00d7, then the "
+            "97.5% quantile (before any upper-tail cap) over "
+            f"{level_words(levels)}, the level the cap used, red above "
+            f"{TAIL_X:.0f}\u00d7, then the "
             "submitted file's where the cap moved it · Submitted / Before "
             "cap: which of the two a location's chart shows")
 
@@ -570,7 +613,8 @@ def _tail(p: dict, colors: dict) -> str:
                    + (f", {filed:.1f}\u00d7 as submitted"
                       if filed is not None else ""))
     title = ("Each model's own 4-week-ahead (h3) 97.5% quantile, before "
-             "any upper-tail cap, over the mean of the last three weeks, "
+             f"any upper-tail cap, over {level_words(tail_levels(p))}, the "
+             "level the cap used, "
              "then the submitted file's where the cap moved it: "
              + "; ".join(why) + f". Red above {TAIL_X:.0f}\u00d7")
     return (f'<span class="g-tail" title="{_html.escape(title)}">'
@@ -671,6 +715,9 @@ def grid_html(grid: dict | None, colors: dict, details=()) -> str:
     label = grid.get("last_season_label", "")
     times = grid.get("times") or []
     when = _md(times[-1]) if times else "the last target week"
+    # one run, one cap: every panel carries the same levels (grid_data)
+    levels = next((p["tail_levels"] for p in panels
+                   if p.get("tail_levels")), None)
     pages = [panels[i:i + PER_PAGE] for i in range(0, len(panels), PER_PAGE)]
     drawn = _drawn(panels)
     out = ['<section class="card rp-grid" id="all-locations" '
@@ -678,7 +725,7 @@ def grid_html(grid: dict | None, colors: dict, details=()) -> str:
            '<div class="uk-heading"><h2 id="h-grid">All locations</h2></div>']
     for k, page in enumerate(pages, 1):
         out.append('<div class="gpage">'
-                   f'<div class="g-head" title="{_html.escape(flag_key(when))}">'
+                   f'<div class="g-head" title="{_html.escape(flag_key(when, levels))}">'
                    f'{_legend(colors, label, drawn)}</div>'
                    '<div class="g-cells">')
         for i, p in enumerate(page):

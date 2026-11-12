@@ -239,6 +239,39 @@ def test_the_weekly_run_writes_the_grid(tmp_path, monkeypatch):
     assert 'id="all-locations"' in html
 
 
+def test_the_weekly_run_hands_the_grid_its_cap_levels(tmp_path):
+    """Through the real build path: a run whose upper-tail cap ran
+    (outcome "tail_cap", app/ui/pipeline.py) stamps its levels on every
+    panel; a run without one stamps none (the figure stays on the mean)."""
+    import numpy as np
+    import pandas as pd
+    from app.tests.test_report_bundle import (_canonical_samples, runs_mod,
+                                              ui_pipeline)
+    from flubnf.settings import load_locations
+    locs = load_locations()
+    n2f = dict(zip(locs.location_name, locs.location.str.zfill(2)))
+    spec = runs_mod.RunSpec(engine="pf", forecast_date=ASOF,
+                            locations=["Ohio", "US"])
+    obs = {loc: [[f"2097-12-{d:02d}", 100.0 + d] for d in (6, 13, 20, 27)]
+           for loc in ("Ohio", "US")}
+    levels = {"pf": "mean", "analogue": "larger"}
+    for cap, want in (({"n": 10.0, "levels": levels}, levels), (None, None)):
+        w = tmp_path / ("cap" if cap else "none")
+        w.mkdir()
+        (w / "cells.json").write_text(json.dumps(
+            [{"location": "Ohio", "last_observed": 127.0},
+             {"location": "US", "last_observed": 127.0}]))
+        rng = np.random.default_rng(7)
+        samples = {loc: _canonical_samples(rng) for loc in ("Ohio", "US")}
+        outcome = {"tail_cap": cap} if cap else {}
+        ui_pipeline._write_weekly_report(spec, w, samples, obs,
+                                         pd.DataFrame(), locs, n2f, 42.0,
+                                         outcome)
+        g = json.loads((w / report_v2.BUNDLE_NAME).read_text(
+            encoding="utf-8"))["grid"]
+        assert [p.get("tail_levels") for p in g["panels"]] == [want, want]
+
+
 def test_print_keeps_the_key_and_explains_the_flags():
     """Browsers print without background colours by default: the legend
     swatches ask to be printed exactly. Each page head says what the flag
@@ -443,6 +476,67 @@ def test_over_fifteen_times_reads_red():
     # no level, no figure
     assert G._tail(_wide(obs=0.0), COLORS) == ""
     assert G.tail_ratios({"observed": [], "models": {}}) == {}
+
+
+def _capped(levels=None, obs=(4.0, 4.0, 13.0), own=200.0, filed=130.0):
+    """A panel whose Oracle SIHRS 97.5% the cap held at 10x the larger
+    level: the last week 13 against a three-week mean of 7 (Connecticut's
+    shape on 2026-11-14, where the report read 14.6x)."""
+    t = ["2098-01-10", "2098-01-17", "2098-01-24", "2098-01-31"]
+    p = {"key": "XX", "name": "X",
+         "observed": [["2097-12-20", obs[0]], ["2097-12-27", obs[1]],
+                      [ASOF, obs[2]]],
+         "models": {"pf": {"times": t, "q": [[1, 9, 20, 30, own]] * 4}},
+         "submitted": {"pf": {"times": t, "q": [[1, 9, 20, 30, filed]] * 4}}}
+    if levels:
+        p["tail_levels"] = levels
+    return G.shown(p)
+
+
+def test_the_h3_figure_divides_by_the_level_the_cap_used():
+    """On the larger level a location the cap held reads the cap's factor
+    as submitted (10x), not 18.6x over the mean (Ely, 2026-11-12: "Why is
+    Connecticut 15?"). Without the run's levels the figure stays on the
+    mean, the cap's default level."""
+    x, over, filed = G.tail_ratios(_capped({"pf": "larger",
+                                            "analogue": "larger"}))["pf"]
+    assert abs(filed - 10.0) < 1e-9 and abs(x - 200 / 13) < 1e-9
+    assert over                                     # the model's own, 15.4x
+    x0, _o, filed0 = G.tail_ratios(_capped())["pf"]
+    assert abs(filed0 - 130 / 7) < 1e-9 and abs(x0 - 200 / 7) < 1e-9
+    last = G.tail_ratios(_capped({"pf": "last"}, obs=(20.0, 20.0, 13.0)))
+    assert abs(last["pf"][2] - 10.0) < 1e-9
+    html = G._figure(_capped({"pf": "larger", "analogue": "larger"}),
+                     "X", "", 0, COLORS)
+    cap = html[html.index("<figcaption>"):html.index("</figcaption>")]
+    assert "\u219210\u00d7" in cap
+    assert "over the larger of the last week and the mean of the last " \
+           "three weeks, the level the cap used" in cap
+    assert "over the mean of the last three weeks" in \
+        G._figure(_capped(), "X", "", 0, COLORS)
+
+
+def test_the_key_names_the_level_each_member_used():
+    """The page's key says what the figure divides by: one level for both,
+    or each member's (output.tail_level "larger_groundhog")."""
+    assert "over the mean of the last three weeks" in G.flag_key("Jan 31")
+    both = G.flag_key("Jan 31", {"pf": "larger", "analogue": "larger"})
+    assert "over the larger of the last week and the mean" in both
+    split = G.flag_key("Jan 31", {"pf": "mean", "analogue": "larger"})
+    assert ("each model's own level (Oracle SIHRS: the mean of the last "
+            "three weeks; Groundhog: the larger of the last week") in split
+    assert G.tail_levels({"tail_levels": {"pf": "bogus"}}) == \
+        {"analogue": "mean", "pf": "mean"}
+    g = G.grid_data(ASOF, ["Ohio"], {"Ohio": "OH"}, {"Ohio": "Ohio"},
+                    {"Ohio": [(ASOF, 5.0)]}, {"pf": {}, "analogue": {}}, {},
+                    tail_levels={"pf": "larger", "analogue": "larger"})
+    assert g["panels"][0]["tail_levels"] == {"pf": "larger",
+                                             "analogue": "larger"}
+    html = G.grid_html(g, COLORS)
+    assert "over the larger of the last week" in html
+    bare = G.grid_data(ASOF, ["Ohio"], {"Ohio": "OH"}, {"Ohio": "Ohio"},
+                       {"Ohio": [(ASOF, 5.0)]}, {"pf": {}, "analogue": {}}, {})
+    assert "tail_levels" not in bare["panels"][0]
 
 
 # ---------------------- before and after the cap, per location (2026-10-28)

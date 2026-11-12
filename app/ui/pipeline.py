@@ -397,9 +397,12 @@ def _write_weekly_report(spec, workroot: Path, pf_samples: dict, obs: dict,
                   for l in spec.locations}
         g_names = {l: ("United States" if n2f.get(l) == "US" else l)
                    for l in spec.locations}
+        # the level the upper-tail cap used per member (output.tail_level),
+        # so the grid's h3 97.5% figure divides by it; none when no cap ran
         grid = report_grid.grid_data(
             spec.forecast_date, list(spec.locations), g_keys, g_names, obs,
-            {"pf": pf_q, "analogue": an_q}, history)
+            {"pf": pf_q, "analogue": an_q}, history,
+            tail_levels=(outcome.get("tail_cap") or {}).get("levels"))
         # what this run's Oracle SIHRS US row is (its own oracle.json)
         grid["us_step"] = us_step
     except Exception as e:     # the report never waits on its grid
