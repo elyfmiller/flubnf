@@ -1,7 +1,8 @@
 """setup.ps1 checks a hub clone for what doctor FAILs without.
 
 doctor FAILs a clone without auxiliary-data/target-data-archive
-(flubnf.doctor.HUB_DIRS). setup.ps1 used to check $HubDirs only, so a
+(flubnf.doctor.HUB_DATA_DIRS), and setup.sh checks HUB_NEEDS ($HUB_DIRS
+plus that archive). setup.ps1 used to check $HubDirs only, so a
 Windows cone holding auxiliary-data but not its archive passed the check
 and was never widened, and doctor then failed it.
 
@@ -94,7 +95,7 @@ def _checked_lists(src: str) -> list:
 def test_every_hub_check_in_setup_ps1_requires_what_doctor_fails_without():
     """A cone with auxiliary-data but not its archive must not pass: doctor
     FAILs it, so setup.ps1 has to widen it."""
-    from flubnf.doctor import HUB_DIRS as HUB_DATA_DIRS
+    from flubnf.doctor import HUB_DATA_DIRS
     assert ARCHIVE in HUB_DATA_DIRS
     checks = _checked_lists(_ps1())
     # the no-git branch, the repair (before and after `add`), the full clone
@@ -110,13 +111,17 @@ def test_every_hub_check_in_setup_ps1_requires_what_doctor_fails_without():
 def test_setup_ps1_checks_what_setup_sh_clones_and_doctor_needs():
     """One list of folders a finished clone holds: the four setup.sh gives
     git (its HUB_DIRS, setup.ps1's $HubDirs) and what doctor FAILs
-    without."""
-    from flubnf.doctor import HUB_DIRS as HUB_DATA_DIRS
+    without, which is what setup.sh's HUB_NEEDS checks."""
+    from flubnf.doctor import HUB_DATA_DIRS
     sh = (REPO / "setup.sh").read_text(encoding="utf-8")
     dirs = re.findall(r'^HUB_DIRS="([^"]*)"$', sh, re.M)
     assert len(dirs) == 1, dirs
     needs = sorted(set(dirs[0].split()) | set(HUB_DATA_DIRS))
     assert ARCHIVE in needs
+    # setup.sh's own check of a finished clone is that list too
+    sh_needs = re.findall(r'^HUB_NEEDS="([^"]*)"$', sh, re.M)
+    assert len(sh_needs) == 1, sh_needs
+    assert sorted(sh_needs[0].replace("$HUB_DIRS", dirs[0]).split()) == needs
     for where, folders in _checked_lists(_ps1()):
         assert sorted(folders) == needs, (
             f"setup.ps1's `{where}` checks {sorted(folders)}; a finished "

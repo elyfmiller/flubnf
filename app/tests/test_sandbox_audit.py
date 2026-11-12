@@ -139,7 +139,14 @@ def test_the_workbench_names_what_this_computer_lacks(box, monkeypatch):
     html = client.get("/sandbox?model=kinetics_example").text
     assert 'id="sb-machine"' in html
     assert "This computer cannot fit yet:</strong> Perl was not found on PATH." in html
-    assert 'id="sb-machine"' not in client.get("/sandbox").text   # the gallery
+    # the gallery says it only while an experiment's Start cannot run
+    # here: never with the engine ready, once without it (test_sandbox_
+    # gallery_engine.py has the rest)
+    from app.ui import pipeline
+    monkeypatch.setattr(pipeline, "_pf_engine_state", lambda: "ready")
+    assert 'id="sb-machine"' not in client.get("/sandbox").text
+    monkeypatch.setattr(pipeline, "_pf_engine_state", lambda: "absent")
+    assert client.get("/sandbox").text.count('id="sb-machine"') == 1
 
 
 def test_a_half_installed_engine_is_refused_before_a_folder_is_made(box, monkeypatch):

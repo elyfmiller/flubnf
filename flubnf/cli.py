@@ -10,7 +10,7 @@ Sections, in file order:
      (_console_open)
   3. ports: candidates, reuse flags, pick/bind
   4. macOS window: activation retries, app naming, zoom API, watchdog,
-     WebView2 probe
+     WebView2 probe, the Linux window toolkit probe
   5. the `app` and `window` commands and _exit_now; `runner` (the
      student experiment queue, app/core/runner.py)
   6. the mounted groups: cli_doctor (doctor, knobs), cli_retro (retro,
@@ -1097,13 +1097,35 @@ def _windows_mshtml_only() -> bool:
     return True
 
 
+def _no_window_toolkit(platform: str | None = None) -> bool:
+    """True on Linux (and the other systems that are neither macOS nor
+    Windows) when neither GTK's Python bindings (gi) nor Qt's (qtpy) can be
+    imported. pywebview installs there as plain Python and only fails when
+    it makes the window, and a setup.sh venv cannot see the system's
+    python3-gi; the caller opens the default browser instead. macOS and
+    Windows bring their own toolkit."""
+    import importlib.util
+    import sys
+    platform = platform or sys.platform
+    if platform == "darwin" or platform.startswith(("win", "cygwin")):
+        return False
+    for name in ("gi", "qtpy"):
+        try:
+            if importlib.util.find_spec(name) is not None:
+                return False
+        except (ImportError, ValueError):
+            continue
+    return True
+
+
 # ---------------------------------------------------------------------------
 # The `app` and `window` commands
 # ---------------------------------------------------------------------------
 @app.command("app")
 def app_serve(port: int = 8710):
     """Launch the operations console. Prefers a native desktop window
-    (pywebview) and falls back to the browser without it."""
+    (pywebview) and falls back to the browser without it, or on Linux
+    without GTK or Qt for it. The browser route prints its address."""
     _trace("app: command entered")
     try:
         import webview  # noqa: F401
@@ -1111,6 +1133,9 @@ def app_serve(port: int = 8710):
             print("WebView2 runtime not found: the native window would "
                   "render on MSHTML (IE11), which cannot run the console's "
                   "pages. Opening your default browser instead.")
+        elif _no_window_toolkit():
+            print("No GTK or Qt for a native window here: opening the "
+                  "console in your browser.")
         else:
             return app_window(port=port)
     except ImportError:
@@ -1144,6 +1169,9 @@ def app_serve(port: int = 8710):
             webbrowser.open(url)
 
     threading.Thread(target=_open, daemon=True).start()
+    # the address, for a terminal with no browser to open (SSH, WSL, a
+    # headless machine): uvicorn below logs nothing at warning level
+    print(f"FluBNF console: {url}  (Ctrl-C stops it)", flush=True)
     # warning level, no colors: cmd shows ANSI escapes as garbage and the
     # progress poll would log a line a second; matches the window path
     uvicorn.run("app.ui.server:app", port=port, host="127.0.0.1",

@@ -1,5 +1,8 @@
 {% extends "base.html" %}{% import "diagrams.html" as dg %}{% import "_tips.html" as tips %}
-{% block head %}<link rel="stylesheet" href="/static/tabs/home.css">{% endblock %}
+{% block head %}<link rel="stylesheet" href="/static/tabs/home.css">
+{# the Data step's reason names the hub folder: a long path breaks
+   anywhere rather than run out of the card #}
+<style>.hm-start .uk-step-meta{overflow-wrap:anywhere}</style>{% endblock %}
 {% block content %}
 {# the page reads as headings, values and controls; its one "i" is how
    to read the map (docs/UI-KIT.md). The record's unit is a line under its
@@ -16,6 +19,65 @@
   <li><b>Groundhog</b> empirical calendar model</li>
  </ul>
 </div>
+
+{# what this computer lacks, on the first screen; the Setup card at the
+   foot keeps the details. The names are the Setup badge's (routes/home.py
+   _setup_gaps). A cold launch still probing versions shows check()'s
+   names, and the badge's recount at the foot keeps this line with it, so
+   the line is there, hidden, for the recount to show. No "?": the link
+   goes to the details #}
+{% set setup_wait = setup_pending is defined and setup_pending %}
+{% set top_gaps = (setup_checked if setup_checked is defined else []) if setup_wait
+                  else (setup_gaps if setup_gaps is defined else (missing | map(attribute="0") | list)) %}
+{% if top_gaps or setup_wait %}
+{% set gaps_words %}<span data-gaps-words>{{ top_gaps | length }} not installed: {{ top_gaps | join(", ") }}.</span>{% endset %}
+{% set gaps_go %}<a href="#h-hm-setup">Setup</a>{% endset %}
+{{ tips.alert("warn", gaps_words, title="Setup incomplete.", action=gaps_go,
+              id="hm-gaps-top", live="", hidden=not top_gaps) }}
+{% endif %}
+
+{# Start here: the weekly loop, one tab per step, each named by its link
+   (never a "?": test_pages.py). With no forecast yet the card comes before
+   the map, and each step says where this computer stands: the data's
+   newest week, or what stops a run reading the hub and what to do about
+   it (routes/home.py _start_data's reason and _hub_step's step) while
+   Data is the step to take, and a
+   Groundhog-only forecast when the engine is not installed (a broken
+   install is the Setup line's). Ely's weekly view
+   keeps the map first and the steps plain. The cold paint (routes/home.py
+   start_first) puts the card before the map too when no run is stored, so
+   the reload leaves it there; its steps stay plain until that reload,
+   which reads the data #}
+{% macro start_here(states=False, newest="", pf_state="", why="") %}
+<div class="card hm-start">
+ <h2>Start here</h2>
+ {% if states %}
+ {% set steps = [{"label": "Data", "href": "/data",
+                  "state": "done" if newest else "current",
+                  "meta": ("through " ~ newest) if newest else why},
+                 {"label": "Forecast", "href": "/forecast",
+                  "state": "current" if newest else "todo",
+                  "meta": "Groundhog only on this computer" if pf_state == "absent" else ""},
+                 {"label": "Output", "href": "/output", "state": "todo"}] %}
+ {% else %}
+ {% set steps = [{"label": "Data", "href": "/data"},
+                 {"label": "Forecast", "href": "/forecast"},
+                 {"label": "Output", "href": "/output"}] %}
+ {% endif %}
+ {{ tips.stepper(steps, vertical=True, label="Start here", id="hm-start") }}
+ <div class="hm-start-more">
+  <a class="btn quiet" href="/retro">{{ tips.icon("refresh") }} Replay a past season</a>
+  <a class="btn quiet" href="/sandbox">{{ tips.icon("folder") }} Sandbox: write and fit your own model</a>
+  <a class="btn quiet" href="/forecast?tab=own">{{ tips.icon("upload") }} Your data: forecast a weekly series</a>
+ </div>
+</div>
+{% endmacro %}
+{% set start_top = start_first if start_first is defined
+                   else (not outlook_date and not (outlook_pending is defined and outlook_pending)) %}
+{% set start_said = start_states if start_states is defined else start_top %}
+{% if start_top %}{{ start_here(start_said, start_newest if start_newest is defined else "",
+                                start_pf_state if start_pf_state is defined else "",
+                                start_data_why if start_data_why is defined else "") }}{% endif %}
 
 <div class="card hm-outlook">
  {# the h2 names the payload and its date, like every other card; how to
@@ -180,18 +242,9 @@
      (0.840 / 0.797 / 0.846, 0.821 pooled) is site_build.FILTER_RESEAL_REL,
      the site's reference for trees that predate the step. #}
  </div>
- <div class="card hm-start">
-  <h2>Start here</h2>
-  {# the weekly loop, one tab per step, each named by its link #}
-  {{ tips.stepper([{"label": "Data", "href": "/data"},
-                   {"label": "Forecast", "href": "/forecast"},
-                   {"label": "Output", "href": "/output"}],
-                  vertical=True, label="Start here", id="hm-start") }}
-  <div class="hm-start-more">
-   <a class="btn quiet" href="/retro">{{ tips.icon("refresh") }} Replay a past season</a>
-   <a class="btn quiet" href="/sandbox">{{ tips.icon("folder") }} Sandbox: fit your own model to your own counts</a>
-  </div>
- </div>
+ {# Start here beside the record, unless a first run put it above the map
+    (the record then takes the row: home.css) #}
+ {% if not start_top %}{{ start_here() }}{% endif %}
 </div>
 
 <div class="card hm-how">
@@ -448,6 +501,13 @@
        if (t.indexOf('resolving') >= 0) return;
        var n = NAMES[spans[i].getAttribute('data-vkey')];
        if (n && t === 'not installed' && names.indexOf(n) < 0) names.push(n);
+     }
+     // the line under the hero says the same names, or nothing
+     var gapsLine = document.getElementById('hm-gaps-top');
+     var said = gapsLine && gapsLine.querySelector('[data-gaps-words]');
+     if (said) {
+       said.textContent = names.length + ' not installed: ' + names.join(', ') + '.';
+       gapsLine.hidden = !names.length;
      }
      var slot = document.getElementById('hm-setup-state');
      if (!slot || !window.FluBNFUI) return;

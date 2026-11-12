@@ -96,6 +96,13 @@ def _default_checkout(name: str) -> Path:
 HUB = _checkout("FLUBNF_HUB", "FluSight-forecast-hub")
 ARCHIVE = HUB / "auxiliary-data/target-data-archive"
 LOCATIONS = HUB / "auxiliary-data/locations.csv"
+#: The hub folders FluBNF reads, in git's path form: the sparse clone that
+#: setup.sh and setup.ps1 make holds these four (about 150 MB). Forecasts
+#: read the first two; scoring and retrospectives also read the two
+#: comparators' forecasts. setup.sh and setup.ps1 name the same list
+#: (tests/test_first_run_sparse_hub.py).
+HUB_DIRS = ("auxiliary-data", "target-data",
+            "model-output/FluSight-baseline", "model-output/FluSight-ensemble")
 
 def bng_platform_dirs(platform: str | None = None) -> tuple:
     """bionetgen's per-platform bundle folders, this platform's first (its

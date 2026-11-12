@@ -179,8 +179,15 @@ def test_a_library_model_runs_its_own_text(env, monkeypatch, tmp_path):
     shipped = _prepared("base", env, monkeypatch, tmp_path / "s")
     got = _prepared("base", env, monkeypatch, tmp_path / "o",
                     {"model": "own@1"})
-    seen = dict(env["netgen"][-4:])
-    assert len(got["cells"]) == 4 and set(seen) == set(got["texts"])
+    # BNG2.pl is handed each location's replicate 0; replicate 1's model
+    # is the same text, so it gets replicate 0's network files instead
+    seen = dict(env["netgen"][-2:])
+    assert len(got["cells"]) == 4
+    assert set(seen) == {c["key"] for c in got["cells"]
+                         if c["replicate"] == 0}
+    for c in got["cells"]:
+        r0 = c["key"].rsplit("_r", 1)[0] + "_r0"
+        assert got["texts"][c["key"]]["m.bngl"] == seen[r0]
     for c in got["cells"]:
         texts = got["texts"][c["key"]]
         conf = texts["pf.conf"].splitlines()
@@ -200,7 +207,8 @@ def test_a_library_model_runs_its_own_text(env, monkeypatch, tmp_path):
         want = _filled(files["model.bngl"], c)
         assert texts["m.bngl"] == want
         assert want.count("begin parameters\nReff__FREE 1.20\n") == 1
-        assert seen[c["key"]] == want            # what BNG2.pl was handed
+        # what BNG2.pl was handed, for this cell or its replicate 0
+        assert seen[c["key"].rsplit("_r", 1)[0] + "_r0"] == want
         assert c["variant"] == "1strain"
 
 

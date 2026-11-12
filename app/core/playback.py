@@ -143,11 +143,21 @@ def _cache_dir(root: Path) -> Path:
 def _write_cache(cf: Path, obj) -> None:
     """Every cache write in this file: write beside, then os.replace. Readers
     treat presence as validity, so a torn multi-MB write would be served as
-    complete; the .tmp sits beside its target to stay on one filesystem."""
-    cf.parent.mkdir(parents=True, exist_ok=True)
-    tmp = cf.with_name(cf.name + ".tmp")
-    tmp.write_text(json.dumps(obj), encoding="utf-8")
-    os.replace(tmp, cf)
+    complete; the .tmp sits beside its target to stay on one filesystem.
+
+    `cf` is <season_root>/playback_cache/<name>. Nothing is written into a
+    tree a delete or a move holds (retro_store.writing_into), and a tree
+    deleted meanwhile is not made again: the write is skipped."""
+    from app.core.retro_store import writing_into
+    root = cf.parent.parent
+    text = json.dumps(obj)
+    with writing_into(root) as ok:
+        if not ok or not root.is_dir():
+            return
+        cf.parent.mkdir(exist_ok=True)
+        tmp = cf.with_name(cf.name + ".tmp")
+        tmp.write_text(text, encoding="utf-8")
+        os.replace(tmp, cf)
 
 
 # ------------------------------------------------------------- member models
@@ -352,15 +362,12 @@ def _season_scores(root: Path):
     """scores.json as a DataFrame, or None when absent/empty/invalid.
 
     The FULL frame, US included: pooled figures go through
-    us_national.pooled_frame, the national one through us_national.resolve."""
-    sf = root / "scores.json"
-    if not sf.is_file():
-        return None
-    try:
-        df = pd.read_json(sf)
-    except Exception:
-        return None
-    if df.empty or "model" not in df.columns:
+    us_national.pooled_frame, the national one through us_national.resolve.
+    One parse per file content, shared with the season page
+    (app.core.retro_store.scores_frame): read only, never mutated here."""
+    from app.core.retro_store import scores_frame
+    df = scores_frame(root)
+    if df is None or df.empty or "model" not in df.columns:
         return None
     return df
 

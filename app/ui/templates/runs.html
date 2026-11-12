@@ -185,25 +185,30 @@
 <details class="ledgerfold" id="storagefold">
  <summary class="st-sum"><h2 class="stfold-h" id="h-st-disk">On disk</h2>
   {% set st_listed = (storage.workroots or storage.retro or storage.retro_archives or storage.report_archives or storage.datasets) %}
+  {# the engine cache alone (outside the total) is said as itself, never
+     as "Nothing stored yet" above its own row #}
   <span class="stotal st-total">{% if storage.total_bytes %}<span class="big">{{ storage.total_h }}</span>
-  <span class="st-unit">in use</span>{% elif not st_listed %}{{ tips.badge("neutral", "Nothing stored yet") }}{% endif %}</span>
+  <span class="st-unit">in use</span>{% elif storage.engine_cache %}<span class="big">{{ storage.engine_cache.size_h }}</span>
+  <span class="st-unit">engine cache</span>{% elif not st_listed %}{{ tips.badge("neutral", "Nothing stored yet") }}{% endif %}</span>
   {%- if storage.cats %}
   {# the total by category; the legend in the body names each one #}
   <span class="st-bar" aria-hidden="true">{% for c in storage.cats %}<span class="st-seg st-c-{{ c.key }}" style="flex-grow:{{ c.bytes }}" title="{{ c.label }}: {{ c.size_h }}"></span>{% endfor %}</span>
   {%- endif %}</summary>
 
- {% if storage.total_bytes %}
+ {% set ec_reclaim = storage.engine_cache and not storage.engine_cache.protected and not storage.engine_cache.linked %}
+ {% if storage.total_bytes or ec_reclaim %}
  {# the categories counted in the total, then reclaim: a dry-run report
     first, then the shared confirmation. Deletes only fit intermediates of
-    COMPLETED weeks/runs and compresses samples losslessly; never touches
-    the seal or hub. #}
+    COMPLETED weeks/runs and the engine cache (unprotected, not a link),
+    and compresses samples losslessly; never touches the seal or hub. The
+    cache alone, outside the total, still gets the button. #}
  {% set legend_items = [] %}
  {% for c in storage.cats %}
   {% set lg_text %}{{ c.label }} <span class="st-lgv">{{ c.size_h }}</span>{% endset %}
   {% set _ = legend_items.append({"color": "var(--st-c-" ~ c.key ~ ")", "text": lg_text}) %}
  {% endfor %}
  <div class="st-tools">
-  {{ tips.legend(legend_items, label="Disk use by category", id="st-lg") }}
+  {% if legend_items %}{{ tips.legend(legend_items, label="Disk use by category", id="st-lg") }}{% endif %}
   <form method="post" action="/storage/reclaim" id="reclaim-form" class="st-reclaim">
    <input type="hidden" name="confirm" value="">
    {# no "?": what a reclaim does is said in its confirmation #}
@@ -229,12 +234,15 @@
       if(!d||!d.categories||!d.categories.length){show(none);return;}
       var lines=d.categories.map(function(c){
        return c.label+': '+c.bytes_h+' ('+c.detail+')';}).join(' · ');
+      var cache=d.categories.some(function(c){return c.key==='engine-cache';});
       if(!window.FluBNFConfirm)return;
       window.FluBNFConfirm({
        title:'Reclaim an estimated '+d.total_h+'?',
        msg:'This frees '+lines+'.',
-       hint:'Only fit intermediates of completed weeks and runs are '
+       hint:'Only fit intermediates of completed weeks and runs'
+         +(cache?' and the engine cache of compiled models':'')+' are '
          +'deleted, and stored samples are compressed losslessly in place. '
+         +(cache?'The engine compiles each model again on its next fit. ':'')
          +'Every stored week, score, report, and submission file is kept '
          +'and everything still scores, plays back, and exports exactly as '
          +'before. The sealed validation record and the hub clone are '
@@ -255,7 +263,7 @@
  {# entries in use: their Delete is off with no "?" each; why, said once
     per reason (the same reason on five rows reads once) #}
  {% set st_whys = [] %}
- {% for x in storage.workroots + storage.retro + storage.retro_archives + storage.report_archives + storage.datasets + ((storage.students or {}).rows or []) %}{% if x.busy and x.why and x.why not in st_whys %}{% set _ = st_whys.append(x.why) %}{% endif %}{% endfor %}
+ {% for x in storage.workroots + storage.retro + storage.retro_archives + storage.report_archives + storage.datasets + ((storage.students or {}).rows or []) + ([storage.engine_cache] if storage.engine_cache else []) %}{% if x.busy and x.why and x.why not in st_whys %}{% set _ = st_whys.append(x.why) %}{% endif %}{% endfor %}
  {% if st_whys %}{{ tips.alert("info", st_whys | join(" "), title="In use now:", id="st-busy", live="") }}{% endif %}
  {% if not st_listed %}
  {# nothing listed: one empty state, no empty sections (the ledger's
@@ -396,6 +404,33 @@
   <span class="st-act">{{ tips.badge("neutral", "protected", icon_name="lock") }}</span>
  </div>
  {% endfor %}
+ </section>
+ {% endif %}
+ {% if storage.engine_cache or storage.engine_cache_warning %}{% set ec = storage.engine_cache %}
+ {# bngsim's compiled models (routes/storage.py _engine_cache_row), in the
+    state folder, outside the total: a cache, not a record, so its own
+    section, tagged rebuilt as needed, never among the runs or results
+    above. Its Delete clears it; off while an engine job runs, here or in
+    another process; none on a protected folder or a link (a cache someone
+    linked elsewhere is theirs). The runners' word when they could not
+    write the folder (pf.codegen_cache_warning) heads it #}
+ <section class="st-sec" aria-labelledby="h-st-ec">
+ {{ tips.heading("Engine cache", "st-ec", level=3, after=tips.tag("not in the total") ~ " " ~ tips.tag("rebuilt as needed"), cls="st-h") }}
+ {% if storage.engine_cache_warning %}{{ tips.alert("warn", storage.engine_cache_warning, id="st-ec-warn") }}{% endif %}
+ {% if ec %}
+ {% set ec_meta = ["A link to " ~ ec.linked ~ ": the engine compiles into that folder. FluBNF never deletes through a link; clear it there." if ec.linked else "The engine compiles each model once and keeps it here; cleared, it compiles them again on the next fits, and no forecast changes."] %}
+ {% if ec.old %}{% set _ = ec_meta.append("Earlier versions kept them in " ~ ec.old ~ "; FluBNF leaves that folder where it is, since other programs may share it.") %}{% endif %}
+ <div class="st-row">
+  <span class="st-title"><strong>Compiled models</strong>
+   {%- if ec.busy %} {{ tips.badge("pending", "engine running") }}{% endif %}</span>
+  {{ tips.meta(ec_meta) }}
+  <span class="st-size">{{ ec.size_h }}</span>
+  {% if ec.protected %}<span class="st-act">{{ tips.badge("neutral", "protected", icon_name="lock") }}</span>
+  {% elif ec.linked %}<span class="st-act">{{ tips.badge("neutral", "linked", icon_name="external") }}</span>
+  {% elif ec.busy %}{{ busy_act("st-ec-1", ec.why, "the engine cache") }}
+  {% else %}{{ del_form("/storage/delete", "engine-cache", ec.id, "the engine cache", ec.size_h, "The engine compiles each model again on its next fit, which takes a little longer once. No forecast, score or report changes.") }}{% endif %}
+ </div>
+ {% endif %}
  </section>
  {% endif %}
  {% if sbx %}

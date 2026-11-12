@@ -31,7 +31,7 @@ from app.ui import pipeline, retro_prep, retro_seasons, templating
 from app.ui.forms import (_knob_form, _knob_panel, _knob_raw, _knobs,
                           _str_field)
 from app.ui.retro_prep import (_job_covered, _relwis_figures, _results_jobs,
-                               _results_pending, _retro_map_models,
+                               _retro_map_models,
                                _scores_df, _scores_scoreable_fast,
                                _week_map_cards_by_model)
 from app.ui.retro_seasons import (_RETRO_ACTIVE, _archive_progress,
@@ -88,6 +88,132 @@ def _retro_national_name() -> str:
         hit = locs.location_name[locs.abbreviation == "US"]
         return str(hit.iloc[0]) if len(hit) else None
     return _from_locations_table(pick, usn.US_FIPS)
+
+
+def _panel6_label() -> str:
+    """The panel scope's option: its states' abbreviations, sorted for
+    reading (the run itself keeps PANEL6's order)."""
+    from app.core.retro_settings import PANEL6
+
+    def pick(locs):
+        hit = sorted(locs.abbreviation[locs.location_name.isin(PANEL6)])
+        return hit if len(hit) == len(PANEL6) else None
+    abbrs = _from_locations_table(pick, None)
+    return "6-state panel" + (f" ({', '.join(abbrs)})" if abbrs else "")
+
+
+def _whole(text, default: int) -> int:
+    """A form field as the cost line reads it (retro_progress.js
+    FluBNFRetroCost): digits are their number, anything else (blank
+    included) is `default`."""
+    import re
+    t = str(text if text is not None else "").strip()
+    return int(t) if re.fullmatch(r"[0-9]+", t) else default
+
+
+#: what a browser's number box holds, and so posts: its text when that is
+#: HTML's valid floating-point number, else blank (retro_progress.js
+#: boxValue)
+_HTML_FLOAT = r"-?(?:[0-9]+(?:\.[0-9]+)?|\.[0-9]+)(?:[eE][+-]?[0-9]+)?"
+
+
+def _runners(text, default: int):
+    """The runners box as the run's POST reads what the box posts
+    (retro_run; retro_progress.js runners): stripped, commas dropped,
+    blank is `default`, else Python's int(); None for what the POST
+    refuses ("2e0", "2.0", "1e1": not a whole number), so the option gets
+    no figure for a run that will not start. A text the box cannot hold
+    ("abc") is blank there, and so posts blank: the default (review of
+    #93 at d160002b, finding 5)."""
+    import re
+    t = str(text if text is not None else "")
+    if not re.fullmatch(_HTML_FLOAT, t):
+        t = ""
+    t = t.strip().replace(",", "")
+    if not t:
+        return default
+    try:
+        return int(t)
+    except ValueError:
+        return None
+
+
+def _form_costs(seasons: list, form: dict, state_names: list,
+                knob_panel: dict) -> dict:
+    """What the Settings form needs to price the Oracle preset (F53):
+    estimates.page_params for static/estimate.js; per season its start,
+    its weeks and, when the live tree holds part of an Oracle replay, the
+    weeks a resume would run ("left"); this computer's recorded ratio; the
+    option's words for the form as first shown (the page's script
+    recomputes them on every change, by the same rule); and the panel's
+    size, which the script counts for it."""
+    from app.core import estimates
+    from app.core import retro as _retro
+    from app.core.engines.pf import DEFAULT_SHARD_WIDTH, SHARD_WIDTH_CAP
+    from app.core.retro_settings import PANEL6
+    ratio, _n = retro_seasons._own_cost_ratio()
+    costs = {}
+    for s in seasons:
+        name = s["name"]
+        weeks = list(_retro.season_vintages(name))
+        live, left = _live_root(name), None
+        if (weeks and retro_seasons._weeks_done(live)
+                and retro_seasons._oracle_settings(_retro.read_meta(live))):
+            rest = [w for w in weeks if not _retro.week_done(live, w)]
+            if 0 < len(rest) < len(weeks):
+                left = rest
+        costs[name] = {"start": _retro.season_bounds(name)[0],
+                       "weeks": weeks, "left": left}
+    # the form as the page first shows it (retro.html)
+    names = [s["name"] for s in seasons]
+    season = form.get("season") if form.get("season") in names else (
+        names[0] if names else "")
+    scope = form.get("locations")
+    if scope == "all":
+        n = len(state_names)
+    elif scope == "custom":
+        picked = set(form.get("custom_locations") or ())
+        n = sum(1 for l in state_names if l in picked)
+    else:
+        n = len(PANEL6)
+    if n and str(form.get("national", "1")) != "0":
+        n += 1
+    rows = {r["key"]: r for g in (knob_panel or {}).get("groups", ())
+            for r in g.get("rows", ())}
+
+    def knob(key, fallback):
+        # as the page's script reads it (retro_progress.js knobWhole) and
+        # the server's check does (knobs._coerce): blank is the default;
+        # None, so no figure, for what the check refuses (review 3 of #93,
+        # re-check R5)
+        import re
+        r = rows.get(key) or {}
+        t = str(r.get("value") if r.get("value") is not None else "").strip()
+        if not t:
+            return _whole(r.get("default"), fallback)
+        if not re.fullmatch(r"[+-]?[0-9]+",
+                            t.replace(",", "").replace("_", "").strip()):
+            return None
+        try:
+            return int(_knobs._coerce(_knobs.BY_KEY[key], t, None))
+        except _knobs.KnobError:
+            return None
+    # the runners as the POST would start them (1 to the cap), None for a
+    # width it refuses
+    width = _runners(form.get("width"), DEFAULT_SHARD_WIDTH)
+    if width is not None:
+        width = max(1, min(width, SHARD_WIDTH_CAP))
+    c = costs.get(season) or {}
+    weeks = c.get("left") or c.get("weeks") or []
+    reps = knob("pf.replicates", RunSpec.replicates)
+    particles = knob("pf.particles", RunSpec.particles)
+    words = "" if reps is None or particles is None or width is None else (
+        retro_seasons._cost_words(
+            weeks, c.get("start", ""), n * reps, particles, width, ratio,
+            len(c["left"]) if c.get("left") else 0))
+    return {"est": estimates.page_params(DEFAULT_SHARD_WIDTH),
+            "rt_costs": costs, "rt_ratio": ratio, "pf_cost": words,
+            "panel6_n": len(PANEL6)}
 
 
 @router.get("/retro", response_class=HTMLResponse)
@@ -174,15 +300,33 @@ def retro_index(request: Request, dataset: str = "", tab: str = ""):
     # the form as last posted; its panel opens once after its own refusal
     form = dict(_last_retro_form)
     _last_retro_form.pop("ms_refused", None)
+    state_names = _retro_state_names()
+    knob_panel = _knob_panel("retro", form)
+    # the Oracle option's cost: display only, so a fault here (a posted
+    # form is remembered before it is checked, and can carry any number)
+    # leaves the option without its figure rather than the page without
+    # its form, as the Forecast page's time line does
+    try:
+        costs = _form_costs(seasons, form, state_names, knob_panel)
+    except Exception:
+        costs = {}
     return templates.TemplateResponse(request, "retro.html",
                                       {"active": "Retrospective",
                                        "own_tab": False, "seasons": seasons,
-                                       "state_names": _retro_state_names(),
+                                       "state_names": state_names,
                                        "default_width": DEFAULT_SHARD_WIDTH,
                                        "width_cap": SHARD_WIDTH_CAP,
                                        "form": form,
-                                       "knob_panel": _knob_panel("retro",
-                                                                 form),
+                                       "knob_panel": knob_panel,
+                                       "panel6_label": _panel6_label(),
+                                       # the Oracle preset's cost (F53)
+                                       **costs,
+                                       # nothing replayed, running, kept or
+                                       # imported here yet (F46)
+                                       "no_replays": not any(
+                                           s["done"] > 0 or s["active"]
+                                           or s["status"] or s["archives"]
+                                           for s in seasons),
                                        # a half-installed engine cannot
                                        # run the Oracle preset either
                                        "engine_ok": pipeline._pf_engine_state()
@@ -285,14 +429,13 @@ def retro_archive_delete(request: Request, season: str, stamp: str,
             if replay_bundle.imported_label(p) else
             f"the archived {season} run from {retro.stamp_human(stamp)}")
     # Storage's one barrier: the sealed records, the hub clone and
-    # FLUBNF_PROTECT_ROOTS (a link into one of them too)
+    # FLUBNF_PROTECT_ROOTS (a link into one of them too). Checked first,
+    # so a refused delete stops no warm, as the Run form's discard does
     from app.ui.routes.storage import _storage_protected
     if _storage_protected(p):
         _flash(f"Not deleted: {what} is in a protected folder, which the "
                "console never deletes.", "warn")
         return _back(request, "/retro")
-    weeks = retro.run_summary(p)["weeks"]
-    size_h = retro.human_bytes(retro.dir_size(p))
     # its results may still be written (a results page opened it): a
     # delete meanwhile could fail half way. Marked first, so no results
     # page starts a finalize on it from here on (retro_prep._removing)
@@ -307,6 +450,15 @@ def retro_archive_delete(request: Request, season: str, stamp: str,
             _flash(f"Not deleted: the {busy} of {what} are still being "
                    "prepared.", "warn", detail="Try again in a minute.")
             return _back(request, "/retro")
+        # its week maps may still be written (a results page opened it):
+        # a delete meanwhile could fail half way. Under the mark, so no
+        # finalize starts a new warm once this one is stopped
+        if not retro_prep._stop_warm(p):
+            _flash(f"Not deleted: the week maps of {what} are still being "
+                   "prepared.", "warn", detail="Try again in a minute.")
+            return _back(request, "/retro")
+        weeks = retro.run_summary(p)["weeks"]
+        size_h = retro.human_bytes(retro.dir_size(p))
         try:
             retro.delete_tree(p)
         except Exception as e:
@@ -611,8 +763,10 @@ def retro_run(background: BackgroundTasks, season: str = Form(...),
                     "Not started: no locations checked for the custom scope.",
                     "Check at least one state and try again.")
         else:
-            names = ["Alaska", "New York", "Wyoming", "Pennsylvania",
-                     "Vermont", "California"]
+            # in PANEL6's order: the run record and every week's manifest
+            # keep it
+            from app.core.retro_settings import PANEL6
+            names = list(PANEL6)
         # US rides on every scope unless states only (with_us is idempotent)
         fit_national = str(national).strip().lower() not in ("0", "false",
                                                              "no", "off", "")
@@ -795,6 +949,16 @@ def retro_run(background: BackgroundTasks, season: str = Form(...),
             # fail half way
             return _refused(
                 f"Not started: the {season} {busy} are still being "
+                "prepared.", "Nothing was "
+                + ("deleted" if mode == "discard" else "archived")
+                + ". Try again in a minute.")
+        if mode in ("discard", "archive") and existing and \
+                not retro_prep._stop_warm(live):
+            # the week maps written after a replay finished: a delete or
+            # a move while one is written could fail half way (under the
+            # mark, so no finalize starts a new warm once this one stops)
+            return _refused(
+                f"Not started: the {season} week maps are still being "
                 "prepared.", "Nothing was "
                 + ("deleted" if mode == "discard" else "archived")
                 + ". Try again in a minute.")
@@ -1075,7 +1239,7 @@ def retro_results(request: Request, season: str, week: str = "",
     live = _replaying(root, season, archive)
     if not live and ((request.query_params.get("rescore")
                       and not _is_sealed_root(root))
-                     or _results_pending(root)):
+                     or retro_prep._results_pending(root)):
         job = retro_prep._ensure_results_job(
             root, season, force=bool(request.query_params.get("rescore")))
         if job.get("refused"):
@@ -1410,16 +1574,48 @@ def score_error_plain(err: str) -> str:
                  if key in (err or "")), "")
 
 
+#: what the season page's APIs answer while a delete or a move holds the
+#: run (_removal_busy): 503 with Retry-After, never the 404 of a week that
+#: is not stored. The player keeps such an answer for no week and asks
+#: again on a later visit: a refused delete leaves the run where it was,
+#: and a moved run's page asks at its own address
+_BUSY_RETRY_S = 5
+
+
+def _removal_busy(root: Path, season: str, what: str):
+    """The answer to a request that would read the tree at `root` and
+    write its caches there while a delete or a move holds the tree
+    (retro_prep._being_removed); None when none does. `what` says what
+    is not done ("week 2098-01-10 is not shown")."""
+    if not retro_prep._being_removed(root):
+        return None
+    return _busy_answer(season, what)
+
+
+def _busy_answer(season: str, what: str):
+    """_removal_busy's answer: 503 with Retry-After. Also the answer when
+    the mark comes while the work is under way and its write is refused
+    (retro_store.TreeBusy)."""
+    return PlainTextResponse(
+        f"{season}: the run is being deleted or moved, so {what} while "
+        "it is.", status_code=503,
+        headers={"Retry-After": str(_BUSY_RETRY_S)})
+
+
 @router.get("/api/retro/{season}/playback/{asof}")
 def api_retro_playback(season: str, asof: str, archive: str = ""):
     """One stored retro week as a playback payload (member fans, settled
     truth, CDC comparators, running relWIS), cached under
-    <season_root>/playback_cache/. `archive` reads an archived run."""
+    <season_root>/playback_cache/. `archive` reads an archived run. A run
+    a delete or a move holds answers 503 (_removal_busy)."""
     from app.core import playback
     if archive and not (_valid_season(season) and _valid_archive(archive)):
         return PlainTextResponse("unrecognized archived run identifier",
                                  status_code=404)
     root, _is_seal = retro_seasons._season_root(season, archive)
+    busy = _removal_busy(root, season, f"week {asof} is not shown")
+    if busy is not None:
+        return busy
     try:
         return playback.build_week(root, season, asof)
     except playback.UnknownWeek as e:
@@ -1433,7 +1629,8 @@ def api_retro_playback(season: str, asof: str, archive: str = ""):
 def api_retro_mapswap(season: str, asof: str, archive: str = ""):
     """One stored week's map as a swap payload (fips -> fill, opacity,
     hover) from the cached cards: the player renders the SVG once and
-    swaps fills per frame."""
+    swaps fills per frame. A run a delete or a move holds answers 503
+    (_removal_busy): its cards would be written into the tree going."""
     if archive and not (_valid_season(season) and _valid_archive(archive)):
         return PlainTextResponse("unrecognized archived run identifier",
                                  status_code=404)
@@ -1442,6 +1639,9 @@ def api_retro_mapswap(season: str, asof: str, archive: str = ""):
     if not _re.fullmatch(r"\d{4}-\d{2}-\d{2}", asof):
         return PlainTextResponse(f"no stored week {asof}", status_code=404)
     root, _is_seal = retro_seasons._season_root(season, archive)
+    busy = _removal_busy(root, season, f"its map for {asof} is not shown")
+    if busy is not None:
+        return busy
     from app.core import retro as _retro
     if _retro.week_samples_path(root, asof) is None:
         return PlainTextResponse(f"no stored week {asof}", status_code=404)
@@ -1453,12 +1653,20 @@ def api_retro_mapswap(season: str, asof: str, archive: str = ""):
 def _season_report(season: str, archive: str):
     """Build (cached by mtime) the self-contained season report (player
     plus every week's data, one HTML file); `archive` = that run's. The
-    path, or the 404 response for an unknown identifier or week."""
+    path, or the refusal: 404 for an unknown identifier or week, 503
+    while a delete or a move holds the run (_removal_busy), whether it
+    held it before the build or took it during the build, which then
+    writes nothing (retro_store.TreeBusy)."""
     from app.core import playback, report_season
+    from app.core.retro_store import TreeBusy
     if archive and not (_valid_season(season) and _valid_archive(archive)):
         return PlainTextResponse("unrecognized archived run identifier",
                                  status_code=404)
     root, _is_seal = retro_seasons._season_root(season, archive)
+    busy = _removal_busy(root, season,
+                         "its season report is not built")
+    if busy is not None:
+        return busy
     try:
         return report_season.build_season_report(
             root, season, archive=archive,
@@ -1467,6 +1675,9 @@ def _season_report(season: str, archive: str):
         return PlainTextResponse(str(e), status_code=404)
     except FileNotFoundError:
         return PlainTextResponse(NO_TRUTH, status_code=503)
+    except TreeBusy:
+        # the mark came during the build: as for a marked tree before it
+        return _busy_answer(season, "its season report is not built")
 
 
 @router.get("/retro/{season}/report")
@@ -1516,6 +1727,10 @@ def api_retro_report_job_start(season: str, archive: str = ""):
     root = _report_root(season, archive)
     if isinstance(root, PlainTextResponse):
         return root
+    busy = _removal_busy(root, season,
+                         "its season report is not built")
+    if busy is not None:
+        return busy
     return season_export.report_job(root, season, archive=archive,
                                     build=RUNNING_SHA, versions=VERSIONS)
 

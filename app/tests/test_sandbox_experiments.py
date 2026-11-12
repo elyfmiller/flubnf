@@ -128,14 +128,29 @@ def _join() -> None:
             assert not t.is_alive(), t.name
 
 
+def cost_pinned(monkeypatch) -> None:
+    """The Size choices' times (routes/sandbox.py _size_words) the same on
+    any computer, on either engine and after a refit of the cost model:
+    30 s a fit on the private engine (2.4 times it on the public one), 8
+    runners, a first estimate 1 to 4 times the model, no recorded pace."""
+    monkeypatch.setattr(pf, "cell_seconds", lambda cell, engine=None: 30.0 * (
+        2.4 if (engine or ("public" if pf._public() else "private"))
+        == "public" else 1.0))
+    monkeypatch.setattr(pf, "DEFAULT_SHARD_WIDTH", 8)
+    monkeypatch.setattr(sb, "ETA_FIRST_SPAN", (1.0, 4.0))
+    monkeypatch.setattr(ui_retro_seasons, "_own_cost_ratio",
+                        lambda: (None, 0))
+
+
 @pytest.fixture
 def world(season, truth, pf_engine_ready, monkeypatch):
     """test_experiments.season's 2024-25 calendar with the console's
     replay roots there (RETRO_ROOT), the synthetic truth to score against,
     the particle-filter engine, the hub's tables the card needs, the sleep
     guard recorded, a view that waits for its scoring, no season claim and
-    no notice left over (another module's, restored after). The guards
-    started, a list."""
+    no notice left over (another module's, restored after), and the cost
+    model fixed (cost_pinned). The guards started, a list."""
+    cost_pinned(monkeypatch)
     monkeypatch.setattr(ui_retro_seasons, "RETRO_ROOT", season)
     # the routes read the claims by name: emptied in place, not rebound
     seasons = dict(ui_retro_seasons._retro_status)
@@ -260,6 +275,12 @@ def test_the_gallery_offers_the_four_choices_only(world, monkeypatch):
               for a, _t in models}
     assert oracle == {"sihrs": "1", "sihrs-2strain": "0", "sihrs-natg": "0",
                       "beta@1": "0", "gamma@1": "0", "old@1": "0"}
+    # the shipped ones say what they are; on the private engine all three
+    # can be picked
+    assert [(t, " disabled" in a) for a, t in models[:3]] == [
+        ("sihrs · the Oracle SIHRS, as shipped", False),
+        ("sihrs-2strain · influenza A and B (research)", False),
+        ("sihrs-natg · with a national-growth factor (research)", False)]
     old = [(a, t) for a, t in models if 'value="old@1"' in a][0]
     assert " disabled" in old[0] and old[1] == "old@1 · changed since Register"
     gamma = [(a, t) for a, t in models if 'value="gamma@1"' in a][0]
@@ -269,16 +290,29 @@ def test_the_gallery_offers_the_four_choices_only(world, monkeypatch):
         "beta@1"]
     assert '<optgroup label="Shipped">' in form
     assert '<optgroup label="Registered">' in form
+    # each season says whether a shipped replay is here to compare with
+    # (2025-26's is the Groundhog alone); its value is the bare name
     seasons = _options(html, "sbexp-season")
-    assert [t for _a, t in seasons] == ["2025-26", "2024-25", "2023-24"]
-    assert [t for a, t in seasons if "selected" in a] == ["2024-25"]
+    assert [t for _a, t in seasons] == [
+        "2025-26 · nothing to compare with", "2024-25 · shipped replay here",
+        "2023-24 · nothing to compare with"]
+    assert [re.search(r'value="([^"]+)"', a).group(1)
+            for a, _t in seasons] == ["2025-26", "2024-25", "2023-24"]
+    assert [t for a, t in seasons if "selected" in a] == [
+        "2024-25 · shipped replay here"]
+    # each size says how long it takes (cost_pinned: 30 s a fit, 8
+    # runners, 1 to 4 times the model before a recorded pace)
     sizes = _options(html, "sbexp-size")
     assert [re.search(r'value="(\w+)"', a).group(1) for a, _t in sizes] == [
         "smoke", "pilot", "full"]
     assert [t for a, t in sizes if "selected" in a] == [
-        "smoke: 2 locations, 2 weeks (minutes)"]
-    assert _options(html, "sbexp-oracle") == [(' value="on"', "on"),
-                                              (' value="off" selected', "off")]
+        "smoke: 2 locations, 2 weeks (about 1 to 4 min)"]
+    assert [t for _a, t in sizes][1:] == [
+        "pilot: 10 locations, every other week (about 14 to 56 min)",
+        "full: every location and week, as shipped (about 5.0 to 20.0 h)"]
+    assert _options(html, "sbexp-oracle") == [
+        (' value="on"', "on"),
+        (' value="off" selected', "off (the Liu-West filter alone)")]
     assert form.count("<button") == 1
     assert '<button class="gold" data-guard="sandbox-run">Start</button>' in form
     # no "?" beside the card's heading or its fields (the card alone: the
@@ -626,11 +660,12 @@ def test_each_refusal_carries_its_code_and_leaves_no_claim(world,
         _refused("MACHINE", size="pilot", oracle="off")
     html = client.get("/sandbox").text
     assert [t for a, t in _options(html, "sbexp-size") if "selected" in a] == [
-        "pilot: 10 locations, every other week (under an hour)"]
-    assert (' value="off" selected', "off") in _options(html, "sbexp-oracle")
+        "pilot: 10 locations, every other week (about 14 to 56 min)"]
+    assert (' value="off" selected', "off (the Liu-West filter alone)") in \
+        _options(html, "sbexp-oracle")
     html = client.get("/sandbox").text
     assert [t for a, t in _options(html, "sbexp-size") if "selected" in a] == [
-        "smoke: 2 locations, 2 weeks (minutes)"]
+        "smoke: 2 locations, 2 weeks (about 1 to 4 min)"]
     # another experiment's record in the folder: EXPERIMENT_CHANGED, and
     # the record stays as it was
     folder = X.root() / SMOKE
@@ -1889,8 +1924,10 @@ def test_in_a_runner_folder_a_refusal_is_not_queued(alice, monkeypatch):
     assert _flash().startswith("Not queued: ")
     assert _flash().endswith("(MODEL_NOT_FOUND).")
     html = client.get("/sandbox").text
+    # no time on the size: this runner.json names no engine (an older
+    # runner's), so the runner's figure cannot be worked out here
     assert [t for a, t in _options(html, "sbexp-size") if "selected" in a] == [
-        "pilot: 10 locations, every other week (under an hour)"]
+        "pilot: 10 locations, every other week"]
     assert sorted(p.name for p in (alice / "experiments").iterdir()) == []
     assert _claim() is None
 

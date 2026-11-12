@@ -16,7 +16,8 @@ Sections: paths (SAMPLES_JSON, _week_dir, samples_file, week_dropped,
 season_sample_files, season_week_files) | draws (read_samples,
 read_week_samples, write_week_samples) | quantile sidecar
 (member_quantiles, filter_quantiles, write/read_week_quantiles,
-week_member_quantiles) | migration (compress_samples_file) | week_done.
+week_member_quantiles) | migration (compress_samples_file) | week_done |
+the season's parsed scores (scores_frame).
 """
 from __future__ import annotations
 
@@ -24,6 +25,10 @@ import gzip
 import json
 import os
 import shutil
+import sys
+import threading
+from collections import OrderedDict
+from contextlib import nullcontext
 from pathlib import Path
 
 from app.core import ensemble as ens
@@ -32,6 +37,27 @@ from app.core import horizons as hz
 
 def _week_dir(root: Path, asof: str) -> Path:
     return root / "weeks" / asof
+
+
+def writing_into(root: Path):
+    """Around a cache write into a season tree: a context that yields
+    whether the write may go ahead. The console's delete or move of a tree
+    marks it first (app/ui/retro_prep._writing_into, which answers here):
+    nothing is written into a marked tree, and no delete starts on a tree
+    while a write into it is under way. The mark lives in the console's
+    process alone, so where the console is not loaded (the command line,
+    the site build) no tree is marked and every write goes ahead."""
+    rp = sys.modules.get("app.ui.retro_prep")
+    return rp._writing_into(root) if rp is not None else nullcontext(True)
+
+
+class TreeBusy(RuntimeError):
+    """What a writer raises when writing_into says no and it has nothing
+    to give without its write (the season report, the national
+    aggregate): nothing was written, and the words say what was not done.
+    The season page's APIs answer it as they answer a marked tree before
+    the work began: 503 with Retry-After."""
+
 
 SAMPLES_JSON = "samples.json"
 SAMPLES_GZ = "samples.json.gz"
@@ -139,6 +165,20 @@ def read_week_samples(root: Path, asof: str) -> dict:
     return read_samples(fp)          # already canonical
 
 
+#: the text slice write_json_text hands the file at a time (4 MiB): the
+#: encoded record is held once, never a second full-size bytes copy
+WRITE_SLICE = 1 << 22
+
+
+def write_json_text(fh, obj) -> None:
+    """json.dump(obj, fh), the same text, through the C encoder: one
+    json.dumps (json.dump's pure-Python encoder takes about twice as long
+    on a week's draws), written in WRITE_SLICE pieces."""
+    s = json.dumps(obj)
+    for i in range(0, len(s), WRITE_SLICE):
+        fh.write(s[i:i + WRITE_SLICE])
+
+
 def write_week_samples(wd: Path, obj: dict) -> Path:
     """Store a completed week's samples, gzipped and atomic, retiring any
     plain-JSON leftover. The quantile sidecar is best effort."""
@@ -147,7 +187,7 @@ def write_week_samples(wd: Path, obj: dict) -> Path:
     tmp = wd / (SAMPLES_GZ + ".tmp")
     # canonical in memory, stored convention on disk
     with gzip.open(tmp, "wt", encoding="utf-8", compresslevel=6) as f:
-        json.dump(hz.record_to_stored(obj), f)
+        write_json_text(f, hz.record_to_stored(obj))
     os.replace(tmp, fp)
     (wd / SAMPLES_JSON).unlink(missing_ok=True)
     try:
@@ -272,7 +312,8 @@ def read_week_quantiles(wd: Path) -> dict | None:
 def week_member_quantiles(root: Path, asof: str) -> dict:
     """The members' quantiles for one stored week: the sidecar when it is
     current, else computed from the samples (and the week's oracle.json)
-    and written for next time. A week stored lean is its sidecar as it
+    and written for next time, unless a delete or a move holds the tree
+    (writing_into). A week stored lean is its sidecar as it
     is, never rebuilt and never rewritten: FileNotFoundError when the
     sidecar cannot be read."""
     wd = _week_dir(root, asof)
@@ -289,7 +330,9 @@ def week_member_quantiles(root: Path, asof: str) -> dict:
                                 "read")
     mq = member_quantiles(read_week_samples(root, asof), wd)
     try:
-        write_week_quantiles(wd, mq)
+        with writing_into(root) as ok:
+            if ok:
+                write_week_quantiles(wd, mq)
     except Exception:
         pass
     return mq
@@ -318,3 +361,55 @@ def week_done(root: Path, asof: str) -> bool:
     (week_dropped)."""
     return (week_samples_path(root, asof) is not None
             or week_dropped(_week_dir(root, asof)))
+
+
+# ------------------------------------------------- the season's parsed scores
+
+#: LRU of parsed scores.json frames keyed by (path, mtime_ns, size), so a
+#: rescore invalidates by construction. ~50 MB per frame; cap 3 holds the
+#: three sealed seasons without eviction while bounding archive sweeps.
+#: One store for the season page (app/ui/retro_prep._scores_df, which
+#: aliases these names) and the season player (playback._season_scores).
+SCORES_FRAMES_MAX = 3
+SCORES_FRAMES: "OrderedDict" = OrderedDict()
+#: every read and write of SCORES_FRAMES: request threads, the finalize
+#: job and the season report share it (an unlocked hit could lose its key
+#: to another thread's eviction between get and move_to_end)
+_SCORES_FRAMES_LOCK = threading.Lock()
+
+
+def scores_frame(root: Path):
+    """Parsed scores.json for this root (None if missing or unparseable),
+    one pd.read_json per file content. The frame is SHARED read-only:
+    callers filter into copies and never mutate it."""
+    import pandas as pd
+    sf = Path(root) / "scores.json"
+    try:
+        st = sf.stat()
+    except OSError:
+        return None
+    key = (str(sf), st.st_mtime_ns, st.st_size)
+    with _SCORES_FRAMES_LOCK:
+        hit = SCORES_FRAMES.get(key)
+        if hit is not None:
+            SCORES_FRAMES.move_to_end(key)      # least-recently-used ordering
+            return hit
+    try:
+        df = pd.read_json(sf)
+    except Exception:
+        return None
+    try:
+        st2 = sf.stat()
+    except OSError:
+        return df
+    if (st2.st_mtime_ns, st2.st_size) != key[1:]:
+        return df          # replaced while it was read: serve, do not cache
+    with _SCORES_FRAMES_LOCK:
+        hit = SCORES_FRAMES.get(key)
+        if hit is not None:                     # a racing reader got there
+            SCORES_FRAMES.move_to_end(key)
+            return hit
+        SCORES_FRAMES[key] = df
+        while len(SCORES_FRAMES) > SCORES_FRAMES_MAX:
+            SCORES_FRAMES.popitem(last=False)   # evict one, never flush the lot
+    return df

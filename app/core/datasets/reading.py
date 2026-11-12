@@ -25,6 +25,7 @@ from .parsing import (
     REQUIRED,
     ROLE_ALIASES,
     ROLES,
+    SECONDARY_ALIASES,
     _CappedReader,
     _day_first,
     _LimitExceeded,
@@ -592,11 +593,17 @@ def _map_columns(header, rep: Report, columns=None, series: str = "",
     numbers is read as one series named ``series`` ('series' in the
     result, and the report's ``series``); ``sample`` is (the first lines,
     the separator), whose rows tell the value column by its numbers
-    (_one_series)."""
+    (_one_series).
+
+    A role no ROLE_ALIASES header matched takes the one header among
+    SECONDARY_ALIASES (state, county, deaths, ...), never one of two; a
+    group's column must hold text in those rows, so a blank or numeric
+    'area' or 'county' beside a value still reads as one series."""
     norm = [_norm_header(h) for h in header]
     times = Counter(header)
     label = [h if times[h] == 1 else f"{h} (#{i + 1})"
              for i, h in enumerate(header)]
+    rows = _sample_rows(*sample) if sample else []
     chosen, missing, ambiguous, unknown = {}, [], {}, []
     for role, want in (columns or {}).items():
         if role not in ROLES or not str(want or "").strip():
@@ -621,6 +628,12 @@ def _map_columns(header, rep: Report, columns=None, series: str = "",
             first = [i for i in cands if norm[i] == pre[0]]
             if len(first) == 1:
                 cands = first
+        if not cands and role in SECONDARY_ALIASES:
+            more = [i for i, h in enumerate(norm)
+                    if h in SECONDARY_ALIASES[role] and i not in taken]
+            if len(more) == 1 and (role != "group"
+                                   or _column_kind(rows, more[0]) == "text"):
+                cands = more
         if len(cands) == 1:
             chosen[role] = cands[0]
         elif len(cands) > 1:
@@ -629,8 +642,7 @@ def _map_columns(header, rep: Report, columns=None, series: str = "",
             missing.append(role)
     one = None
     if series and "group" in missing and "date" in chosen and not unknown:
-        one = _one_series(header, norm, chosen, mapped,
-                          _sample_rows(*sample) if sample else [])
+        one = _one_series(header, norm, chosen, mapped, rows)
     if one:
         # no group to ask for; the value is the one column of numbers, or
         # a choice among them (never the first, silently)

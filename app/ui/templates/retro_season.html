@@ -969,6 +969,10 @@
  // ---- payload cache with in-flight dedupe; PERR keeps the failure message
  // for the panel ----
  const PAY = {}, PPROM = {}, PERR = {};
+ // an answer that says "ask later" (Retry-After: the run is being deleted
+ // or moved) is kept for no week, so a later visit asks again; any other
+ // failure is kept, and the week says why
+ function later(r){ return !r.ok && !!r.headers.get('Retry-After'); }
  // the season report carries every stored week (report_season); the page
  // fetches them
  const EMBED = window.FLUBNF_EMBED || null;
@@ -986,12 +990,16 @@
                     + '/playback/' + encodeURIComponent(w)
                     + (AQ ? '?' + AQ : ''))
      .then(r => r.text().then(t => {
-       if(!r.ok) throw new Error((t || '').trim().slice(0, 300)
-                                 || ('HTTP ' + r.status));
+       if(!r.ok){
+         const e = new Error((t || '').trim().slice(0, 300)
+                             || ('HTTP ' + r.status));
+         e.later = later(r);
+         throw e;
+       }
        return JSON.parse(t);
      }))
      .then(d => {PAY[w] = d; delete PERR[w]; return d;})
-     .catch(e => {PAY[w] = null;
+     .catch(e => {if(!(e && e.later)) PAY[w] = null;
                   PERR[w] = (e && e.message) || 'fetch failed';
                   return null;})
      .finally(() => {delete PPROM[w];});
@@ -1002,7 +1010,8 @@
  // server-rendered SVG is the only one built; each week fetches a small
  // /api/retro/{season}/mapswap/{asof} payload and only path fills change,
  // so tooltips, zoom and pan survive scrubbing ----
- const SWAP = {}, SPROM = {};
+ // SLATER: per week, the words of an answer that said "ask later"
+ const SWAP = {}, SPROM = {}, SLATER = {};
  // the map's model follows the toggle's pressed button across weeks
  const MNAMES = FluBNFPlayer.MODEL_NAMES || {};
  let CURM = (function(){
@@ -1029,13 +1038,24 @@
    SPROM[w] = fetch('/api/retro/' + encodeURIComponent(SEASON)
                     + '/mapswap/' + encodeURIComponent(w)
                     + (AQ ? '?' + AQ : ''))
-     .then(r => {if(!r.ok) throw new Error(String(r.status)); return r.json();})
+     .then(r => {
+       if(later(r)) return r.text().then(t => {
+         const e = new Error((t || '').trim().slice(0, 300));
+         e.later = true;
+         throw e;
+       });
+       if(!r.ok) throw new Error(String(r.status));
+       return r.json();
+     })
      // keyed by model; a bare `states` is the pre-2026-09-23 shape
      .then(d => {SWAP[w] = (d && d.models && Object.keys(d.models).length)
                    ? d.models
                    : ((d && d.states) ? {[CURM || 'pf']: {states: d.states}} : null);
+                 delete SLATER[w];
                  return SWAP[w];})
-     .catch(() => {SWAP[w] = null; return null;})
+     .catch(e => {if(e && e.later) SLATER[w] = e.message || ('map unavailable for ' + w);
+                  else SWAP[w] = null;
+                  return null;})
      .finally(() => {delete SPROM[w];});
    return SPROM[w];
  }
@@ -1053,7 +1073,17 @@
    if(w == null || !svg || host.dataset.week === w) return;
    const st = SWAP[w];
    if(st === undefined){          // not fetched yet: render when it lands
-     fetchMap(w).then(scheduleMap);
+     fetchMap(w).then(function(){
+       if(w in SWAP){ scheduleMap(); return; }
+       // the answer said "ask later" (the run is being deleted or moved):
+       // the note says so, nothing is kept, and coming back to the week
+       // asks again
+       if(wantWeek !== w) return;
+       host.dataset.week = w;
+       host.classList.remove('nodata');
+       if(note){noteT.textContent = SLATER[w] || ('map unavailable for ' + w);
+                note.hidden = false;}
+     });
      return;
    }
    host.dataset.week = w;

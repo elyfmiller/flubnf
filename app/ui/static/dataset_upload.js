@@ -21,6 +21,8 @@
    While a check runs the result box holds the UI kit's sliding bar,
    labelled with what is checked; a check that fails, or a folder with
    no tables, is a kit alert line (static/ui-kit.css).
+   "Try the template" (under the first zone, shown where a fetched file
+   can be held by the input) puts the template CSV there as if chosen.
    The preview's buttons submit the form itself (POST /data/datasets),
    which stores the files and opens them where they are needed. A closed
    <details> around the box opens when a file is dragged over it. Files
@@ -66,6 +68,20 @@
 
   function tables(fs) {
     return fs.filter(function (f) { return TABLES.test(f.name); });
+  }
+
+  // a file built in the page can be put in a file input: fetch, and the
+  // File and DataTransfer constructors (Safari before 14.1 lacks the
+  // last), checked by building one
+  function canHold() {
+    try {
+      if (typeof fetch !== 'function') return false;
+      var dt = new DataTransfer();
+      dt.items.add(new File(['x'], 'x.csv', {type: 'text/csv'}));
+      return dt.files.length === 1;
+    } catch (err) {
+      return false;
+    }
   }
 
   // a dropped folder's files (walked to any depth), or null when nothing
@@ -303,6 +319,31 @@
       dropped = null;
       picked('snap', list(boxes.snap.input.files));
     });
+    // "Try the template": the template CSV fetched and held by the first
+    // zone's input as if chosen (a native submit then posts it), then
+    // checked; shown only where a fetched file can be held so (else the
+    // Template CSV link is the way). type=button: it never submits
+    var tryBtn = form.querySelector('[data-try-template]');
+    if (tryBtn && canHold()) {
+      tryBtn.hidden = false;
+      tryBtn.addEventListener('click', function () {
+        var src = tryBtn.getAttribute('data-src') || '';
+        tryBtn.disabled = true;
+        fetch(src).then(function (r) {
+          if (!r.ok) throw new Error('HTTP ' + r.status);
+          return r.blob();
+        }).then(function (b) {
+          var f = new File([b], src.replace(/^.*\//, ''), {type: 'text/csv'});
+          hold('one', [f]);
+          picked('one', [f]);
+        }).catch(function () {
+          var msg = 'The template could not be read; use the Template CSV '
+            + 'link instead.';
+          out.innerHTML = alertLine(msg);
+          say(msg);
+        }).then(function () { tryBtn.disabled = false; });
+      });
+    }
     if (folder) folder.addEventListener('change', function () {
       var fs = list(folder.files);
       folder.value = '';

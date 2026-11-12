@@ -533,10 +533,14 @@ def resolve(root, scores_df=None, allow_aggregate: bool = True) -> UsNational:
 
 def aggregate_row(root) -> tuple:
     """(row, reason): the sum-of-states aggregate, or (None, a printable
-    reason). Never a silent omission."""
+    reason). Never a silent omission. A delete or a move of the run under
+    way while it was built (retro_store.TreeBusy) is said in plain words."""
     from app.core import retro as _retro
+    from app.core.retro_store import TreeBusy
     try:
         row = _retro.national_aggregate(Path(root))
+    except TreeBusy as e:
+        return None, str(e)
     except Exception as e:
         return None, ("its construction failed while this view was built "
                       f"({type(e).__name__}: {str(e)[:120]})")

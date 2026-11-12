@@ -17,7 +17,8 @@
      4. the Model settings panel (_model_settings.html)
      5. the run page (run.html, _dataset_run.html)
      6. the form's aids: the round row, location presets and filter, the
-        Run row against the last run, a changed field's marks */
+        Run row against the last run and its time line, a changed field's
+        marks */
 
 /* ---- 1. settings card ---- */
 /* the dataset's truth badge under its picker */
@@ -256,6 +257,11 @@ details[data-scope] > summary{scroll-margin-top:.75rem}
 .fc-runrow{display:flex;flex-wrap:wrap;align-items:center;gap:.4rem .7rem;
   margin-top:.7rem}
 .fc-runrow > button{margin:0}
+/* the time line under Run models, on a line of its own in the row (so it
+   stays in view with the row while the open settings panel scrolls) */
+.fc-est{flex:1 1 100%;min-width:0}
+.fc-est .uk-meta{margin:0}
+.fc-est[hidden]{display:none}
 #model-settings[open] ~ .fc-runrow{position:sticky;bottom:0;z-index:2;
   margin:.6rem calc(-1 * var(--card-px)) 0;padding:.55rem var(--card-px);
   background:var(--card);border-top:1px solid var(--line);

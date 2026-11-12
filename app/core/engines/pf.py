@@ -21,12 +21,16 @@ Sections, in file order:
   research knobs  continuation_for, seed_date_for, PF_KEYS_ALLOWED,
                   pf_key_lines, priors_for, initialization_for
   prepare         DATASET_REFUSED, LIBRARY_REFUSED, _named_model,
-                  dataset_tag, prepare
+                  dataset_tag, _cell_files, _netgen_added, _copy_added,
+                  _drop_copies, prepare
   execution       RunStopped, shard width and cost constants, resolve_width,
-                  runner_popen_kwargs, record_runner_pids, shard_cells,
-                  cell_seconds, budget_seconds, _stop_all, execute
-  collect         _cell_statuses, _record_collect_failure, _save_cloud, collect,
-                  _pool
+                  codegen_cache_dir, codegen_cache_problem,
+                  codegen_cache_warning, codegen_holders_file,
+                  runner_popen_kwargs, record_runner_pids,
+                  shard_cells, cell_seconds, budget_seconds, _stop_all,
+                  TIMING_NAME, _write_timing, execute
+  collect         _cell_statuses, _record_collect_failure, _save_cloud,
+                  _read_trajectory, collect, _pool
 
 The public engine, the default (flubnf.settings.engine_choice), runs the
 same cells on lanl/PyBNF's job_type = lwf (app/core/engines/lwf.py): the
@@ -36,6 +40,7 @@ with FLUBNF_ENGINE=private, the fallback.
 """
 from __future__ import annotations
 
+import errno
 import json
 import os
 import re
@@ -43,7 +48,10 @@ import shutil
 import signal
 import subprocess
 import sys
+import tempfile
+import threading
 import time
+from contextlib import contextmanager
 from pathlib import Path
 
 # --- constants: templates, defaults, fitted-variable boxes ------------------
@@ -180,6 +188,7 @@ cells = json.load(open({cells_json!r}))
 out = {out_json!r}
 halt = Path({halt_path!r})
 results = {{}}
+secs = {{}}                  # seconds per finished cell (execute's pf_timing.json)
 _t0 = _t.time()
 
 
@@ -194,7 +203,12 @@ def _publish(done):
     """Status and progress, written beside-then-replaced so a reader never
     sees half a file; True when the status was written. Neither write ends
     the runner: progress is best effort, and a status missed now is carried
-    by the next one, since results only grows."""
+    by the next one, since results only grows. The cells' seconds are best
+    effort too."""
+    try:
+        _write(out + ".secs.prog", secs)
+    except OSError:
+        pass
     try:
         _write(out, results)
     except OSError as e:
@@ -213,6 +227,7 @@ published = _publish(0)
 for _i, c in enumerate(cells, 1):
     if halt.exists():
         break                     # stopped: this shard dispatches nothing more
+    _tc = _t.monotonic()
     d = Path(c["dir"])
     shutil.rmtree(d / "out", ignore_errors=True)
     (d / "out" / "Results").mkdir(parents=True)
@@ -226,6 +241,7 @@ for _i, c in enumerate(cells, 1):
         results[c["key"]] = _failed(c["key"], e, Path(cwd) / d)
     finally:
         os.chdir(cwd)
+    secs[c["key"]] = round(_t.monotonic() - _tc, 3)
     published = _publish(_i)
 if not published:
     # the status execute() merges must exist: tried for longer (2 s), then
@@ -281,7 +297,7 @@ def conf_safe_path(p, _platform: str | None = None) -> str:
 
 def perl_missing_message(_platform: str | None = None) -> str:
     """Operator message for a machine with no Perl that can run BNG2.pl:
-    BNG2.pl runs once per cell at prepare, and without Perl Windows only
+    BNG2.pl runs once per location at prepare, and without Perl Windows only
     says '[WinError 2]'. On Windows it names a perl that was found and
     passed over (settings.perl_unusable), and promises no restart, since
     resolve_perl looks again at every fit. `_platform` is injectable for
@@ -845,8 +861,103 @@ def dataset_tag(loc: str) -> str:
     return pf_stem(loc)
 
 
+def _cell_files(d: Path) -> dict | None:
+    """{name: bytes} of every entry in cell folder d, before its BNG2.pl
+    check; None when one is not a plain file, or when the folder or a file
+    in it cannot be read (an OSError: BNG2.pl then runs, as it always did
+    before the copy). Two replicates of a location write the same model
+    and data, so these match."""
+    out = {}
+    try:
+        for p in d.iterdir():
+            if p.is_symlink() or not p.is_file():
+                return None
+            out[p.name] = p.read_bytes()
+    except OSError:
+        return None
+    return out
+
+
+def _netgen_added(d: Path, before: dict | None) -> tuple | None:
+    """(before, the names BNG2.pl added, d) for replicate 0's folder d, so
+    a later replicate with the same files can copy what BNG2.pl wrote;
+    None when that cannot be done safely: a folder that held more than
+    plain files, or one whose files BNG2.pl changed."""
+    after = _cell_files(d)
+    if before is None or after is None:
+        return None
+    if any(after.get(n) != b for n, b in before.items()):
+        return None
+    return before, sorted(set(after) - set(before)), d
+
+
+#: the suffix of a copy on its way into a later replicate's folder
+_COPY_PART = ".netgen-part"
+
+
+def _copy_added(r0: tuple, d: Path) -> bool:
+    """Copy what BNG2.pl added to replicate 0's folder (r0, _netgen_added's)
+    into the later replicate's folder d. True when every file arrived
+    whole. On any OSError (a file held open by a virus scanner, a full
+    disk, replicate 0's folder gone) False, with every copy made here
+    removed again as far as it can be, so the caller runs BNG2.pl in d,
+    as it always did before the copy.
+
+    m.net goes last, through a temporary name and one rename, so d holds an
+    m.net only when every copy is whole: a BNG2.pl that then fails is still
+    seen to fail (prepare's check is that m.net exists)."""
+    names = sorted(r0[1], key=lambda n: n == "m.net")     # m.net last
+    made = []
+    try:
+        for name in names:
+            if name == "m.net":
+                part = d / (name + _COPY_PART)
+                made.append(part)
+                shutil.copy2(r0[2] / name, part)
+                made.append(d / name)
+                os.replace(part, d / name)
+            else:
+                made.append(d / name)
+                shutil.copy2(r0[2] / name, d / name)
+        return True
+    except OSError:
+        for p in made:
+            try:
+                p.unlink()
+            except OSError:
+                pass
+        return False
+
+
+def _drop_copies(r0: tuple, d: Path, mine: dict, part_only: bool = False
+                 ) -> None:
+    """Remove from the later replicate's folder d what a _copy_added that
+    returned False may have left when its own removal failed too (a file
+    the scanner still held): the names BNG2.pl added to replicate 0's
+    folder, which d did not hold before the copy (`mine`, d's files then,
+    equal replicate 0's before its BNG2.pl), and m.net's part file. So
+    BNG2.pl runs in the folder it ran in before the copy existed, and the
+    run's folder holds the files a BNG2.pl-everywhere run gives (review 3
+    of #93, re-check R7). `part_only`: the part file alone, once BNG2.pl
+    has written its own files under the other names. As far as it can:
+    an OSError leaves that file where it is (nothing reads either)."""
+    part = "m.net" + _COPY_PART
+    names = [part] if part_only else list(r0[1]) + [part]
+    for name in names:
+        if name in mine:
+            continue
+        try:
+            (d / name).unlink()
+        except OSError:
+            pass
+
+
 def prepare(spec, workroot: Path) -> list:
     """Materialize model+net+exp+conf for every (location, replicate) cell.
+
+    BNG2.pl's network check runs once per location, for replicate 0; the
+    other replicates hold the same model and data, so they get copies of
+    the files it wrote there (a replicate whose files differ runs it too).
 
     Failures are contained PER LOCATION (e.g. resolve_state refusing an
     all-NaN tail during a reporting pause) and recorded in
@@ -1134,6 +1245,8 @@ def prepare(spec, workroot: Path) -> list:
                 typed_by_t, a0 = {}, 0.85   # typed feed down: channel 2 just
                                             # has no rows; the fit still runs
         loc_cells = []
+        # replicate 0's network check, for its later replicates (_netgen)
+        r0 = None
         for rep in range(spec.replicates):
             tag = f"{tag_of(loc)}_r{rep}"
             d = workroot / tag
@@ -1187,24 +1300,42 @@ def prepare(spec, workroot: Path) -> list:
                                               newline="\n", encoding="utf-8")
             else:
                 write_exp(s, d / f"{sfx}.exp")
-            # Windows only until the conf decision for production: bng_env
-            # (BNGPATH pinned) and the ANSI read. The bare perl is the
-            # native one there: the preflight's resolve_perl put its folder
-            # first on this process's PATH. macOS and Linux run BNG2.pl
-            # exactly as before.
-            nt = os.name == "nt"
-            try:
-                r = subprocess.run(
-                    ["perl", BNG, "m.bngl"], capture_output=True,
-                    cwd=str(d), timeout=300,
-                    **bng_run_kwargs(bng_env(BNG) if nt else None))
-            except FileNotFoundError:
-                # perl vanished since preflight, or which() disagreed
-                raise RuntimeError(perl_missing_message())
-            if not (d / "m.net").is_file():
-                # stderr's head first: the record keeps 200 characters
-                raise RuntimeError(f"netgen failed for {loc}: "
-                                   f"{bng_failure_text(r, sep=' | ')}")
+            # BNG2.pl runs for replicate 0. A later replicate whose files
+            # equal replicate 0's, byte for byte, gets copies of the files
+            # BNG2.pl added there: the same bytes it would write again.
+            # Any difference runs BNG2.pl, as for replicate 0, and so does
+            # an OSError while reading or copying (_cell_files, _copy_added).
+            mine = _cell_files(d)
+            tried = (rep > 0 and r0 is not None and mine is not None
+                     and mine == r0[0])
+            reused = tried and _copy_added(r0, d)
+            if not (reused and (d / "m.net").is_file()):
+                if tried:
+                    # what a failed copy could not remove then: again now
+                    _drop_copies(r0, d, mine)
+                # Windows only until the conf decision for production:
+                # bng_env (BNGPATH pinned) and the ANSI read. The bare perl
+                # is the native one there: the preflight's resolve_perl put
+                # its folder first on this process's PATH. macOS and Linux
+                # run BNG2.pl exactly as before.
+                nt = os.name == "nt"
+                try:
+                    r = subprocess.run(
+                        ["perl", BNG, "m.bngl"], capture_output=True,
+                        cwd=str(d), timeout=300,
+                        **bng_run_kwargs(bng_env(BNG) if nt else None))
+                except FileNotFoundError:
+                    # perl vanished since preflight, or which() disagreed
+                    raise RuntimeError(perl_missing_message())
+                if not (d / "m.net").is_file():
+                    # stderr's head first: the record keeps 200 characters
+                    raise RuntimeError(f"netgen failed for {loc}: "
+                                       f"{bng_failure_text(r, sep=' | ')}")
+                if tried:
+                    # a part file still held before BNG2.pl: once more
+                    _drop_copies(r0, d, mine, part_only=True)
+                if rep == 0:
+                    r0 = _netgen_added(d, mine)
             seed = derive_seed(loc, seed_date_for(spec), rep)
             cont = continuation_for(spec, d, tag)
             # conf: newline="\n" (line-based reader); every path via
@@ -1392,8 +1523,150 @@ _CREATE_NEW_PROCESS_GROUP = 0x00000200
 #: Launched-runner registry ({pid: {pgid, runner}}), beside app.pid. A
 #: takeover kills the server without the supervisors' finally blocks, so the
 #: next launch sweeps orphaned runners from here (flubnf/cli.py::
-#: _sweep_runner_groups reads this format and must agree with it).
+#: _sweep_runner_groups reads this format and must agree with it). It stays
+#: with this checkout's app.pid, not in the state folder: a launch sweeps
+#: every runner it lists, so one registry shared by two checkouts on one
+#: FLUBNF_STATE_DIR would let one console's launch end the other's live
+#: fits. Which runners use the state folder's cache is codegen_holders_file.
 RUNNER_PIDS_FILE = REPO / "app" / "state" / "pf_runners.json"
+
+#: where bngsim keeps the right-hand sides it compiles (bngsim/_codegen.py
+#: reads it once, at import)
+CODEGEN_CACHE_ENV = "BNGSIM_CODEGEN_CACHE_DIR"
+#: any non-empty value turns bngsim's code generation off ("0" included)
+NO_CODEGEN_ENV = "BNGSIM_NO_CODEGEN"
+#: bngsim's own cache folder, used when CODEGEN_CACHE_ENV is unset or blank;
+#: named in words only: FluBNF never sizes, clears or moves it
+BNGSIM_OWN_CACHE = "~/.cache/bngsim/codegen"
+#: the runners' cache folder could not be written at a launch: {"folder",
+#: "why", "utc"}, in the state folder, removed by the next launch that can
+#: write it (_note_codegen_problem); Storage says it (codegen_cache_warning)
+CODEGEN_PROBLEM_NAME = "engine-cache-problem.json"
+#: the runners using the state folder's cache, beside it (codegen_holders_file)
+CODEGEN_HOLDERS_NAME = "runners.json"
+
+
+def codegen_cache_dir() -> Path:
+    """The runners' bngsim compiled-model cache: <state folder>/engine-cache/
+    bngsim-codegen, the state folder being app.core.runs.APP_STATE (which
+    FLUBNF_STATE_DIR moves), read at call time. Absolute, since a public
+    engine's cell runs in its own folder. Left to bngsim, the cache sits
+    in ~/.cache/bngsim/codegen and grows without bound: a library for every
+    .net it fits, and every location-week's .net differs (its N and i0).
+    Here, Storage shows it and Reclaim clears it (app/core/reclaim.py). The
+    same .net gives the same library, so the cache decides compile time
+    only, never a number."""
+    from app.core import runs
+    return Path(os.path.abspath(runs.APP_STATE)) / "engine-cache" / "bngsim-codegen"
+
+
+def codegen_holders_file() -> Path:
+    """Every engine runner launched with the state folder's cache, whichever
+    checkout or process launched it: <state folder>/engine-cache/runners.json,
+    RUNNER_PIDS_FILE's form, written beside every runner registry by
+    record_runner_pids. Two checkouts on one FLUBNF_STATE_DIR share it, so
+    reclaim sees the other's runners before it clears the cache they
+    compile into. Never swept: a launch sweeps only its own registry."""
+    return codegen_cache_dir().parent / CODEGEN_HOLDERS_NAME
+
+
+def codegen_cache_problem(folder: Path | None = None) -> str:
+    """Why the runners' cache folder (codegen_cache_dir by default) cannot
+    be written, "" when it can. The folder is made with its parents, then a
+    file is written in it and removed: a folder of another account, a
+    read-only one, a full disk or a link to nowhere each answer here in
+    their own words. Left to bngsim, each would turn every fit to its
+    interpreted right-hand side (about 1e-12 from the compiled one) with no
+    word."""
+    d = Path(folder) if folder is not None else codegen_cache_dir()
+    try:
+        d.mkdir(parents=True, exist_ok=True)
+        fd, probe = tempfile.mkstemp(prefix=".flubnf-write-test-", dir=str(d))
+        try:
+            os.write(fd, b"0")
+        finally:
+            os.close(fd)
+            os.unlink(probe)
+    except OSError as e:
+        return f"{type(e).__name__}: {e.strerror or e}"
+    return ""
+
+
+def codegen_problem_words(folder, why: str) -> str:
+    """The plain sentence for a cache folder the runners could not write."""
+    return (f"FluBNF could not write the engine cache folder {folder} "
+            f"({why}), so the engine keeps its compiled models in bngsim's "
+            f"own folder, {BNGSIM_OWN_CACHE}, which Storage does not list or "
+            "clear. Make the folder writable, or free space on its disk, and "
+            "the next fit uses it again.")
+
+
+def _codegen_problem_file() -> Path:
+    from app.core import runs
+    return Path(os.path.abspath(runs.APP_STATE)) / CODEGEN_PROBLEM_NAME
+
+
+#: the word this process last said on its error output (_note_codegen_problem):
+#: once per word, also where the state folder takes no file to remember it by
+_CODEGEN_SAID: dict = {}
+
+
+def _note_codegen_problem(folder: Path, why: str) -> None:
+    """Keep the runners' word on their cache folder for Storage (`why`; ""
+    drops it): CODEGEN_PROBLEM_NAME in the state folder, written when it
+    changes, and said then on this process's error output, the console's
+    own window. Said first, then written: a state folder that takes no file
+    (read-only, full) still has it said, once in this process
+    (_CODEGEN_SAID). Never fatal."""
+    f = _codegen_problem_file()
+    if not why:
+        _CODEGEN_SAID.clear()
+        try:
+            if f.is_file():
+                f.unlink()
+        except Exception:
+            pass
+        return
+    word = {"folder": str(folder), "why": why}
+    try:
+        old = json.loads(f.read_text(encoding="utf-8"))
+    except Exception:
+        old = {}
+    if (isinstance(old, dict) and old.get("folder") == word["folder"]
+            and old.get("why") == why):
+        return                                    # said and kept already
+    if _CODEGEN_SAID != word:
+        try:
+            print(codegen_problem_words(folder, why), file=sys.stderr,
+                  flush=True)
+        except Exception:
+            pass
+        _CODEGEN_SAID.clear()
+        _CODEGEN_SAID.update(word)
+    try:
+        _write_registry(f, {**word,
+                            "utc": time.strftime("%Y-%m-%dT%H:%M:%SZ",
+                                                 time.gmtime())})
+    except Exception:
+        pass
+
+
+def codegen_cache_warning() -> str:
+    """What Storage says when a runner's launch could not write the cache
+    folder (the word _note_codegen_problem kept), "" otherwise, and ""
+    while this process's environment names a folder of its own in
+    BNGSIM_CODEGEN_CACHE_DIR: its runners never use the cache folder then
+    (runner_popen_kwargs), so a word kept from before is not theirs."""
+    if str(os.environ.get(CODEGEN_CACHE_ENV) or "").strip():
+        return ""
+    try:
+        rec = json.loads(_codegen_problem_file().read_text(encoding="utf-8"))
+    except (OSError, ValueError):
+        return ""
+    if not isinstance(rec, dict) or not rec.get("why"):
+        return ""
+    return codegen_problem_words(rec.get("folder") or codegen_cache_dir(),
+                                 str(rec["why"]))
 
 
 def runner_popen_kwargs(base: dict | None = None,
@@ -1403,15 +1676,23 @@ def runner_popen_kwargs(base: dict | None = None,
     (session on POSIX): the address a takeover sweep can still signal once
     the supervisor died. The live cancel path uses _signal_tree instead.
 
-    And the runner's environment: `env` when given (the Sandbox passes
-    settings.bng_env()); else, on Windows only, bng_env(), since the engine
-    runs a bare `perl` and BNG2.pl itself (retro's runners come through
-    here too). On Windows it also turns bngsim's code generation off
-    (BNGSIM_NO_CODEGEN=1, unless already set). macOS and Linux runners
-    inherit this process's environment, as before. `_os_name` is
-    injectable for tests."""
+    And the runner's environment, always a copy: of `env` when given (the
+    Sandbox passes settings.bng_env()); else, on Windows, of bng_env(),
+    since the engine runs a bare `perl` and BNG2.pl itself (retro's runners
+    come through here too); else of this process's. On every platform it
+    points bngsim's compiled-model cache at codegen_cache_dir(), unless
+    BNGSIM_CODEGEN_CACHE_DIR already holds a folder (then nothing is said
+    or kept for this launch, and a word kept on ours from an earlier launch
+    stays, for the launches that still use it). While bngsim compiles
+    (BNGSIM_NO_CODEGEN empty), that folder is made and written to first
+    (codegen_cache_problem); one that cannot be written leaves the runner
+    to bngsim's own folder, and the reason is kept for Storage and said on
+    this process's error output (_note_codegen_problem). On Windows it also
+    turns bngsim's code generation off (BNGSIM_NO_CODEGEN=1, unless already
+    set). `_os_name` is injectable for tests."""
     kw = dict(base or {})
-    if (_os_name or os.name) == "posix":
+    nt = (_os_name or os.name) != "posix"
+    if not nt:
         kw["start_new_session"] = True
     else:
         kw["creationflags"] = (int(kw.get("creationflags", 0))
@@ -1419,6 +1700,8 @@ def runner_popen_kwargs(base: dict | None = None,
         if env is None:
             from flubnf.settings import BNG
             env = bng_env(BNG)
+    env = dict(os.environ if env is None else env)      # the caller's untouched
+    if nt:
         # bngsim compiles each model's right-hand side with a C compiler it
         # finds on PATH. A student's PC has none, and bngsim's fallback then
         # warns "No C compiler found. Install Visual Studio Build Tools",
@@ -1428,10 +1711,28 @@ def runner_popen_kwargs(base: dict | None = None,
         # cache. The interpreted right-hand side gives the same fit to about
         # 1e-12, about 15% slower on a full fit. Any non-empty value turns
         # code generation off, "0" included.
-        env = dict(os.environ if env is None else env)
         env.setdefault("BNGSIM_NO_CODEGEN", "1")
-    if env is not None:
-        kw["env"] = env
+    # bngsim reads a blank value as unset (its ~/.cache), so a blank one is
+    # filled too; a folder someone chose stays theirs. Ours must take a
+    # write while bngsim compiles: one that cannot would turn every fit to
+    # the interpreted right-hand side with no word, so the runner keeps
+    # bngsim's own folder (compiled, as before the cache moved) and the
+    # reason is said instead.
+    d = codegen_cache_dir()
+    if not str(env.get(CODEGEN_CACHE_ENV) or "").strip():
+        why = "" if env.get(NO_CODEGEN_ENV) else codegen_cache_problem(d)
+        if why:
+            env.pop(CODEGEN_CACHE_ENV, None)
+        else:
+            env[CODEGEN_CACHE_ENV] = str(d)
+        _note_codegen_problem(d, why)
+    # else a folder someone set: neither made nor tested, and nothing said
+    # or kept for this launch. A word kept on ours stays: it is one per
+    # state folder, and the console beside it (a terminal replay exported
+    # the variable, say) still launches with ours (review of #93 at
+    # d5a7eb16, finding 4); codegen_cache_warning leaves it out where the
+    # environment names a folder of its own
+    kw["env"] = env
     return kw
 
 
@@ -1441,20 +1742,139 @@ def _write_registry(path: Path, reg: dict) -> None:
     replace_file(tmp, path)
 
 
+#: one registry read-and-rewrite at a time in this process (_registry_lock)
+_REGISTRY_LOCK = threading.Lock()
+#: how long an update waits for another process's (each holds it for
+#: milliseconds), before it goes ahead unlocked
+REGISTRY_LOCK_WAIT_S = 5.0
+#: what a lock another process holds is answered with: flock's EWOULDBLOCK
+#: (EAGAIN on some systems), msvcrt.locking's EACCES. Any other error is the
+#: volume refusing locks (ENOLCK or ENOTSUP on some network mounts), which
+#: no wait cures
+_LOCK_HELD_ERRNOS = frozenset({errno.EWOULDBLOCK, errno.EAGAIN,
+                               errno.EACCES})
+
+
+def _lock_file(fd: int, wait: float) -> bool:
+    """An exclusive advisory lock on an open file, waiting up to `wait`
+    seconds while another process holds it: flock on POSIX, msvcrt.locking
+    on Windows. False when it could not be had in that time, at once when
+    the volume refuses locks (an error other than _LOCK_HELD_ERRNOS), or
+    when this system has neither."""
+    try:
+        import fcntl
+
+        def take():
+            fcntl.flock(fd, fcntl.LOCK_EX | fcntl.LOCK_NB)
+    except ImportError:
+        try:
+            import msvcrt
+        except ImportError:
+            return False
+
+        def take():
+            os.lseek(fd, 0, os.SEEK_SET)
+            msvcrt.locking(fd, msvcrt.LK_NBLCK, 1)
+    deadline = time.monotonic() + wait
+    while True:
+        try:
+            take()
+            return True
+        except OSError as e:
+            if e.errno not in _LOCK_HELD_ERRNOS:
+                return False                 # refused, not held: no wait
+            if time.monotonic() >= deadline:
+                return False
+            time.sleep(0.02)
+
+
+def _unlock_file(fd: int) -> None:
+    try:
+        import fcntl
+        fcntl.flock(fd, fcntl.LOCK_UN)
+    except ImportError:
+        try:
+            import msvcrt
+            os.lseek(fd, 0, os.SEEK_SET)
+            msvcrt.locking(fd, msvcrt.LK_UNLCK, 1)
+        except (ImportError, OSError):
+            pass
+    except OSError:
+        pass
+
+
+@contextmanager
+def _registry_lock(path: Path):
+    """One runner registry held while it is read and written back, so two
+    updates never interleave and lose one: this process's threads through
+    _REGISTRY_LOCK, other processes (a second console, a terminal replay,
+    the students' runner, another checkout) through an advisory lock on
+    <registry>.lock beside it, which the system drops if its holder dies.
+    A lock file that cannot be opened, a volume that refuses the lock (at
+    once), or a wait past REGISTRY_LOCK_WAIT_S goes ahead unlocked:
+    recording a runner never fails or holds a run."""
+    with _REGISTRY_LOCK:
+        try:
+            fd = os.open(str(path) + ".lock", os.O_RDWR | os.O_CREAT, 0o644)
+        except OSError:
+            fd = None
+        held = fd is not None and _lock_file(fd, REGISTRY_LOCK_WAIT_S)
+        try:
+            yield
+        finally:
+            if fd is not None:
+                if held:
+                    _unlock_file(fd)
+                os.close(fd)
+
+
+def _update_registry(path: Path, change, create: bool = True) -> None:
+    """Read one registry, change(reg) it and write it back, all under its
+    lock. With create=False a registry that is missing or unreadable is
+    left as it is."""
+    path = Path(path)
+    if create:
+        path.parent.mkdir(parents=True, exist_ok=True)
+    with _registry_lock(path):
+        try:
+            reg = json.loads(path.read_text(encoding="utf-8"))
+        except (OSError, ValueError):
+            if not create:
+                return
+            reg = {}
+        if not isinstance(reg, dict):
+            if not create:
+                return
+            reg = {}
+        change(reg)
+        _write_registry(path, reg)
+
+
+def _drop_dead(reg: dict) -> None:
+    """Remove entries whose process is gone: a holder left by a run killed
+    before it unrecorded (a takeover, a closed window)."""
+    try:
+        from flubnf.cli import _pid_alive
+    except Exception:
+        return
+    for pid_s in list(reg):
+        try:
+            alive = _pid_alive(int(pid_s))
+        except (TypeError, ValueError):
+            alive = False
+        if not alive:
+            reg.pop(pid_s, None)
+
+
 def record_runner_pids(procs, path: Path | None = None) -> None:
     """Add runners to the takeover registry: pid, pgid (== pid on POSIX,
     None on Windows) and the runner script, which the sweep matches against
     the live command line so a recycled pid is never signalled. Merged with
-    concurrent runs' entries. Never fatal."""
+    concurrent runs' entries, under the registry's lock (_registry_lock).
+    And the same entries to the cache's holders (codegen_holders_file),
+    whose dead entries go first. Never fatal."""
+    entries = {}
     try:
-        path = Path(path) if path else RUNNER_PIDS_FILE
-        path.parent.mkdir(parents=True, exist_ok=True)
-        try:
-            reg = json.loads(path.read_text(encoding="utf-8"))
-        except Exception:
-            reg = {}
-        if not isinstance(reg, dict):
-            reg = {}
         for p in procs:
             pid = getattr(p, "pid", None)
             if not pid:
@@ -1467,26 +1887,41 @@ def record_runner_pids(procs, path: Path | None = None) -> None:
                                if str(a).endswith(".py")), "")
             except Exception:
                 pass
-            reg[str(pid)] = {"pgid": pid if os.name == "posix" else None,
-                             "runner": runner}
-        _write_registry(path, reg)
+            entries[str(pid)] = {"pgid": pid if os.name == "posix" else None,
+                                 "runner": runner}
+    except Exception:
+        return
+    try:
+        _update_registry(Path(path) if path else RUNNER_PIDS_FILE,
+                         lambda reg: reg.update(entries))
     except Exception:
         pass
+    if entries:
+        try:
+            _update_registry(codegen_holders_file(),
+                             lambda reg: (_drop_dead(reg),
+                                          reg.update(entries)))
+        except Exception:
+            pass
 
 
 def unrecord_runner_pids(procs, path: Path | None = None) -> None:
-    """Drop finished runners from the registry (their pids may be recycled);
-    other runs' entries stay. Never fatal."""
+    """Drop finished runners from the registry and from the cache's holders
+    (their pids may be recycled); other runs' entries stay. Never fatal."""
     try:
-        path = Path(path) if path else RUNNER_PIDS_FILE
-        reg = json.loads(path.read_text(encoding="utf-8"))
-        if not isinstance(reg, dict):
-            return
-        for p in procs:
-            reg.pop(str(getattr(p, "pid", "")), None)
-        _write_registry(path, reg)
+        pids = [str(getattr(p, "pid", "")) for p in procs]
     except Exception:
-        pass
+        return
+
+    def drop(reg):
+        for pid in pids:
+            reg.pop(pid, None)
+    for reg_path in ((Path(path) if path else RUNNER_PIDS_FILE),
+                     codegen_holders_file()):
+        try:
+            _update_registry(reg_path, drop, create=False)
+        except Exception:
+            pass
 
 
 def shard_width(width: int | None = None) -> int:
@@ -1671,6 +2106,58 @@ def _over_budget(status_files: list, n_cells: int, shards: list,
             f"sharding ({WIDTH_ENV}); otherwise suspect the engine venv.")
 
 
+#: what execute() writes beside pf_status.json: how long each cell took in
+#: its runner, with what the cost model reads, so cell_seconds can be
+#: refitted on each machine and engine. A record of time only: nothing
+#: reads it back.
+TIMING_NAME = "pf_timing.json"
+
+
+def _write_timing(workroot: Path, shards: list, status_files: list,
+                  public: bool, width, wall: float) -> None:
+    """Write TIMING_NAME from the runners' per-cell seconds (each shard's
+    <status>.secs.prog): every cell a runner finished, with its shard, its
+    n_obs, weeks_dropped and particles, and the grid's engine, width
+    (shard_width of the caller's), cores, wall clock and predicted seconds.
+    Never fatal: a run never fails here."""
+    try:
+        engine = "public" if public else "private"
+        width = shard_width(width)
+        cells = {}
+        for i, (shard, sf) in enumerate(zip(shards, status_files)):
+            try:
+                got = json.loads(Path(str(sf) + ".secs.prog")
+                                 .read_text(encoding="utf-8"))
+            except (OSError, ValueError):
+                got = {}
+            if not isinstance(got, dict):
+                got = {}
+            for c in shard:
+                s = got.get(c["key"])
+                if isinstance(s, bool) or not isinstance(s, (int, float)):
+                    continue
+                cells[c["key"]] = {
+                    "seconds": float(s), "shard": i,
+                    "n_obs": int(c.get("n_obs") or 0),
+                    "weeks_dropped": int(c.get("weeks_dropped") or 0),
+                    "particles": int(c.get("particles")
+                                     or COST_REFERENCE_PARTICLES)}
+        predicted = max((sum(cell_seconds(c, engine) for c in s)
+                         for s in shards), default=0.0)
+        rec = {"engine": engine, "width": int(width), "shards": len(shards),
+               "cpus": os.cpu_count(), "platform": sys.platform,
+               "cells_planned": sum(len(s) for s in shards),
+               "seconds": round(float(wall), 3),
+               "predicted_seconds": round(predicted, 3),
+               "cells": cells}
+        out = Path(workroot) / TIMING_NAME
+        tmp = out.parent / (out.name + ".tmp")
+        tmp.write_text(json.dumps(rec), encoding="utf-8")
+        replace_file(tmp, out)
+    except Exception:
+        pass
+
+
 def execute(workroot: Path, timeout: float | None = None,
             width: int | None = None, env: dict | None = None) -> dict:
     """Run the prepared cells sharded across low-priority runner
@@ -1682,7 +2169,13 @@ def execute(workroot: Path, timeout: float | None = None,
     quoting that shard's stderr; no status at all raises with the stderr.
     `timeout` defaults to budget_seconds(); `width` to shard_width() (env
     override, else DEFAULT_SHARD_WIDTH); `env` is the runners'
-    environment (runner_popen_kwargs says what None means).
+    environment (runner_popen_kwargs says what None means). Once every
+    runner is reaped, the seconds each finished cell took go to
+    pf_timing.json (_write_timing), however the grid ended. A runner
+    writes a cell's seconds just after the cell ends, and once STOP is
+    seen here the runners are ended where they are: a cell that finished
+    just before the STOP, before its runner wrote its seconds, has no
+    seconds there.
     """
     workroot = Path(workroot)
     out_json = workroot / "pf_status.json"
@@ -1713,6 +2206,7 @@ def execute(workroot: Path, timeout: float | None = None,
     # each Popen is still the real runner. See app/core/proc.py.
     from app.core.proc import low_priority_cmd, low_priority_popen_kwargs
     procs, status_files, err_files, handles = [], [], [], []
+    t_wall = time.monotonic()
     try:
         for i, shard in enumerate(shards):
             sj = workroot / f"pf_cells_{i}.json"
@@ -1759,6 +2253,9 @@ def execute(workroot: Path, timeout: float | None = None,
                 fh.close()
             except Exception:
                 pass
+        if procs:
+            _write_timing(workroot, shards, status_files, public, width,
+                          time.monotonic() - t_wall)
     if stop.exists():
         # STOP landed before the first poll or after the last runner exited:
         # still a stop, never a status that reads like a finished grid
@@ -1848,6 +2345,18 @@ def _save_cloud(workroot: Path, c: dict) -> None:
     rec.write_text(json.dumps(cur, sort_keys=True), encoding="utf-8")
 
 
+def _read_trajectory(path: Path):
+    """One private-engine trajectory as np.genfromtxt reads it. np.loadtxt
+    reads a well-formed file to the same array, bit for bit, in about half
+    the time; anything it refuses (a token that is not a number, a ragged
+    row) goes to np.genfromtxt, whose array or error stands as before."""
+    import numpy as np
+    try:
+        return np.loadtxt(path)
+    except Exception:
+        return np.genfromtxt(path)
+
+
 def collect(workroot: Path) -> dict:
     """Forecast samples per location: replicate-pooled, anchored at origin.
 
@@ -1858,7 +2367,6 @@ def collect(workroot: Path) -> dict:
     Each cell is read by what it holds: the public engine's Results/LWF
     tables (lwf.cell_blocks) or the private engine's trajectory, anchored
     alike (_pool)."""
-    import numpy as np
     from app.core.engines import lwf
     cells = json.loads((workroot / "cells.json").read_text(encoding="utf-8"))
     status = _cell_statuses(workroot)
@@ -1882,7 +2390,7 @@ def collect(workroot: Path) -> dict:
         if not tr_files:
             continue
         try:
-            tr = np.genfromtxt(tr_files[0])
+            tr = _read_trajectory(tr_files[0])
         except Exception as e:
             _record_collect_failure(
                 workroot, c["key"],

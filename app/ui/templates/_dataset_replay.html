@@ -35,7 +35,7 @@
    <summary>Upload another</summary>
    {{ dsup.box("replay") }}
   </details>
-  <form method="post" action="/retro/dataset/run" id="dsr-form">
+  <form method="post" action="/retro/dataset/run" id="dsr-form"{{ d.est | xmlattr }}>
    <input type="hidden" name="dataset" value="{{ d.id }}">
    {# what each replayed week sees, as a badge: vintage-true, or the final
       series (optimistic scores); the why in its tip #}
@@ -68,8 +68,19 @@
     (function(){ var ms=document.getElementById('dsr-model-settings');
       if(ms) ms.dataset.kind = {{ d.kind | tojson }}; })();
    </script>
+   {# beside Replay, read only: the weeks of the range whose Groundhog
+      donors suffice (it stays on: a week without them ends "no
+      forecast"), and how long the replay takes; both follow the form
+      (static/dataset_replay.js), hidden with nothing to say #}
+   <div class="rt-under" id="dsr-facts">
+    <span id="dsr-donor-line"{% if not d.donor_text %} hidden{% endif %}>{{ tips.badge(d.donor_state or "neutral", d.donor_text, id="dsr-donors") }}</span>
+    <div id="dsr-est"{% if not d.est_text %} hidden{% endif %}>{{ tips.meta([("clock", d.est_text, "Time")], label="Replay time") }}</div>
+   </div>
+   <script type="application/json" id="dsr-donor-data">{{ d.donors_json | safe }}</script>
    <button class="gold" data-guard="console-run">Replay</button>
   </form>
+  {# estimate.js (FluBNFEstimate) is in retro.html's head, on both tabs #}
+  <script src="/static/dataset_replay.js" defer></script>
  </div></div>
  <div><div class="card dsr-replays">
   {# the tab's one explainer: what a replay does, what the data badge

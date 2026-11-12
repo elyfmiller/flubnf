@@ -119,6 +119,9 @@ def _start_background_warm() -> None:
             pass
         state._trace(
             f"warm: forecast done at +{time.perf_counter() - t0:.2f}s")
+        # last: the Sandbox page compiled and the machine probes its first
+        # model page would wait for started (never under pytest)
+        sandbox_routes._sandbox_warm()
 
     threading.Thread(target=_warm, daemon=True,
                      name="flubnf-startup-warm").start()

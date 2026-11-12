@@ -15,7 +15,7 @@ One line per module, with the role tag its docstring opens with and its main cal
 | Module | Tag | Role | Main callers |
 |---|---|---|---|
 | `retro.py` | PRODUCTION | season replay engine: calendar, sample store, run record, fit-level runner, scoring, finalize, archives; an experiment's frozen weeks (`run_season(weeks=)`) | server Retrospective tab, `flubnf retro`, `experiments` |
-| `retro_store.py` | PRODUCTION | the replay samples store and quantile sidecars (re-exported by `retro`) | `retro`, `playback`, `replay_bundle` |
+| `retro_store.py` | PRODUCTION | the replay samples store and quantile sidecars (re-exported by `retro`); the shared, locked LRU of parsed scores.json frames (`scores_frame`); `write_json_text`, the one-encode record writer; `writing_into`, around every cache write into a season tree: nothing is written into a tree the console's delete or move holds (`app/ui/retro_prep._writing_into`), and a writer with nothing to give without its write (the season report, the national aggregate) raises `TreeBusy` | `retro`, `playback`, `report_season`, `us_national`, `replay_bundle`, `oracle`, `app/ui/retro_prep`, `app/ui/season_export` |
 | `retro_settings.py` | PRODUCTION | engine presets, floor record values, the resume-mismatch rules and the settings summary (re-exported by `retro`) | `retro`, server Retrospective tab |
 | `retro_archive.py` | PRODUCTION | archived runs: stamps, archive folders, sizes, delete (re-exported by `retro`) | `retro`, server Retrospective and Storage tabs |
 | `runs.py` | PRODUCTION | run ledger, workroot leasing, seeds, run-display helpers | server, engines, `retro` |
@@ -31,6 +31,7 @@ One line per module, with the role tag its docstring opens with and its main cal
 | `reclaim.py` | PRODUCTION | storage-reclaim policy | server Storage tab, `retro` |
 | `ensemble.py` | PRODUCTION | samples to the 23 quantiles (blends nothing, despite the name) | `retro`, `playback`, server |
 | `proc.py` | PRODUCTION | reduced-priority subprocess helpers | `engines/pf.py`, retro runners |
+| `estimates.py` | PRODUCTION | how long a run takes before it starts: the engine's cost model (`pf.cell_seconds`) over the weeks, ⌈fits/width⌉ waves a week (the width never above this computer's default, `pf.DEFAULT_SHARD_WIDTH`: `priced_width`), as a span (`sandbox.ETA_FIRST_SPAN` times the model before this computer has a ratio; its 1x end leaves out prepare, the Oracle step and the Groundhog) and in words (nothing for a figure too large to say); `page_params` gives a form's `data-est-*` attributes, which `static/estimate.js` reads to recompute in the browser | server Forecast, Retrospective and own-data Replay forms |
 | `ttlcache.py` | PRODUCTION | short TTL cache for repeated filesystem scans | server |
 
 ## Scoring

@@ -1,5 +1,6 @@
 {% extends "base.html" %}{% block title %}FluBNF · Retrospective{% endblock %}
 {% block head %}<script src="/static/quips.js"></script>
+<script src="/static/estimate.js"></script>
 <script src="/static/retro_progress.js"></script>
 <link rel="stylesheet" href="/static/tabs/retro.css">{% endblock %}
 {% block content %}{% import "_tips.html" as tips %}
@@ -45,7 +46,13 @@
 {% set form = form | default({}) %}
 <div class="cols rt-cols">
  <div class="rt-forms"><div class="card rt-runcard"><h2>Settings</h2>
-  <form method="post" action="/retro/run">
+  {# the Oracle preset's option says what it costs: the engine's cost model
+     (estimates.page_params, read by static/estimate.js), each season's
+     weeks (only the weeks left when a resume would run them) and this
+     computer's recorded pace; retro_progress.js FluBNFRetroCost redoes
+     the words on every change #}
+  <form method="post" action="/retro/run" id="rt-run-form"{{ est | default({}) | xmlattr }}
+    data-rt-costs='{{ rt_costs | default({}) | tojson }}'{% if rt_ratio %} data-rt-ratio="{{ rt_ratio }}"{% endif %}>
    <label for="rt-season">Season</label>
    {# the form as last posted (routes/retro._last_retro_form), so a
       refusal or a run never resets a choice #}
@@ -53,7 +60,7 @@
    {# the options say what each choice costs and does: no "?" per label #}
    <label for="retro-scope">Location scope</label>
    <select name="locations" id="retro-scope">
-     <option value="panel6">6-state panel (fast)</option>
+     <option value="panel6" data-n="{{ panel6_n | default(6) }}">{{ panel6_label | default("6-state panel") }}</option>
      <option value="all"{% if form.locations == "all" %} selected{% endif %}>all 52 jurisdictions</option>
      <option value="custom"{% if form.locations == "custom" %} selected{% endif %}>custom selection</option></select>
    <div class="checklist" id="retro-custom"{% if form.locations != "custom" %} style="display:none"{% endif %}>
@@ -73,11 +80,12 @@
    <label for="rt-width-in">Shard width</label>
    <span class="uk-affix"><input type="number" name="width" value="{{ form.width or default_width }}" id="rt-width-in" min="1" max="{{ width_cap }}"><span>runners</span></span>
    <label for="retro-engine">Engine preset</label>
-   {# "pf" (internal key) = Oracle SIHRS + Groundhog: hours, needs the engine
-      venv. "analogue" = Groundhog alone: minutes, no engine, reproduces its
-      published numbers anywhere #}
+   {# "pf" (internal key) = Oracle SIHRS + Groundhog: its cost from the
+      cost model (pf_cost; none for a season with no hub weeks), needs the
+      engine venv. "analogue" = Groundhog alone: minutes, no engine,
+      reproduces its published numbers anywhere #}
    <select name="engine" id="retro-engine">
-     <option value="pf">Oracle SIHRS + Groundhog (hours)</option>
+     <option value="pf" data-base="Oracle SIHRS + Groundhog">Oracle SIHRS + Groundhog{{ (" (" ~ pf_cost ~ ")") if pf_cost }}</option>
      <option value="analogue"{% if form.engine == "analogue" or (not engine_ok and form.engine != "pf") %} selected{% endif %}>Groundhog only (minutes)</option></select>
    {# the Groundhog's zero-anchor rule (app/core/missing.py): a data
       decision with no default, asked here rather than in the panel; a
@@ -132,6 +140,9 @@
      s.addEventListener('change',function(){
        c.style.display=(s.value==='custom')?'':'none';});
    })();
+   // the Oracle preset's cost, redone on every change of the form
+   if(window.FluBNFRetroCost)
+     FluBNFRetroCost.bind(document.getElementById('rt-run-form'));
   </script>
  </div>
  {# a replay bundle from another machine (a season page's Export replay):
@@ -154,6 +165,9 @@
   </form>
  </div></div>
  <div class="rt-seasons">
+  {# a fresh install: nothing replayed, running, kept or imported here yet.
+     The measured record (the figures Home quotes) is on Methods #}
+  {% if no_replays %}<div class="card rt-emptycard">{{ tips.empty("No replays on this computer yet", "refresh", action='<a class="btn quiet" href="/methods#performance">See the measured record</a>' | safe, id="rt-empty") }}</div>{% endif %}
   {% for s in seasons %}
   <div class="card season-card" data-season="{{ s.name }}"
        data-status="{{ s.status }}" data-active="{{ 1 if s.active else 0 }}"
