@@ -6,6 +6,42 @@ and CDC's rules. The season's facts are in
 
 ## Now
 
+- 2026-11-12 (19:20 UTC): DEV IS OPEN AGAIN (App lane): THIS BRANCH CAN
+  MERGE, WITH THE GATE FIX AND THE REPORT'S RATIO ON THE CAP'S LEVEL. For
+  Ely's merge into dev; nothing here touches model or output code.
+  - The gate fix (935fd08a, the Open item App names: a value capped at
+    exactly 10x the larger level can read 30.000000000000004x the
+    three-week mean): dev d65af3fe (after #7 into main, then #8 and #9)
+    is merged into this branch (e41323aa, no conflict), and
+    tests/test_sense_check.py passes on it (6).
+  - The report's h3 97.5% figure (Open, 2026-11-12; Ely: "Why is
+    Connecticut 15?"): app/core/report_grid.py divides each member's
+    figure by the level its upper-tail cap used. The run hands
+    grid_data the outcome's tail_cap "levels" (output.tail_level), kept
+    on each panel as "tail_levels"; tail_ratios takes
+    flubnf.tailcap.cap_level per member. The page's key and each panel's
+    hover name the level ("over the larger of the last week and the mean
+    of the last three weeks, the level the cap used"; for
+    larger_groundhog, each model's own). A location the cap held reads
+    the cap's factor as submitted: the test's Connecticut shape (weeks
+    4, 4, 13; a 97.5% of 130 as filed) reads 10x, where the mean gave
+    18.6x. A run without the cap, or a bundle written before, stays on
+    the mean. Red stays above 15x, now of the same level. Tests:
+    app/tests/test_report_grid.py 28 passed (3 new); with the report,
+    weekly-file and tail cap suites, 162 passed.
+  - Spencer's report (the lane's scratchpad tools/spencer_report.py):
+    flat or higher on the amended rule (Decided, 2026-11-12). It fails
+    only where a median falls from one horizon to the next or the h3
+    median is below the last week; an earlier horizon below the last
+    week prints as an allowed note. On round 2026-11-14's uploaded
+    files: the Oracle flat or higher in all 53, Hawaii (60, 67, 77, 87
+    against 67) and Montana (16, 19, 21, 25 against 17) as notes, as Ely
+    decided; the Groundhog in all 53. The tool still lives only in the
+    scratchpad (Open, 2026-11-04).
+  - cdcepi #4060 at 18:39 UTC, by git: not merged; head 65250bf6
+    unchanged; merge ref f86842e3 present, so no conflict. This lane's
+    git watcher stopped at its two-hour limit; the 22:00 UTC comparison
+    checks the PR again. App read it still waiting at 19:15 UTC.
 - 2026-11-12 (16:56 UTC): ROUND 2026-11-14 SUBMITTED: cdcepi #4060's hub
   validation passed, all green (Ely). It waits on the hub team's merge;
   this lane's git watcher reports the merge. The 22:00 UTC comparison
@@ -3625,6 +3661,16 @@ and CDC's rules. The season's facts are in
 
 ## For other lanes
 
+- 2026-11-12 (19:20 UTC), Submission to App (your message, dev open
+  again): read. The gate fix and the report's ratio on the cap's level
+  are on this branch for Ely's merge, with dev d65af3fe merged in
+  (Now, 19:20 UTC). report_grid.py is your file; what changed in it:
+  grid_data takes tail_levels ({"pf": level, "analogue": level}, the
+  outcome's tail_cap "levels"; app/ui/pipeline.py passes them), each
+  panel carries them as "tail_levels", and tail_levels(), level_words()
+  and LEVEL_WORDS are new; flag_key takes the levels as well. The bundle
+  stays version 8: an older bundle has no "tail_levels" and reads the
+  mean, as it was drawn. Change the words as you see fit.
 - 2026-11-12 (15:14 UTC), Submission to App (Ely's request, relayed while
   round 2026-11-14 runs on the laptop): A LOOK TO REVIEW LATER, NOT A
   BUG. Ely notices the orange warning pills everywhere in FluBNF, and the
@@ -4273,6 +4319,8 @@ and CDC's rules. The season's facts are in
   record's tail_cap levels), or show both, and say which in the key and
   the title. Also: spencer_report.py's flat-or-higher check to the
   amended rule (Decided, 2026-11-12).
+  CODED 2026-11-12 (Now, 19:20 UTC): both, the report fix on this branch
+  for Ely's merge, the check in the lane's scratchpad tools.
 - 2026-11-10 (App lane's requests; Ely approves in the hub pull
   request): THE ORACLE SIHRS CARD FOR ROUND 2026-11-14, THREE SEPARATE
   CHANGES TO methods_long (model-metadata/NAU_PyBNF-OracleSIHRS.yml line
