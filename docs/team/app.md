@@ -39,6 +39,19 @@ pages (TEAM.md, team/README.md, FLUSIGHT-2026-27.md). Works on `dev`.
       from the file on its own.
     - The round window comes from the hub clone's tasks.json, so a moved
       deadline like this round's shows as it is.
+  - Later on 2026-11-12: Ely merged the dev-to-main pull request #7
+    (main 2a540a34, the same tree as dev cab42c88). Then two pull requests
+    went into `dev` (68dd5dcc):
+    - #8, from another session: app/tests/conftest.py sets perflog.SLOW_MS
+      to infinity for every test.
+    - #9: tests that a slow Windows runner failed now and then, found by a
+      search of CI's failures since 2026-10-22 (the slow-request log in
+      test_window_comfort and test_reclaim, the warm's week in
+      test_retro_delete_warm, node's cold start), and the Windows
+      takeover's reused-pid bug: cli._ancestor_pids took a dead parent's
+      recycled pid for an ancestor, so the takeover refused to stop a
+      console that held it. The walk now stops at a parent that has
+      exited, cannot be opened, or was created after its child.
 
 - 2026-11-11 (early): two more things are known, from pass 8's check of
   the import, recorded as they are (the reviewer's ruling, eighth pass).
