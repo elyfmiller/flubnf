@@ -6,6 +6,18 @@ and CDC's rules. The season's facts are in
 
 ## Now
 
+- 2026-11-12 (16:39 UTC): ROUND 2026-11-14'S HUB PULL REQUEST IS OPEN:
+  https://github.com/cdcepi/FluSight-forecast-hub/pull/4060 (Ely). Head
+  65250bf6, Ely's "Merge branch 'cdcepi:main' into FluBNF_submission"
+  (16:37 UTC) on top of 40de18cc; the local fork clone is fast-forwarded
+  to it, so the next commit builds on it. Checked by git: the merge ref
+  f86842e3 (main 4b7e3251 + head) exists, so GitHub sees no conflict;
+  against main the PR adds only the two files, byte-identical to the
+  checked ones (Oracle ec45db1c..., 53; Groundhog 4178cfd5..., 49); the
+  hub config on the merge ref has popn_frac 0.005 and submissions_due
+  end -2 (Thursday). This lane cannot read the hub's validation check
+  (no GitHub API access to cdcepi); Ely reads it. A git watcher
+  (tools/watch_pr.sh) reports a merge, a head change or a lost merge ref.
 - 2026-11-12 (16:29 UTC): ROUND 2026-11-14'S RUN RECORD CONFIRMED (Ely's
   weekly report, -modified, sha256 ab26f5d2...): reference date
   2026-11-14, data through Nov 7 (live target data); replicates 3,
