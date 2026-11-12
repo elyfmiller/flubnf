@@ -330,11 +330,24 @@ def test_the_workbench_keeps_one_mark_from_a_first_visit_to_a_fit(sandbox_root):
     html = client.get("/sandbox?model=sir_example").text
     assert marks(html) == ["tt-sb-files"]
     files = html.split('id="tt-sb-files"', 1)[1].split("</span></span>", 1)[0]
-    for fact in ("<b>model.bngl:</b>", "A name ending <code>__FREE</code> is fitted",
-                 "<b>data.exp:</b>", "a missing week is a gap in time",
-                 "<b>priors.conf:</b>", "<code>uniform_var = name low high</code>",
-                 "(<code>loguniform_var</code> on a log scale)"):
-        assert fact in files, fact
+    # the note points at the formats; the Sandbox guide holds them
+    assert ('href="https://github.com/elyfmiller/flubnf/blob/main/docs/'
+            'SANDBOX.md#2-the-three-files"') in files
+    guide = (Path(srv.__file__).resolve().parents[2] / "docs" / "SANDBOX.md"
+             ).read_text(encoding="utf-8")
+    guide = " ".join(guide.split("## 2. The three files", 1)[1]
+                     .split("\n## 3.", 1)[0].split())
+    for fact in ("**model.bngl** is the model",
+                 "A parameter whose name ends in `__FREE` is **fitted**",
+                 "the value written in `model.bngl` is used only by Check "
+                 "and Simulate data",
+                 "**data.exp** is a header line",
+                 "A missing week is a gap in the time column",
+                 "**priors.conf** has one line per fitted parameter, "
+                 "`uniform_var = name low high`",
+                 "`loguniform_var = mult__FREE 0.2 5.0` evenly on a log scale",
+                 "A `pf_` line sets an engine key"):
+        assert fact in guide, fact
     # what Jitter and Seed do, in How it works' Save and run step (the
     # workbench's menu only); the group's name is the legend's words alone
     menu = html.split('aria-label="How the Sandbox works"', 1)[1].split("</ol>", 1)[0]

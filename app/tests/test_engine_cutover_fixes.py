@@ -248,20 +248,24 @@ def test_a_comparison_names_the_two_engines(monkeypatch):
 
 
 def test_the_data_tip_holds_on_either_engine(sandbox_root):
+    """The data file's rules hold on either engine; the page's note points
+    at them in the Sandbox guide (docs/SANDBOX.md, section 2)."""
     from app.core import sandbox as sb
     sb.add_example("sir_example")
     html = client.get("/sandbox?model=sir_example").text
     tip = html.split('id="tt-sb-files"', 1)[1].split("</span></span>", 1)[0]
-    line = tip.split("<b>data.exp:</b>", 1)[1].split("</span>", 1)[0]
-    assert "-1" not in line
-    assert ("On either engine the model starts a week before a first row at "
-            "<code>t&nbsp;=&nbsp;0</code>; a missing week is a gap in "
-            "time.") in line
-    assert ("Keep a clock the model reads in a counter species, as "
-            "FluBNF's own models do: <code>time()</code> runs on the "
-            "private engine only.") in line
+    assert "SANDBOX.md#2-the-three-files" in tip
+    guide = (Path(__file__).resolve().parents[2] / "docs" / "SANDBOX.md"
+             ).read_text(encoding="utf-8")
+    sec = " ".join(guide.split("## 2. The three files", 1)[1]
+                   .split("\n## 3.", 1)[0].split())
+    assert ("The model starts one week before the data row numbered 0"
+            in sec and "This holds on both engines." in sec)
+    assert "A missing week is a gap in the time column" in sec
+    assert "a model that calls `time()` runs on the private engine only" in sec
+    assert "A model that needs a clock keeps it in a counter species" in sec
     for word in ("posterior", "adapt", "track", "follow"):
-        assert word not in line, word
+        assert word not in sec, word
 
 
 # ------------------------------------------ a research run's two-strain row

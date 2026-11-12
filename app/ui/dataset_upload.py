@@ -112,6 +112,35 @@ _LONE = ("One snapshot file without an as_of column is read as final data, "
          "not vintage-true; add the other snapshot files, one per as_of.")
 
 
+def _stored_before(ds, t0: float) -> bool:
+    """Whether an upload begun at ``t0`` found ``ds`` already stored (the
+    same bytes and options under its name): its record is older."""
+    import calendar
+    import time
+    try:
+        made = calendar.timegm(time.strptime(str(ds.meta.get("created")),
+                                             "%Y-%m-%dT%H:%M:%SZ"))
+    except ValueError:
+        return False
+    return made < int(t0)
+
+
+def _read_before(ds) -> str:
+    """For a dataset an upload found already stored: a warning when its
+    groups would read another national row today (the spellings grew
+    'Overall' on 2026-11-10), since a stored dataset keeps its reading;
+    '' otherwise."""
+    now = _datasets().national_of(ds.groups)
+    if (ds.national_group or None) == now:
+        return ""
+    if now and not ds.national_group:
+        return (f"Stored earlier with no national row, so {now} is pooled "
+                "with the other groups; upload the file under a new name to "
+                f"keep {now} apart as its national row.")
+    return (f"Stored earlier with {ds.national_group} as its national row; "
+            "upload the file under a new name to read it again.")
+
+
 def _lone_snapshot(rep, snapshots: bool, n: int) -> str:
     """_LONE when one file was given as snapshots and holds no as_of."""
     s = getattr(rep, "summary", None) or {}

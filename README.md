@@ -102,7 +102,10 @@ series needs no group column), kept apart
 from the FluSight hub and never submitted. The columns may be named date
 (or week, week_ending, target_end_date), group (or target_group,
 location, region, jurisdiction) and value (or count, cases, admissions,
-observation); other columns, except as_of, are ignored. Comma, semicolon
+observation); other columns, except as_of, are ignored. A group named
+Overall, as in the template, or US is the national row: scored beside the
+other groups, not pooled with them. Renamed, or alone in its file, Overall
+is an ordinary group. Comma, semicolon
 or tab separated; UTF-8, UTF-16 or Windows-1252; dates as YYYY-MM-DD,
 M/D/YYYY or M/D/YY on one weekday, moved to the Saturday that ends each
 week. For a true retrospective,
