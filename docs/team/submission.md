@@ -6,6 +6,23 @@ and CDC's rules. The season's facts are in
 
 ## Now
 
+- 2026-11-12 (15:47 UTC): THE GROUNDHOG ALSO WITHOUT MONTANA; RECOMMITTED.
+  4c32f25d on FluBNF_submission ("GroundHogCGR also without Montana"),
+  authored as Ely, on 67b0e5fe; the Groundhog file is Ely's upload less
+  Hawaii and Montana, 51 locations (sha256 337194f4...), byte-identical
+  on the fork; GREEN; merges cleanly into cdcepi main 584976d2. The
+  Oracle is unchanged (53). THE TRACK RECORD behind it (truth as of
+  e8e87a56; each settled target week at 1-3 weeks ahead, actual over the
+  median, median over states): both models have been too LOW this
+  season, not too high: Groundhog 1.23 (10-24), 1.45 (10-31), 1.22
+  (11-07); Oracle 1.31, 1.48, 1.16. Only at h0 in round 11-07 did they
+  overshoot (0.96 and 0.88). Montana is the exception for the Groundhog:
+  six of its last eight forecasts of Montana were too high (0.74, 0.62;
+  0.90, 0.61, 1.17; 0.30, 0.53, 0.89) while Montana sat at 17-27 for
+  five weeks; this round it said 17 to 63. Illinois, Iowa, Kansas and
+  Nebraska look like Montana this week but their record is mixed (at or
+  above the Groundhog's medians for 10-31), and this week's drops may be
+  partly late reporting, so they stay.
 - 2026-11-12 (15:40 UTC): ROUND 2026-11-14 (EW45) COMMITTED TO THE FORK.
   FluBNF_submission on elyfmiller's fork: 67b0e5fe "NAU_PyBNF forecast
   2026-11-14 (EW45): upper tail at 10x the larger of the 3-week mean and
@@ -3331,6 +3348,13 @@ and CDC's rules. The season's facts are in
 
 ## Decided
 
+- 2026-11-12 (Ely, this lane recommending): round 2026-11-14's
+  Groundhog leaves out Montana as well as Hawaii (its forecasts of
+  Montana too high in six of eight, the counts flat; Now). The Oracle
+  keeps all 53 (Hawaii and Montana under the amended flat rule). Ely:
+  the Groundhog's assumptions are probably not best suited to this
+  season (counts this early above any recent season), "but again, we're
+  doing what we can".
 - 2026-11-12 (Ely): FLAT OR HIGHER, AMENDED. A dip at h0 alone is not a
   failure: the Oracle's Hawaii (60, 67, 77, 87 against 67) and Montana
   (16, 19, 21, 25 against 17) stay in, "not an unreasonable forecast",
