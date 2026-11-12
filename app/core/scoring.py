@@ -30,6 +30,7 @@ coverage as the fraction of cells covered.
 from __future__ import annotations
 
 import math
+import threading
 from datetime import timedelta
 from pathlib import Path
 from typing import Mapping
@@ -49,10 +50,28 @@ BUNDLED_LOCATIONS = Path(__file__).resolve().parents[2] / "flubnf/data/locations
 #: newest archived vintage stood in (surfaces print it: never a silent fallback)
 TRUTH_SOURCE = "settled"
 
+#: load_truth's one parsed entry, (key, truth, n2f): the key names the two
+#: files actually read (_truth_file_key), so new truth, a switch between the
+#: settled file and a vintage, or a new locations list parses again. Read
+#: and written under _TRUTH_LOCK; callers get copies, never these dicts.
+_TRUTH_MEMO: list = []
+_TRUTH_LOCK = threading.Lock()
+
+
+def _truth_file_key(p: Path) -> tuple:
+    """A file's identity for the truth memo: path, mtime_ns, size, inode."""
+    st = Path(p).stat()
+    return (str(p), st.st_mtime_ns, st.st_size, st.st_ino)
+
 
 def load_truth() -> tuple:
     """(location_fips, week_ending Timestamp) -> value, from the hub's
-    current target file; plus name->fips. Sets TRUTH_SOURCE."""
+    current target file; plus name->fips. Sets TRUTH_SOURCE.
+
+    The files are chosen on every call (the settled file, else the newest
+    vintage, said on stderr each time); a parse is reused while both files
+    are unchanged. Each call returns fresh dicts: a caller may change its
+    own copy without touching anyone else's. A failure is never kept."""
     global TRUTH_SOURCE
     target = HUB / "target-data/target-hospital-admissions.csv"
     TRUTH_SOURCE = "settled"
@@ -73,19 +92,29 @@ def load_truth() -> tuple:
               f"newest archived vintage ({vs[-1]}). Its final weeks may be "
               "provisional. Update the hub clone from the Data tab.",
               file=sys.stderr)
-    t = pd.read_csv(target, dtype={"location": str})
-    t["location"] = t["location"].str.zfill(2)
-    t["date"] = pd.to_datetime(t["date"])
     # the hub's list, else the bundled copy (same columns): a stored
     # season still plays back without a hub clone
     locs_csv = HUB / "auxiliary-data/locations.csv"
     if not locs_csv.is_file():
         locs_csv = BUNDLED_LOCATIONS
-    locs = pd.read_csv(locs_csv, dtype=str)
-    n2f = dict(zip(locs.location_name, locs.location.str.zfill(2)))
-    truth = {(r.location, r.date): float(r.value)
-             for r in t.itertuples() if np.isfinite(r.value)}
-    return truth, n2f
+    try:
+        key = (_truth_file_key(target), _truth_file_key(locs_csv))
+    except OSError:
+        key = None                  # unreadable identity: parse, keep nothing
+    with _TRUTH_LOCK:
+        if key is not None and _TRUTH_MEMO and _TRUTH_MEMO[0][0] == key:
+            _key, truth, n2f = _TRUTH_MEMO[0]
+            return dict(truth), dict(n2f)
+        t = pd.read_csv(target, dtype={"location": str})
+        t["location"] = t["location"].str.zfill(2)
+        t["date"] = pd.to_datetime(t["date"])
+        locs = pd.read_csv(locs_csv, dtype=str)
+        n2f = dict(zip(locs.location_name, locs.location.str.zfill(2)))
+        truth = {(r.location, r.date): float(r.value)
+                 for r in t.itertuples() if np.isfinite(r.value)}
+        if key is not None:
+            _TRUTH_MEMO[:] = [(key, truth, n2f)]
+        return dict(truth), dict(n2f)
 
 
 #: the per-cell metric columns a scored row carries beside location, horizon

@@ -68,13 +68,19 @@ def append(p: Path, line: str) -> None:
         pass
 
 
+def _request_clock() -> float:
+    """Seconds, for timing a request (time.perf_counter). One name, so a
+    test can set the clock a request is measured by."""
+    return time.perf_counter()
+
+
 async def slow_request_log(request: Request, call_next):
     """Middleware: time each request; log it when slower than SLOW_MS. The
     server-side milliseconds also go out as a Server-Timing header, which
     base.html reads back when a page is slow to show."""
-    t0 = time.perf_counter()
+    t0 = _request_clock()
     response = await call_next(request)
-    ms = (time.perf_counter() - t0) * 1000.0
+    ms = (_request_clock() - t0) * 1000.0
     try:
         response.headers["Server-Timing"] = f"app;dur={ms:.0f}"
     except Exception:

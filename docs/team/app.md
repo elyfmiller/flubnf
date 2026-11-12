@@ -6,6 +6,321 @@ pages (TEAM.md, team/README.md, FLUSIGHT-2026-27.md). Works on `dev`.
 
 ## Now
 
+- 2026-11-12: the 2026-11-14 round's files are in
+  (cdcepi/FluSight-forecast-hub#4060, both members; the hub's validation
+  passed). Both members ran with the tail cap at 10x on the `larger`
+  level (Ely, 2026-11-11). The deadline was Thursday this round: the
+  hub's tasks.json (cdcepi d0357402) moved the window's end from -3 to
+  -2 for Veterans Day. The console reads the vendored tasks.json, so on
+  Thursday its "Window closed" and next-round date were wrong (display
+  only: the run and the files ignore the window).
+  - Merged into `dev` after the files: #2 (60638b5c), #3 (e3e3b095), #1
+    (b9b8151b) and #4 (ad46cdc2). `dev`'s tree is the trial stack's
+    (965c7621), whose full suite on macOS failed nothing that `dev`
+    alone did not.
+  - #1 was merged by hand. `dev` and app-ux have two merge bases
+    (435aa362 and 4fcfd1e8): git merges them cleanly, and GitHub's check
+    called it a conflict. The merged app/ui/pipeline.py is app-ux's plus
+    the tail level's lines, and both team notes are `dev`'s.
+  - CI: on 2026-11-11 GitHub moved ubuntu-latest to 26.04. It has a
+    broken /usr/bin/grub-ntldr-img link and no system Python 3.12; the
+    tests that assumed either were fixed in #6 (90a3a4e8).
+  - Next (App):
+    - FluBNF's population check uses the hub's own share. It reads
+      popn_frac from the hub clone's hub-config/validations.yml,
+      falling back to a vendored copy that the suite compares with a
+      hub clone, as tasks.json is handled. FluSight's is 0.001 since cdcepi e363d512
+      (2026-10-29), while FluBNF's bound is 30% (hubcheck.py,
+      PLAUSIBLE_POPN_SHARE).
+    - The check reports in the hub check, on the Output card and in
+      scripts/sense_check.py. It flags the location and keeps it, with
+      the removal Ely decided (below). It must not take _hub_gate's path
+      in submit.py, where a location that fails the 30% bound is dropped
+      from the file on its own.
+    - The round window comes from the hub clone's tasks.json, so a moved
+      deadline like this round's shows as it is.
+  - Later on 2026-11-12: Ely merged the dev-to-main pull request #7
+    (main 2a540a34, the same tree as dev cab42c88). Then two pull requests
+    went into `dev` (68dd5dcc):
+    - #8, from another session: app/tests/conftest.py sets perflog.SLOW_MS
+      to infinity for every test.
+    - #9: tests that a slow Windows runner failed now and then, found by a
+      search of CI's failures since 2026-10-22 (the slow-request log in
+      test_window_comfort and test_reclaim, the warm's week in
+      test_retro_delete_warm, node's cold start), and the Windows
+      takeover's reused-pid bug: cli._ancestor_pids took a dead parent's
+      recycled pid for an ancestor, so the takeover refused to stop a
+      console that held it. The walk now stops at a parent that has
+      exited, cannot be opened, or was created after its child.
+
+- 2026-11-11 (early): two more things are known, from pass 8's check of
+  the import, recorded as they are (the reviewer's ruling, eighth pass).
+  - **A Replace's refusals say "from this bundle" whatever is at the
+    name.** `_protected_words` and the two refusals while the run is held
+    (its results still being prepared, or the run already being deleted
+    or replaced) in `app/core/replay_bundle.py` begin "<season> from this
+    bundle is imported as <stamp>" without asking whose run that is.
+    Since pass 8 a plain import says whose it is ("<season> is imported
+    as <stamp> from another file; a Replace import puts this bundle's run
+    in its place."), and with the retro root in FLUBNF_PROTECT_ROOTS that
+    Replace is then refused in a protected folder. A fix, if taken, is
+    words only: drop "from this bundle" from the three openings, and
+    leave the Replace clause out where `reclaim.is_protected(dst)`.
+  - **A run's Delete that fails says "Nothing else changed." when part of
+    it may be gone.** The archived run's Delete (`app/ui/routes/retro.py`)
+    and Storage's Delete (`app/ui/routes/storage.py`) answer an error
+    from `retro.delete_tree` with that detail. A delete that fails part
+    way has removed some of the run; since pass 8 (e42fa8ae) the run's
+    imported.json goes first, so even a delete that fails on its first
+    other file leaves every data file but no import record, and the run
+    no longer shows as imported. The order is right (a part run is never
+    taken for a whole import); the sentence is not. A fix, if taken: the
+    detail "Part of it may be gone; delete it again." in both places.
+    imported.json is not written back.
+
+- 2026-11-10 (late night): nine more things are known (pass 8's checks,
+  and three findings of pass 7 left open), read on this branch at 340e7d76
+  (its hint change was then taken back in fbefd383; see the last item)
+  and, for the import, on app-final at 435aa362 (pass 8's import fixes,
+  89693ba1 to 853ab768). Three are in the import of a replay bundle and
+  the console's Delete of a run (app/core/replay_bundle.py,
+  app/ui/routes/retro.py, app/ui/routes/storage.py), three in the season
+  report and the season page while a delete holds the run, and three in
+  the "more earlier seasons" hint of Your data's check
+  (app/core/datasets/checks.py). A fix is to follow for two of them, as
+  each says; the others are recorded as they are.
+  - **A Replace's old run can stay, in part, beside the new one for
+    good.** As app-final has it (this branch has the same code there):
+    once the new run is in, a Replace lets the old one go by renaming it
+    from `<run>.replaced-<pid>-<hex>` to `<run>.dropping-<pid>-<hex>` and
+    deleting that (`_drop_aside`). When the disk refuses that rename (on
+    Windows, a file in the old run held open by another program), the
+    old run is deleted where it is, its imported.json first, and a
+    delete stopped part way by the same file leaves part of the run
+    under its `.replaced-` name with no imported.json. The sweep never
+    puts such a tree back (only a whole import goes back) and never
+    deletes it (it names no bundle, so it never matches the import at
+    the name), so an import of that season and stamp names it as a
+    run an earlier Replace set aside ("An earlier Replace set a run of
+    <season> aside in <folder>, and the console keeps it there: ..."),
+    though it is part of one. (Every import names it once the
+    process that left it has ended or an hour has passed; before that,
+    an import from another process, such as `flubnf retro import` while
+    the console that left it runs, passes over it.) Nothing is lost: the new run is whole at
+    the name, Storage lists no row for the part, and its reclaim passes
+    over it. It is deleted by hand.
+  - **An import that fails on a disk error does not name a kept run.**
+    `import_bundle` adds the sentence that names an old run a Replace
+    kept aside (`_asides_left_words`) to a refusal (`BundleError`) and
+    to a finished import's notes, never to an OSError (a full disk, a
+    folder it cannot write, a rename the disk refuses). The console then
+    says "Could not import: <error>." and `flubnf retro import` "could
+    not import: <error>", and neither names the kept run; the next
+    import that is refused or finishes names it again.
+  - **A Delete of a run leaves the trees beside it, and says nothing of
+    them.** The archived run's Delete (Retrospective) and Storage's
+    Delete remove the run's own folder (`retro.delete_tree`) and nothing
+    beside it: an old run a Replace kept aside
+    (`<run>.replaced-<pid>-<hex>`) and an import's dead temp tree
+    (`<run>.importing-<pid>-<hex>`) stay, the Delete's message names
+    neither, and their size is not in its "freed". The next import of
+    that season and stamp, from any file, sweeps the temp tree and puts
+    the newest whole run kept aside back under the name, so after a run
+    is deleted on purpose an older run can be back at its name. The
+    import says so: on app-final from a42a2948 (pass 8's R2), a plain
+    import of another file is refused with "<season> is imported as
+    <stamp> from another file; a Replace import puts this bundle's run
+    in its place." and "An earlier Replace stopped part way and left an
+    earlier run from another file in <folder>; it is back under its own
+    name now." (on this branch too since the merge 04aab15c). The
+    Delete itself is silent. A fix is to follow that merge.
+  - **A refused delete can leave a cached season report with no national
+    figures for the run.** On this branch since 209ba54f, a report build
+    that meets a delete's mark while it works out the national aggregate
+    (the US row of a run that did not fit US itself: the sum of its
+    states) gets none: `retro.national_aggregate` raises `TreeBusy`, and
+    `us_national.aggregate_row` gives its sentence as the US row's
+    reason ("the run is being deleted or moved, so its national
+    aggregate was not built"). The build goes on. When the delete is
+    then refused (the run's results or week maps still being prepared,
+    say) or fails, the mark is lifted before the report is written, so
+    `build_season_report` writes it: a report whose US row carries the
+    CDC comparators alone, with that reason, though nothing was deleted.
+    It is the season's report until one of its inputs is newer
+    (`_newest_input`; the aggregate's cache,
+    playback_cache/us_aggregate.json, which the results page writes when
+    it next works the aggregate out, is one). Fix to follow: the report
+    build raises `TreeBusy` there too, and asks later.
+  - **A report build that meets a delete which already removed weeks
+    does not say "ask later".** `TreeBusy` comes only where a write is
+    refused. A build that passed its first look before the delete's mark
+    and then reads a week the delete has taken fails on that read, and
+    `_season_report` (app/ui/routes/retro.py, about lines 1674 to 1680)
+    answers a FileNotFoundError with the no-observed-data sentence ("No
+    observed data to score against. Update data from the Data tab.", 503
+    with no Retry-After), an UnknownWeek with a 404, and anything else
+    as a bare 500 (pass 7b's skeptic). The page's background build
+    (`season_export.report_job`) ends with the error's class name and
+    message.
+  - **Nothing asks again after "ask later".** The season page's map
+    (app/ui/templates/retro_season.html, about lines 1076 to 1086) and
+    the player's forecast panel (app/ui/static/player.js, about lines
+    1004 to 1011) show the sentence of a 503 with Retry-After (the run
+    is being deleted or moved) and keep nothing for the week, but
+    nothing asks again on its own: Retry-After is read only as there or
+    not, never as a time. The week is asked for again only when it is
+    drawn again (the player moves to it again, or a control of the
+    forecast panel redraws it). After a refused delete the panel keeps
+    the being-deleted sentence though the run is still there, and on a
+    paused player left alone it never clears.
+  - **For a file of the newest season only, the figure counts every
+    group, zeros and gaps alike.** With no earlier season to go by,
+    `groundhog_donors` gives an ordinary season of every group: the 30
+    donor weeks needed over `window_weeks_a_season` (five weeks of the
+    window, four around a week 53) for each group the file has
+    (`more_seasons`). A donor week needs a value above 0 and one above 0
+    the horizon later, so a group reading 0 in every week gives none,
+    and a hubverse location reported every other week (NA between)
+    gives none at horizons 1 and 3; each still counts as giving five.
+    One series with cases from 2025-08-02 to 2026-01-17 (MMWR week 2)
+    says "give about 6 more earlier seasons of data"; with six more
+    groups at 0 in every week it says "give about 1 more earlier season
+    of data", though one more season like the file's gives each horizon
+    5 of the 30. Six locations reported every other week beside the one
+    say "about 1" too.
+  - **A season that holds MMWR week 53 is taken for an ordinary one**
+    (pass 7 of the review of #93 at d415a9fa, finding 1; declined in pass 8). The figure takes what the
+    file's earlier seasons gave the fewest horizon, over those seasons,
+    as what each more season gives, and a season with a week 53 can give
+    more than an ordinary one, or give a horizon what an ordinary one
+    never does. One series from 2025-08-02 ending at MMWR week 51, 52, 1
+    or 2 (2026-12-26 to 2027-01-16) counts 6 at each horizon, from its
+    one earlier season, 2025-26, which holds week 53 of 2025, and says
+    "give about 4 more earlier seasons of data"; four more seasons
+    (2021-22 to 2024-25) bring it to 26, and five to 32. Ending at week
+    50 it says the right 5. Groups A and B with 0 at weeks 1 to 4,
+    ending 2026-12-26 (week 51), count (8, 6, 4, 2) and say "about 14";
+    fourteen more seasons give (96, 66, 36, 6): horizon 4 gets only the
+    2 group-weeks of each season with a week 53 (week 49 reading week
+    53), and an ordinary season gives it nothing. Left as is: taking the
+    rate from seasons with no week 53 changes neither file (neither has
+    such an earlier season); the first needs an ordinary season's five
+    weeks as its rate, where a file holding earlier seasons takes its
+    rate from them, and that rate gives the second "about 3", never
+    reached either; the second's right answer is no figure while every
+    horizon has some donor weeks, which the check has no words for.
+  - **One summer that straddles 1 August counts as two seasons** (pass 7
+    of the review of #93 at d415a9fa, finding 2). `_seasons_heard` counts
+    the seasons that show a horizon at 0 gets nothing by season label,
+    and where the donor window holds weeks on both sides of 1 August
+    (week 30 of a summer in one season, weeks 31 to 34 in the next), one
+    summer of zeros is two seasons. One series from 2022-10-01, 0 at MMWR
+    weeks 21 to 39 of 2023 only, ending 2024-08-03 or 2024-08-10 (week 31
+    or 32), counts (2, 1, 0, 0) or (1, 1, 0, 0) and says "At 2 horizons
+    no earlier season in the file has a week like it, so more seasons
+    like these would not help there."; ending at week 29, 30, 33 or 34 it
+    says "only one season says so, and more seasons may". Pass 8 counted
+    passes of the window instead of season labels (340e7d76) and took it
+    back (fbefd383): that count put one season's August weeks and the
+    next July's in two passes, so a one-year file ending near week 29 to
+    33 said "would not help" where it had said "more seasons may". Left
+    as is; a fix counts each summer once, whatever its label and pass.
+
+- 2026-11-10 (night): four more things are known and left as they are
+  (pass 7's independent checks of the review of #93). Two are in the
+  "more earlier seasons" hint of Your data's check
+  (app/core/datasets/checks.py, worded by app/ui/datasets_ui.py), two in
+  the old run a Replace import sets aside (app/core/replay_bundle.py).
+  - **A first season that holds part of the donor window counts as a
+    whole one.** `groundhog_donors` divides the donor weeks by the
+    earlier seasons in which some group with a case holds a week of the
+    window (the newest week's MMWR week, give or take
+    `DEFAULT_BANDWIDTH`, 2), and `more_seasons` takes each of them to
+    give an equal share. A file that starts inside its first earlier
+    season's window counts that season as one, though it holds a week or
+    two of the window, so the figure can be too large. One series with
+    cases throughout, from 2023-04-01 (MMWR week 13) to 2025-03-15 (week
+    11), counts 6 donor weeks at each horizon and says "give about 8
+    more earlier seasons of data"; the same series started five years
+    earlier counts 30. Left as is: the figure errs large, more seasons
+    still reach it, and "about" covers it.
+  - **Zeros that fall by chance can say "would not help".** At a horizon
+    with no donor week, `_seasons_heard` takes each earlier season with a
+    case that holds a pair there (a week of the window and the week that
+    horizon later) to show that seasons like it give the horizon
+    nothing; when each group shows it through two such seasons or more,
+    the hint says "more seasons like these would not help". The rule
+    cannot tell zeros that come every season (a summer off) from zeros
+    that fall by chance in low counts. One series of low counts from
+    2023-04-15 to 2025-04-05, 0 in its winter weeks and, at random, in
+    about half of the others, counts (0, 1, 1, 1) and says "At 1 horizon
+    no earlier season in the file has a week like it, so more seasons
+    like these would not help there"; the same series started eight
+    years earlier counts 15 at that horizon. Left as is.
+  - **A Replace's old run can stay beside the new one for good.** As
+    app-final has it from 8a7a4dd7 (this branch takes it at its next
+    merge; until then the sweep here deletes a set-aside run once any
+    whole import is at the run's name): a Replace renames the old run to
+    `<run>.replaced-<pid>-<hex>`, renames the new one in, and then lets
+    the old one go. A later import's sweep deletes a set-aside run only
+    when the run's name holds a whole import of the same bundle (both
+    imported.json files name one `bundle_sha256`; a value missing or
+    unreadable on either side is never a match), and with nothing at the
+    name puts the newest whole one back under it. A Replace with another
+    bundle file of the same season and stamp, stopped after its new run
+    went in and before it let the old one go, so leaves the old run
+    aside for good while that import stands at the name. Nothing is
+    lost: Storage lists no row for it, Storage's reclaim passes over it
+    (`is_temp_name`), and every import of that season and stamp, refused
+    or not, says where it is ("An earlier Replace set a run of <season>
+    aside in <folder>, and the console keeps it there: it can be deleted
+    by hand once the run imported as <stamp> is the one wanted."). It is
+    deleted by hand.
+  - **Builds a003431d to 1ce301ed deleted a set-aside run with its
+    imported.json in place.** Their `_drop_aside` (`retro.delete_tree`)
+    and their sweep (`_remove_quietly`, `shutil.rmtree`) removed a
+    `.replaced-` tree in whatever order the walk took, so one stopped
+    part way could leave part of a run under that name with its
+    imported.json still there. The sweep from 0433736d on takes such a
+    tree for a whole run: with nothing at the run's name, it renames it
+    back to the name, and a plain import is refused as already imported
+    and says the run "is back under its own name now", though part of
+    its weeks are gone. From 0433736d on a set-aside run's imported.json
+    is removed first (and app-final's 8a7a4dd7 renames a run it lets go
+    to `<run>.dropping-<pid>-<hex>` before deleting it).
+    Not fixed: those builds were never released (no tag, and neither
+    `dev` nor `main` has them), so no install made such a tree.
+
+- 2026-11-10 (evening): two launcher wordings are known and left as they
+  are (review of #93 at ac51731d, and the independent check of pass 6).
+  Each is a sentence a user cannot act on as written, met only when a
+  step of setup has gone wrong, and nothing is lost by it.
+  - **After a reinstall into `~/Documents/GitHub`.** reinstall.sh puts
+    the new copy in `~/Documents/GitHub/flubnf` when an older setup is
+    there and none is in `~/GitHub` (reinstall.sh, `DEST`). It runs
+    setup.sh with `FLUBNF_SETUP_FROM=reinstall`, so setup.sh's run-again
+    line names that folder: `run cd "<home>/Documents/GitHub/flubnf" &&
+    ./setup.sh again`. After a problem setup.sh carries on past (the hub
+    data fetch, BioNetGen), it exits 0, the reinstall goes on, and on a
+    Mac it opens FluBNF.command, which moves the copy to
+    `~/GitHub/flubnf` (scripts/macos/move_home.sh). The folder the line
+    names is then gone, and `cd` says so; the same line with
+    `~/GitHub/flubnf` does what it said. When setup.sh stops instead
+    (exit 1), the reinstall stops and opens nothing, so the copy stays
+    where the line says.
+  - **FluBNF.command's first run.** With no console in `.venv`,
+    FluBNF.command runs `./setup.sh` in its own folder without
+    `FLUBNF_SETUP_FROM`, so setup.sh's lines say "run ./setup.sh again"
+    and "Run ./setup.sh again". They are printed in the Terminal window
+    FluBNF.command opened, which has no shell to type them into: when
+    setup.sh stops, FluBNF.command says "Setup hit a problem (see
+    above). Press enter to close." and exits, and when setup.sh carries
+    on, the console starts in that window. A new Terminal window starts
+    in the home folder, where `./setup.sh` is not found. Double-clicking
+    FluBNF.command again runs setup.sh again while the console is still
+    missing; FluBNF.command's own stop for a missing launcher says to do
+    that.
+
 - 2026-11-10 (day): `dev` to `main` is merged. The night's open items
   are now one action plan, with Ely's calls D1 to D21 (Ely took the
   reviewer's answer on each; decisions under Decided).
@@ -779,6 +1094,16 @@ pages (TEAM.md, team/README.md, FLUSIGHT-2026-27.md). Works on `dev`.
 
 ## Decided
 
+- 2026-11-11 (Ely):
+  - **Tail cap for the 2026-11-14 round:** 10x, at the `larger` level
+    for both members, mode shrink. The default level stays `mean`.
+  - **Plausibility:** FluBNF flags a location and keeps it. The user can
+    remove anything a plausibility check flags from the final output CSV,
+    per location and never automatically, and the file records what was
+    removed and why.
+  - Until FluBNF has the population check, the Submission lane's CSV
+    review checks the hub's population share on the files Ely hands it.
+
 - 2026-11-10 (Ely, taking the reviewer's answer):
   - **Engine fallback:** the private engine is retired after two clean
     public rounds, and only once the remade replays are in and seasons
@@ -1196,6 +1521,25 @@ pages (TEAM.md, team/README.md, FLUSIGHT-2026-27.md). Works on `dev`.
   engine.md and submission.md too; the en dash is out under the text rule.
 
 ## Open
+
+- For Ely (2026-11-11), not built yet, a nice-to-have: a "Check forecast
+  plausibility" button on the download tab, shown when a model's output
+  CSV is selected, before Download.
+  - It opens a side panel that runs the checks with the defaults
+    registered in the app, and lets the user change them for that check.
+  - It covers every forecast view (weekly, retro and replay, Sandbox),
+    and every public hub FluBNF supports, each with its own defaults.
+  - The checks to start with:
+    - growth: 30x, against the three-week mean (sense_check.py's gate)
+      and against the last week;
+    - population: above the population, above the hub's own share
+      (validations.yml), and the README's 30%;
+    - the hub's file checks.
+  - Results: a table by location and horizon, with near misses shown.
+    Changed thresholds are marked "modified" and saved with the result.
+  - Flagged locations can be removed as decided on 2026-11-11.
+  - Builds on sense_check.py, hubcheck.py and the Submission lane's
+    round checks (its open item: move them into scripts/).
 
 - For Ely (2026-11-10): the new public repository's history, either kept
   with the co-author lines removed or a single first commit. Either way,

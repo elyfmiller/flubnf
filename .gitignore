@@ -1,6 +1,8 @@
 __pycache__/
 *.pyc
 .venv/
+# a venv setup.sh found unable to run pip, set aside (never deleted) and made again
+.venv.broken-*/
 app/state/
 *.sqlite
 *.log

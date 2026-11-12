@@ -794,6 +794,61 @@ def test_ancestor_walk_follows_the_chain_and_stops():
     assert cli._ancestor_pids(10, parent_of=boom) == set()
 
 
+def test_ancestor_walk_stops_at_a_parent_that_is_gone_or_younger():
+    """Windows keeps a dead parent's pid and gives it to new processes: a
+    recorded parent that has exited, or was created after its child, is no
+    ancestor, and sparing the process that now holds the pid would refuse a
+    real takeover (a CI probe got such a pid, 2 runs in about 800)."""
+    chain = {10: 9, 9: 8, 8: 7, 7: 6}
+    born = {10: 400, 9: 300, 8: 200, 7: 100}       # 6 has exited
+    assert cli._ancestor_pids(10, parent_of=chain.get,
+                              born=born.get) == {9, 8, 7}
+    recycled = {**born, 8: 500}                    # 8 now names a newer one
+    assert cli._ancestor_pids(10, parent_of=chain.get,
+                              born=recycled.get) == {9}
+    same_tick = {**born, 9: 400}                   # created in the same tick
+    assert cli._ancestor_pids(10, parent_of=chain.get,
+                              born=same_tick.get) == {9, 8, 7}
+
+    def flaky(pid):
+        if pid == 8:
+            raise OSError("cannot open")
+        return born.get(pid)
+    assert cli._ancestor_pids(10, parent_of=chain.get, born=flaky) == {9}
+    # the start's own time unread: the parents as recorded, never fewer
+    assert cli._ancestor_pids(10, parent_of=chain.get,
+                              born=lambda pid: None) == {9, 8, 7, 6}
+
+
+def test_this_process_keeps_its_recorded_parent_only_while_it_is_one(
+        monkeypatch):
+    me = os.getpid()
+    monkeypatch.setattr(os, "getppid", lambda: 77)
+    none = {}.get                                  # the snapshot names none
+    assert cli._ancestor_pids(parent_of=none,
+                              born={me: 500, 77: 100}.get) == {77}
+    assert cli._ancestor_pids(parent_of=none,
+                              born={me: 500, 77: 900}.get) == set()
+    assert cli._ancestor_pids(parent_of=none, born={me: 500}.get) == set()
+    assert cli._ancestor_pids(parent_of=none) == {77}   # no times: as before
+
+
+def test_the_windows_walk_checks_times_by_default(monkeypatch):
+    """With nothing passed, Windows reads the Toolhelp snapshot AND the
+    creation times: 77 is the real parent, 66 a newer process that took
+    the pid of 77's dead parent."""
+    me = os.getpid()
+    monkeypatch.setattr(os, "getppid", lambda: 77)
+    monkeypatch.setattr(cli, "_windows_parent_map",
+                        lambda: {me: 77, 77: 66})
+    monkeypatch.setattr(cli, "_windows_create_time",
+                        {me: 500, 77: 100, 66: 900}.get)
+    with monkeypatch.context() as m:
+        m.setattr(os, "name", "nt")
+        got = cli._ancestor_pids()
+    assert got == {77}
+
+
 class _StubToolhelp:
     """CreateToolhelp32Snapshot / Process32FirstW / Process32NextW."""
 
@@ -842,6 +897,61 @@ def test_windows_parent_map_fails_to_empty():
 @pytest.mark.skipif(os.name == "nt", reason="asserts the non-Windows answer")
 def test_windows_parent_map_without_windows_is_empty():
     assert cli._windows_parent_map() == {}
+
+
+class _StubProcessTimes:
+    """OpenProcess / GetExitCodeProcess / GetProcessTimes / CloseHandle over
+    {pid: (exit code, creation time)}; a pid not listed cannot be opened."""
+
+    def __init__(self, procs):
+        self.procs, self.closed = procs, []
+
+    def OpenProcess(self, access, inherit, pid):
+        assert access == 0x1000            # PROCESS_QUERY_LIMITED_INFORMATION
+        return pid + 1000 if pid in self.procs else 0
+
+    def GetExitCodeProcess(self, h, ref):
+        ref._obj.value = self.procs[h - 1000][0]
+        return 1
+
+    def GetProcessTimes(self, h, created, exited, kernel, user):
+        t = self.procs[h - 1000][1]
+        created._obj.dwHighDateTime, created._obj.dwLowDateTime = (
+            t >> 32, t & 0xFFFFFFFF)
+        return 1
+
+    def CloseHandle(self, h):
+        self.closed.append(h)
+        return 1
+
+
+def test_windows_create_time_reads_a_live_process_only():
+    k32 = _StubProcessTimes({7: (259, (3 << 32) + 5), 8: (0, 99)})
+    assert cli._windows_create_time(7, kernel32=k32) == (3 << 32) + 5
+    assert cli._windows_create_time(8, kernel32=k32) is None     # exited
+    assert cli._windows_create_time(9, kernel32=k32) is None     # unopened
+    assert k32.closed == [1007, 1008]
+
+    class Boom:
+        def OpenProcess(self, *a):
+            raise OSError("boom")
+    assert cli._windows_create_time(7, kernel32=Boom()) is None
+
+
+@pytest.mark.skipif(os.name != "nt", reason="reads real Windows process times")
+def test_windows_create_time_of_real_processes():
+    me = cli._windows_create_time(os.getpid())
+    assert isinstance(me, int) and me > 0
+    child = subprocess.Popen([sys.executable, "-c",
+                              "import time; time.sleep(30)"])
+    try:
+        born = cli._windows_create_time(child.pid)
+        assert isinstance(born, int) and born >= me
+    finally:
+        child.kill()
+        child.wait(timeout=60)
+    # Popen still holds the handle, so the pid is not reused yet
+    assert cli._windows_create_time(child.pid) is None
 
 
 def test_takeover_leaves_a_lookalike_alone(tmp_path, monkeypatch):

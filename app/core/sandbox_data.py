@@ -119,11 +119,25 @@ def dataset_choices() -> list:
                                                   "population")}
                            for g in d.meta.get("groups", [])]}
                for d in stored]
-        uploaded = [str(d.meta.get("created") or "")[:10] for d in stored]
+        uploaded = [_uploaded_day(d.meta.get("created")) for d in stored]
     except Exception:
         return []
     _label_choices(out, uploaded)
     return out
+
+
+def _uploaded_day(created) -> str:
+    """The day a dataset was uploaded, where this console runs: meta
+    "created" is stored in UTC (datasets/store.py), so an upload at 6 pm
+    in Arizona would read as the next day. "" when there is no stamp or
+    it does not read as a time."""
+    try:
+        t = dt.datetime.fromisoformat(str(created or ""))
+        if t.tzinfo is None:
+            t = t.replace(tzinfo=dt.timezone.utc)   # stored as UTC
+        return t.astimezone().date().isoformat()
+    except (ValueError, OverflowError, OSError):
+        return ""
 
 
 def _label_choices(out: list, uploaded: list) -> None:
@@ -132,7 +146,7 @@ def _label_choices(out: list, uploaded: list) -> None:
     uploads of cases.csv read as two identical "cases" otherwise); when
     the weeks match too, the day it was uploaded, or where that is shared
     or not recorded, the end of its id. `uploaded` is each one's upload
-    day (meta "created"), "" when none."""
+    day where the console runs (_uploaded_day), "" when none."""
     names = [d["name"] for d in out]
     marks = []
     for d in out:

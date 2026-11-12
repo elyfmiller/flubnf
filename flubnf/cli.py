@@ -10,7 +10,7 @@ Sections, in file order:
      (_console_open)
   3. ports: candidates, reuse flags, pick/bind
   4. macOS window: activation retries, app naming, zoom API, watchdog,
-     WebView2 probe
+     WebView2 probe, the Linux window toolkit probe
   5. the `app` and `window` commands and _exit_now; `runner` (the
      student experiment queue, app/core/runner.py)
   6. the mounted groups: cli_doctor (doctor, knobs), cli_retro (retro,
@@ -242,21 +242,100 @@ def _windows_parent_map(kernel32=None) -> dict:
         return {}
 
 
-def _ancestor_pids(start=None, parent_of=None, limit: int = 32) -> set:
+#: GetExitCodeProcess's answer while a process is still running
+_STILL_ACTIVE = 259
+
+
+def _windows_create_time(pid: int, kernel32=None):
+    """When the live process `pid` was created (FILETIME ticks), or None
+    when it has exited or cannot be opened. Never raises. `kernel32` is
+    injectable for tests on other platforms.
+
+    Toolhelp and os.getppid() keep a parent's pid after the parent exits,
+    and Windows gives that pid to new processes: a recorded parent is the
+    parent only while it is alive and was created no later than its child
+    (_ancestor_pids)."""
+    try:
+        import ctypes
+        from ctypes import wintypes
+        if kernel32 is None:
+            kernel32 = ctypes.WinDLL("kernel32", use_last_error=True)
+            kernel32.OpenProcess.restype = wintypes.HANDLE
+            kernel32.OpenProcess.argtypes = (wintypes.DWORD, wintypes.BOOL,
+                                             wintypes.DWORD)
+            kernel32.GetExitCodeProcess.restype = wintypes.BOOL
+            kernel32.GetExitCodeProcess.argtypes = (
+                wintypes.HANDLE, ctypes.POINTER(wintypes.DWORD))
+            kernel32.GetProcessTimes.restype = wintypes.BOOL
+            kernel32.GetProcessTimes.argtypes = (
+                (wintypes.HANDLE,) + (ctypes.POINTER(wintypes.FILETIME),) * 4)
+            kernel32.CloseHandle.restype = wintypes.BOOL
+            kernel32.CloseHandle.argtypes = (wintypes.HANDLE,)
+        PROCESS_QUERY_LIMITED_INFORMATION = 0x1000
+        h = kernel32.OpenProcess(PROCESS_QUERY_LIMITED_INFORMATION, False,
+                                 int(pid))
+        if not h:
+            return None
+        try:
+            code = wintypes.DWORD(0)
+            if (not kernel32.GetExitCodeProcess(h, ctypes.byref(code))
+                    or code.value != _STILL_ACTIVE):
+                return None
+            times = [wintypes.FILETIME() for _ in range(4)]
+            if not kernel32.GetProcessTimes(
+                    h, *(ctypes.byref(t) for t in times)):
+                return None
+            created = times[0]
+            return ((int(created.dwHighDateTime) << 32)
+                    | int(created.dwLowDateTime))
+        finally:
+            kernel32.CloseHandle(h)
+    except Exception:
+        return None
+
+
+def _ancestor_pids(start=None, parent_of=None, limit: int = 32,
+                   born=None) -> set:
     """Ancestor pids of `start` (default: this process), nearest first,
     until the chain ends, loops, or `limit` is reached.
 
     The takeover never signals these: on Windows the launcher and redirector
     in the chain carry the server's entry shape, and a stale app.pid reused
     for one of them would take the new console down (kill-on-close job).
-    Never raises; an unreadable parent ends the walk (os.getppid() is always
-    included for this process)."""
+    Never raises; an unreadable parent ends the walk.
+
+    `born(pid)` is a live process's creation time, or None. On Windows,
+    with both `parent_of` and `born` omitted, it is _windows_create_time; a
+    caller that passes `parent_of` gets no time check unless it passes
+    `born` too. Windows keeps a dead parent's pid in the snapshot and in
+    os.getppid() and reuses it, so with `born` a parent that has exited,
+    cannot be opened, or was created after its child ends the walk: the
+    process now holding that pid is no ancestor, and sparing it would
+    refuse a real takeover. When `start`'s own time cannot be read the
+    parents are taken as recorded, as without `born`. os.getppid() is
+    included for this process when it passes the same test. (Creation
+    times are wall-clock: a clock set back within the milliseconds between
+    a launch and its child would hide that parent.)"""
     import os
     me = os.getpid()
     start = me if start is None else int(start)
     if parent_of is None:
-        parent_of = (_windows_parent_map().get if os.name == "nt"
-                     else _posix_parent_pid)
+        if os.name == "nt":
+            parent_of = _windows_parent_map().get
+            if born is None:
+                born = _windows_create_time
+        else:
+            parent_of = _posix_parent_pid
+
+    def _born(pid):
+        try:
+            return born(int(pid))
+        except Exception:
+            return None
+    child_born = _born(start) if born is not None else None
+    if child_born is None:
+        born = None                     # no time to compare: as recorded
+    start_born = child_born
     out = set()
     cur = start
     for _ in range(max(0, int(limit))):
@@ -266,12 +345,23 @@ def _ancestor_pids(start=None, parent_of=None, limit: int = 32) -> set:
             ppid = None
         if not ppid or int(ppid) <= 0 or int(ppid) == start or ppid in out:
             break
+        if born is not None:
+            parent_born = _born(ppid)
+            if parent_born is None or parent_born > child_born:
+                break
+            child_born = parent_born
         out.add(int(ppid))
         cur = int(ppid)
     if start == me:
         try:
-            if os.getppid() > 0:
-                out.add(os.getppid())
+            pp = os.getppid()
+            if pp > 0 and pp not in out:
+                if born is None:
+                    out.add(pp)
+                else:
+                    pp_born = _born(pp)
+                    if pp_born is not None and pp_born <= start_born:
+                        out.add(pp)
         except Exception:
             pass
     return out
@@ -1097,13 +1187,35 @@ def _windows_mshtml_only() -> bool:
     return True
 
 
+def _no_window_toolkit(platform: str | None = None) -> bool:
+    """True on Linux (and the other systems that are neither macOS nor
+    Windows) when neither GTK's Python bindings (gi) nor Qt's (qtpy) can be
+    imported. pywebview installs there as plain Python and only fails when
+    it makes the window, and a setup.sh venv cannot see the system's
+    python3-gi; the caller opens the default browser instead. macOS and
+    Windows bring their own toolkit."""
+    import importlib.util
+    import sys
+    platform = platform or sys.platform
+    if platform == "darwin" or platform.startswith(("win", "cygwin")):
+        return False
+    for name in ("gi", "qtpy"):
+        try:
+            if importlib.util.find_spec(name) is not None:
+                return False
+        except (ImportError, ValueError):
+            continue
+    return True
+
+
 # ---------------------------------------------------------------------------
 # The `app` and `window` commands
 # ---------------------------------------------------------------------------
 @app.command("app")
 def app_serve(port: int = 8710):
     """Launch the operations console. Prefers a native desktop window
-    (pywebview) and falls back to the browser without it."""
+    (pywebview) and falls back to the browser without it, or on Linux
+    without GTK or Qt for it. The browser route prints its address."""
     _trace("app: command entered")
     try:
         import webview  # noqa: F401
@@ -1111,6 +1223,9 @@ def app_serve(port: int = 8710):
             print("WebView2 runtime not found: the native window would "
                   "render on MSHTML (IE11), which cannot run the console's "
                   "pages. Opening your default browser instead.")
+        elif _no_window_toolkit():
+            print("No GTK or Qt for a native window here: opening the "
+                  "console in your browser.")
         else:
             return app_window(port=port)
     except ImportError:
@@ -1144,6 +1259,9 @@ def app_serve(port: int = 8710):
             webbrowser.open(url)
 
     threading.Thread(target=_open, daemon=True).start()
+    # the address, for a terminal with no browser to open (SSH, WSL, a
+    # headless machine): uvicorn below logs nothing at warning level
+    print(f"FluBNF console: {url}  (Ctrl-C stops it)", flush=True)
     # warning level, no colors: cmd shows ANSI escapes as garbage and the
     # progress poll would log a line a second; matches the window path
     uvicorn.run("app.ui.server:app", port=port, host="127.0.0.1",

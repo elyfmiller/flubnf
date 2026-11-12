@@ -355,7 +355,9 @@ def test_two_national_spellings_are_refused():
 
 
 def test_no_national_group_is_recorded_as_none():
-    ds = D.ingest(TPL, "tpl", kind="count")
+    # (the template's 'Overall' is its national row: test_review_leftovers)
+    ds = D.ingest(grouped_csv(grouped_series(groups=("Adult", "Pediatric"))),
+                  "plain", kind="count")
     assert ds.national_group is None
     assert all(g["national"] is False for g in ds.meta["groups"])
 
@@ -695,7 +697,8 @@ def test_meta_records_the_ingest():
                               "population_varies": False, "rows": 10,
                               "first": "2022-01-01", "last": "2022-03-05",
                               "national": False}
-    assert m["national_group"] is None and m["na_dropped"] == 0
+    # the template's Overall is its national row (RE-17)
+    assert m["national_group"] == "Overall" and m["na_dropped"] == 0
     assert ds.ref() == {"id": ds.id, "digest": m["digest"][:16],
                         "name": "My Data!"}
 

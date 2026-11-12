@@ -267,6 +267,11 @@ def retro_import_cmd(
     except replay_bundle.BundleError as e:
         typer.echo(f"refused: {e}", err=True)
         raise typer.Exit(2)
+    except OSError as e:
+        # the disk's answer (a folder it cannot write, a full volume): one
+        # line, as the console's "Could not import", no traceback
+        typer.echo(f"could not import: {type(e).__name__}: {e}", err=True)
+        raise typer.Exit(1)
     when = (r.exported_at or "")[:10]
     print(f"imported {r.season}: {len(r.weeks)} weeks, exported from "
           f"{r.from_host or 'another machine'}"

@@ -944,6 +944,15 @@ def bng_problem() -> str:
     return pf_engine.bng_broken_message(said) if said else ""
 
 
+def engine_missing_reason() -> str:
+    """machine_problems' first reason when the engine is not installed:
+    the headline in words, the engine's own message after it (the tip,
+    by split_reason). It looks at files only: no folder is made and no
+    process started, so the Sandbox gallery says it too."""
+    return ("The fitting engine is not installed. "
+            + pf_engine.engine_missing_message())
+
+
 def machine_problems(wait: float = ENGINE_PROBE_PAGE_WAIT_S) -> list:
     """Every reason this computer cannot fit yet, in the order a student
     fixes them (see the section's head); [] when it can. `wait` is how
@@ -951,9 +960,7 @@ def machine_problems(wait: float = ENGINE_PROBE_PAGE_WAIT_S) -> list:
     out = []
     engine = pf_engine.engine_available()
     if not engine:
-        # the headline in words; the engine's own message is the tip
-        out.append("The fitting engine is not installed. "
-                   + pf_engine.engine_missing_message())
+        out.append(engine_missing_reason())
     elif pf_engine._public():
         # the lock check loads the filter and bngsim in the public venv: a
         # page waits `wait` seconds for it and says nothing while it runs
@@ -1018,6 +1025,47 @@ def machine_problem() -> str:
     run is tried, and Check beside the model's own problems. The first
     reason is the notice (split_reason); the rest are its tip."""
     return _joined(machine_problems())
+
+
+def _warm_lock_check() -> None:
+    """The public engine's lock check for the startup warm, on its own
+    thread: lwf.lock_check fills its timed store (lwf.CHECK_TTL_S), which
+    a page's lwf.lock_check_soon then reads while it is fresh. Best
+    effort: a failure says nothing."""
+    from app.core.engines import lwf
+    try:
+        lwf.lock_check()
+    except Exception:
+        pass
+
+
+def warm_probes() -> None:
+    """Start the probes a model page waits for (machine_problems), so the
+    first one after launch finds them answered: on the public engine its
+    lock check (lwf.lock_check, whose answer a page takes for
+    lwf.CHECK_TTL_S and then asks again: never lock_check_soon, whose
+    unwaited slot a page would take however old), on the private one the
+    engine-import probe (engine_import_problem, held for the console's
+    life), each on its own thread and never waited for here; then
+    BNG2.pl's self-test (bng_selftest, about 0.3 s, held) when BNG2.pl, a
+    perl and a path Perl can read are here. Nothing when the engine is
+    not installed: the page says so with no probe. No folder is made.
+    Best effort: a failure says nothing, and the page's own look decides.
+    The console's startup warm calls it on its thread (routes/sandbox.py
+    _sandbox_warm)."""
+    try:
+        if not pf_engine.engine_available():
+            return
+        if pf_engine._public():
+            threading.Thread(target=_warm_lock_check, daemon=True,
+                             name="flubnf-public-lock-check-warm").start()
+        elif Path(pf_engine.PY310).exists():
+            engine_import_problem(wait=0)
+        if (Path(BNG).is_file() and pf_engine.perl_available()
+                and pf_engine.perl_path(BNG) is not None):
+            bng_selftest()
+    except Exception:
+        pass
 
 
 #: seconds BNG2.pl may take on the model's actions at run preparation

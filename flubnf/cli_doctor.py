@@ -60,7 +60,15 @@ def doctor(
     if hints:
         console.print("\n[bold]hints[/]")
         for c in hints:
-            console.print(f"  • [{color[c.status]}]{c.name}[/]: {c.hint}")
+            # A hint's lines after its first are commands to paste
+            # (doctor._check_hub's git step): each printed whole and as
+            # text, so a narrow terminal wraps it on screen but rich puts
+            # no line break into it.
+            first, *commands = c.hint.split("\n")
+            console.print(f"  • [{color[c.status]}]{c.name}[/]: {first}")
+            for line in commands:
+                console.print(line, soft_wrap=True, markup=False,
+                              highlight=False)
 
     console.print(
         f"\n[bold]summary:[/] "

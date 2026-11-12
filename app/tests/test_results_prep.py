@@ -5,6 +5,9 @@
   * a results visit finding stale caches starts ONE shared background job
     with a polled preparing state; small seasons finish inside the grace
     wait, and an unsettled-truth season never loops;
+  * once the job is done it warms every other week's map cards, newest
+    first, and stops for a newer job, a replay or a forecast run; one
+    computation per week at a time;
   * the CLI's science imports are lazy and VERSIONS resolves on a
     background thread, so the window opens promptly;
   * the fluid type scale keeps growing past ~1800px; 900px is unchanged.
@@ -41,6 +44,14 @@ N2F = {"Ohio": "39", "Utah": "49"}
 
 
 # ------------------------------------------------------------------ fixtures
+
+@pytest.fixture(autouse=True)
+def _no_map_card_warm(monkeypatch):
+    """The map-card warm after a job stays off here, but in the tests of
+    it, which turn it on and wait for it (no warm thread outlives its
+    test)."""
+    monkeypatch.setattr(ui_retro_prep, "_WARM_MAP_CARDS", False)
+
 
 def _truth():
     t = {}
@@ -459,6 +470,171 @@ def test_week_map_cards_cache_on_disk_and_are_reused(tmp_path, _stubbed,
     newest0 = report_season._newest_input(root)
     ui_retro_prep._week_map_cards(root, W2)
     assert report_season._newest_input(root) == newest0
+
+
+# --------------------------------- the warm: every week's map cards, once
+
+W3 = "2098-01-17"
+
+
+def _warmed_job(root: Path, monkeypatch, settle=None):
+    """The job for `root`, run to its end with the warm on."""
+    monkeypatch.setattr(ui_retro_prep, "_WARM_MAP_CARDS", True)
+    if settle is not None:
+        monkeypatch.setattr(ui_retro_prep, "_WARM_SETTLE_S", settle)
+    job = ui_retro_prep._ensure_results_job(root, SEASON)
+    assert job["done"].wait(30)
+    assert job["warm"].wait(30)
+    assert not job["error"], job["error"]
+    return job
+
+
+def _cards_on_disk(root: Path) -> set:
+    return {p.stem for p in (root / "playback_cache" / "map_cards")
+            .glob("*.json")}
+
+
+def test_the_job_warms_every_weeks_map_cards(tmp_path, _stubbed, _routed,
+                                             monkeypatch):
+    root = _mk_tree(_routed, weeks=(W1, W2, W3))
+    order = []
+    real = ui_retro_prep._compute_map_cards
+    monkeypatch.setattr(ui_retro_prep, "_compute_map_cards",
+                        lambda r, wk, *a: order.append(wk) or real(r, wk, *a))
+    _warmed_job(root, monkeypatch)
+    assert _cards_on_disk(root) == {W1, W2, W3}
+    # the default view's week first (before done), then newest first
+    assert order == [W3, W2, W1]
+    # each cached payload equals a fresh computation
+    for wk in (W1, W2, W3):
+        cached = ui_retro_prep._week_map_cards_by_model(root, wk)
+        cf = root / "playback_cache" / "map_cards" / f"{wk}.json"
+        cf.unlink()
+        fresh = ui_retro_prep._week_map_cards_by_model(root, wk)
+        assert json.dumps(cached, sort_keys=True) == \
+            json.dumps(fresh, sort_keys=True)
+        assert fresh                       # a real map, not an empty one
+    # the warm makes the export look no newer
+    from app.core import report_season
+    newest = report_season._newest_input(root)
+    _warmed_job(root, monkeypatch)
+    assert report_season._newest_input(root) == newest
+
+
+def test_the_warm_skips_weeks_already_warm(tmp_path, _stubbed, _routed,
+                                           monkeypatch):
+    root = _mk_tree(_routed, weeks=(W1, W2, W3))
+    _warmed_job(root, monkeypatch)
+    computed = []
+    monkeypatch.setattr(ui_retro_prep, "_compute_map_cards",
+                        lambda *a: computed.append(a[1]) or {})
+    job = _warmed_job(root, monkeypatch)
+    assert computed == [] and job["warm"].is_set()
+
+
+@pytest.mark.parametrize("busy", ["forecast", "sandbox fit",
+                                  "sandbox experiment"])
+def test_the_warm_stops_for_a_run(tmp_path, _stubbed, _routed, monkeypatch,
+                                  busy):
+    root = _mk_tree(_routed, weeks=(W1, W2, W3))
+    st = ui_retro_prep.state
+    status, key = {"forecast": (st._status, "running"),
+                   "sandbox fit": (st._sandbox_status, "running"),
+                   "sandbox experiment": (st._sandbox_status, "experiment"),
+                   }[busy]
+    monkeypatch.setitem(status, key, "busy")
+    _warmed_job(root, monkeypatch)
+    assert _cards_on_disk(root) == {W3}          # the default view's alone
+
+
+def test_the_warm_stops_for_another_seasons_replay(tmp_path, _stubbed,
+                                                   _routed, monkeypatch):
+    """A replay of another season holds the engine: the warm leaves the
+    machine to it (the default view's week is already cached)."""
+    root = _mk_tree(_routed, weeks=(W1, W2, W3))
+    monkeypatch.setitem(ui_retro_seasons._retro_status, "2097-98", "running")
+    _warmed_job(root, monkeypatch)
+    assert _cards_on_disk(root) == {W3}
+
+
+def test_the_warm_waits_out_its_own_replay_and_stops_for_another(
+        tmp_path, _stubbed, _routed, monkeypatch):
+    """The season worker's own finalize: the season reads "running" until
+    the worker records the job, then the warm goes on. A replay that keeps
+    the season stops it."""
+    root = _mk_tree(_routed, weeks=(W1, W2, W3))
+    monkeypatch.setitem(ui_retro_seasons._retro_status, SEASON, "running")
+    threading.Timer(0.3, ui_retro_seasons._retro_status.__setitem__,
+                    (SEASON, "done")).start()
+    _warmed_job(root, monkeypatch, settle=10.0)
+    assert _cards_on_disk(root) == {W1, W2, W3}
+
+    root2 = _mk_tree(tmp_path / "other", weeks=(W1, W2, W3))
+    monkeypatch.setitem(ui_retro_seasons._retro_status, SEASON, "running")
+    _warmed_job(root2, monkeypatch, settle=0.3)
+    assert _cards_on_disk(root2) == {W3}
+
+
+def test_the_warm_stops_when_a_newer_job_claims_the_root(
+        tmp_path, _stubbed, _routed, monkeypatch):
+    root = _mk_tree(_routed, weeks=(W1, W2, W3))
+    newer = {"done": threading.Event(), "warm": threading.Event()}
+    real = ui_retro_prep._compute_map_cards
+
+    def claim_then_compute(r, wk, *a):
+        out = real(r, wk, *a)
+        if wk == W2:      # the warm's first week: a newer job takes over
+            ui_retro_prep._results_jobs[str(root)] = newer
+        return out
+    monkeypatch.setattr(ui_retro_prep, "_compute_map_cards",
+                        claim_then_compute)
+    monkeypatch.setattr(ui_retro_prep, "_WARM_MAP_CARDS", True)
+    job = ui_retro_prep._ensure_results_job(root, SEASON)
+    assert job["done"].wait(30) and job["warm"].wait(30)
+    assert _cards_on_disk(root) == {W2, W3}
+
+
+def test_one_computation_per_week_at_a_time(tmp_path, _stubbed,
+                                            monkeypatch):
+    """The warm, a mapswap and the season export asking for one week at
+    once read its samples once; the others wait and read the cache."""
+    root = _mk_tree(tmp_path)
+    reads = []
+    real = retro.read_samples
+
+    def slow(fp):
+        reads.append(fp)
+        time.sleep(0.3)
+        return real(fp)
+    monkeypatch.setattr(retro, "read_samples", slow)
+    got, go = [], threading.Barrier(4)
+
+    def ask():
+        go.wait(5)
+        got.append(ui_retro_prep._week_map_cards_by_model(root, W1))
+    threads = [threading.Thread(target=ask) for _ in range(4)]
+    for t in threads:
+        t.start()
+    for t in threads:
+        t.join(30)
+    assert len(got) == 4 and all(g == got[0] for g in got) and got[0]
+    assert len(reads) == 1
+    assert ui_retro_prep._MAP_CARD_LOCKS == {}      # nothing left held
+
+
+def test_map_cards_never_recreate_a_deleted_tree(tmp_path, _stubbed,
+                                                 monkeypatch):
+    import shutil
+    root = _mk_tree(tmp_path)
+    real = retro.read_samples
+
+    def then_gone(fp):
+        out = real(fp)
+        shutil.rmtree(root)          # discarded while the week computed
+        return out
+    monkeypatch.setattr(retro, "read_samples", then_gone)
+    assert ui_retro_prep._week_map_cards_by_model(root, W1)
+    assert not root.exists()
 
 
 # ----------------------------------------- the export carries the aggregate

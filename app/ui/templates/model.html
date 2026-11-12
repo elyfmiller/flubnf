@@ -5,8 +5,8 @@
 {% block head %}{% if has_fans %}<script src="/static/plotly.min.js" defer></script><script src="/static/charts.js" defer></script>{% endif %}
 <link rel="stylesheet" href="/static/tabs/models.css">{% endblock %}
 {% block content %}
-{# a keyboard user reaches the run form without walking the diagrams and
-   their equation chips (shown on focus, as the page's own skip link) #}
+{# a keyboard user reaches the run form without walking the model's
+   header card (shown on focus, as the page's own skip link) #}
 {% if not header.research %}<a class="skip" href="#h-md-quick">Skip to Quick run</a>{% endif %}
 {# the switcher below names the model; the heading names the tab #}
 <h1>Models</h1>
@@ -69,6 +69,10 @@
  </div>
 </section>
 
+{# the drawings and the model source: written here, printed under the
+   Quick run and Forecasts cards (model_detail, below), so a model tab
+   opens on its own run and latest forecasts #}
+{% set model_detail %}
 {# each mechanism drawing carries its defining equations beneath it, each
    named, its reading under it (dg.eq_*(kit=true)); the Oracle SIHRS gets
    two cards (the forecast pipeline, then the compartment model the filter
@@ -140,6 +144,7 @@
  })();
 </script>
 {% endif %}
+{% endset %}
 
 {# the research view has no quick run and no forecasts card: its run
    control is the research card below (research_run.html), and a research
@@ -208,6 +213,7 @@
  </div>
 </div>
 {% endif %}
+{{ model_detail }}
 <script>
  const FANQ = {{ fanq_json | safe }};
  const ROBS = {{ run_obs_json | safe }};
@@ -299,6 +305,13 @@
    // set aside (marked below), as on the Forecast tab
    const aside=new Set((RASIDE[MNAME]||{})[loc]||[]);
    let ai=obsX.length-1; while(ai>=0&&aside.has(obsX[ai])) ai--;
+   // a newest week of 0 under a zero-anchor rule is a reported week, so it
+   // is not set aside; but no rule starts from that 0 (FC-14). This page
+   // has no ledger row to name the rule, so a Groundhog fan from a 0
+   // starts at the first horizon, with no line from the observed series,
+   // as the Forecast tab's does without the run's flags. The Oracle SIHRS
+   // and the two-strain SIHRS keep their 0 (no zero-anchor rule is theirs).
+   if(ai>=0&&MNAME==='analogue'&&!(obsY[ai]>0)) ai=-1;
    const ax=ai>=0?[obsX[ai]]:[], ay=ai>=0?[obsY[ai]]:[];
    const fx=[...ax,...xs];
    const med=[...ay,...hs.map(h=>qs[h]['0.5'])];

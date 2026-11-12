@@ -2,7 +2,8 @@
 cannot be read (the 2026-10-25 bug hunt, G07).
 
   * the check says when even the newest week gives the Groundhog too few
-    weeks like it in earlier seasons; a dataset run that forecast no group
+    weeks like it in earlier seasons, and what would fix it, with a badge
+    per model (UX review F54, P4); a dataset run that forecast no group
     is "partial", never a green "ok", and a replay that forecast no
     group-week ends "no forecast" (DA-01); the run page names the reason,
     not a newest week reading 0 (DA-03);
@@ -17,10 +18,13 @@ import json
 import shutil
 from datetime import date
 
+import pytest
+
 import app.core.runs as runs_mod
 from app.core import custom_retro as CX
 from app.core import datasets as D
 from app.ui import datasets_ui as DU
+from app.ui import pipeline
 from app.ui import state as ui_state
 
 from test_dataset_engines import grouped_bytes         # noqa: E402
@@ -43,14 +47,120 @@ def check(raw: bytes) -> dict:
 
 # ----------------------------------------------- too little for the Groundhog
 
-def test_the_check_says_when_the_data_are_too_short_for_the_groundhog():
+def test_the_check_says_when_the_data_are_too_short_for_the_groundhog(
+        monkeypatch):
+    monkeypatch.setattr(pipeline, "_pf_engine_state", lambda: "absent")
     j = check(short_bytes())
     assert j["ok"]
     html = " ".join(j["html"].split())
+    # the notice, then its fix (shown in the check; P4, F54); two groups,
+    # so a donor week counts once in each (review 3, finding 14)
     assert ("Too little history for the Groundhog: at the newest week it "
-            "finds 20 weeks like it in earlier seasons and needs 30, so it "
-            "will not forecast this data on its own.") in html
+            "finds 20 group-weeks like it in earlier seasons and needs 30, "
+            "so it "
+            "will not forecast this data on its own. Add a population "
+            "column and set up the engine so the Liu-West filter can fit "
+            "it, or give about 1 more earlier season of data.") in html
     assert "Too little history" not in check(TEMPLATE.read_bytes())["html"]
+
+
+def _models(html: str) -> list:
+    """The preview's model badges: [(model, state, word)]."""
+    import re
+    box = html[html.index('aria-label="Models"'):]
+    box = box[:box.index("</dl>")]
+    return re.findall(r'<dt>([^<]+)</dt><dd><span class="uk-stat-v"><span '
+                      r'class="uk-badge uk-badge--(\w+)" data-state="\w+">'
+                      r'<svg.*?</svg><span class="uk-badge-t">([^<]+)</span>',
+                      box)
+
+
+def _fix(html: str) -> str:
+    html = " ".join(html.split())
+    i = html.index("so it will not forecast this data on its own.")
+    return html[i + 46:html.index("</span>", i)].strip()
+
+
+def one_series_bytes() -> bytes:
+    """One series, four seasons, no population: 15 to 17 donor weeks at
+    every week of its newest season."""
+    from datetime import timedelta
+    d0, lines = date(2021, 8, 7), ["week_ending,cases"]
+    for i in range(203):
+        lines.append(f"{(d0 + timedelta(days=7 * i)).isoformat()},"
+                     f"{20 + (i * 13) % 90}")
+    return ("\n".join(lines) + "\n").encode()
+
+
+def test_the_one_series_file_names_its_fix_and_a_badge_per_model(
+        monkeypatch):
+    monkeypatch.setattr(pipeline, "_pf_engine_state", lambda: "ready")
+    html = check(one_series_bytes())["html"]
+    assert _fix(html) == ("Add a population column so the Liu-West filter "
+                          "can fit it, or give about 3 more earlier seasons "
+                          "of data.")
+    assert _models(html) == [("Groundhog (own data)", "warn",
+                              "too little history"),
+                             ("Liu-West filter", "warn", "needs a population")]
+    monkeypatch.setattr(pipeline, "_pf_engine_state", lambda: "absent")
+    html = check(one_series_bytes())["html"]
+    assert _models(html)[1] == ("Liu-West filter", "warn",
+                                "needs a population and the engine")
+
+
+@pytest.mark.parametrize("pop, rate, state, fix, pf", [
+    # a population already: never asked for again
+    (True, False, "absent", "Set up the engine so the Liu-West filter can "
+     "fit it, or give about 1 more earlier season of data.",
+     ("warn", "needs the engine")),
+    (True, False, "ready", "Give about 1 more earlier season of data.",
+     ("ok", "ready")),
+    # rates never run the filter: no population is suggested
+    (False, True, "ready", "Give about 1 more earlier season of data.",
+     ("neutral", "counts only")),
+])
+def test_the_fix_never_asks_for_what_cannot_help(monkeypatch, pop, rate,
+                                                 state, fix, pf):
+    monkeypatch.setattr(pipeline, "_pf_engine_state", lambda: state)
+    raw = grouped_bytes(groups=("North", "South"), start=date(2023, 8, 5),
+                        end=date(2025, 11, 15), pop=pop, rate=rate)
+    j = client.post("/data/datasets/check",
+                    files={"file": ("d.csv", raw, "text/csv")},
+                    data={"kind": "rate" if rate else "count"}).json()
+    assert _fix(j["html"]) == fix
+    assert _models(j["html"])[1] == ("Liu-West filter", *pf)
+
+
+def test_a_rich_file_shows_no_notice_and_both_models_ready(monkeypatch):
+    monkeypatch.setattr(pipeline, "_pf_engine_state", lambda: "ready")
+    html = check(grouped_bytes())["html"]
+    assert "Too little history" not in html
+    assert _models(html) == [("Groundhog (own data)", "ok", "ready"),
+                             ("Liu-West filter", "ok", "ready")]
+
+
+def test_the_stored_notice_keeps_its_words():
+    """The fix is the check's: meta.json keeps the notice as before."""
+    ds = stored(short_bytes(), "short")
+    (w,) = [w for w in ds.meta["warnings"] if "Groundhog" in w]
+    assert w == ("Too little history for the Groundhog: at the newest week "
+                 "it finds 20 weeks like it in earlier seasons and needs 30, "
+                 "so it will not forecast this data on its own.")
+
+
+def test_replay_stays_on_where_the_groundhog_has_no_donors():
+    """The Replay form says how many weeks have donors and leaves Replay
+    on: a week without them ends "no forecast" (G07), and a wider donor
+    window or a zero-anchor rule can still forecast."""
+    ds = stored(one_series_bytes(), "Flu")
+    html = " ".join(client.get(f"/retro?dataset={ds.id}").text.split())
+    assert ">Groundhog donors: enough in 0 of 38 weeks<" in html
+    assert '<button class="gold" data-guard="console-run">Replay</button>' \
+        in html
+    ok = stored(TEMPLATE.read_bytes(), "Kids")
+    html = " ".join(client.get(f"/retro?dataset={ok.id}").text.split())
+    assert '<button class="gold" data-guard="console-run">Replay</button>' \
+        in html
 
 
 def test_a_dataset_run_that_forecast_no_group_is_not_ok():

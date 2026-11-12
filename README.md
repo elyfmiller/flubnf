@@ -23,6 +23,7 @@ engine is a Python 3.12 venv of its own):
 
     git clone https://github.com/elyfmiller/flubnf && cd flubnf
     ./setup.sh                  # .venv, BioNetGen and the sparse hub clone
+    ./setup_engine.sh           # the engine: public PyBNF's Liu-West filter
     .venv/bin/flubnf app        # the console, at http://127.0.0.1:8710
     .venv/bin/flubnf doctor     # what this machine can see
 
@@ -32,6 +33,13 @@ Groundhog only. The macOS one-line installer, Windows, and the engine are
 under
 [Install and run](#install-and-run); lab members start from
 [docs/INSTALL-STUDENTS.md](docs/INSTALL-STUDENTS.md).
+
+For a weekly series of your own, open the Forecast tab's **Your data**
+and upload a CSV of date, group and value; the upload box's
+**Template CSV** is one that works. The Groundhog forecasts any weekly
+count or rate; the Liu-West filter needs counts and a population. What
+works for another pathogen, target or geography is in
+[docs/ADAPTING.md](docs/ADAPTING.md).
 
 ## What it forecasts, from what data
 
@@ -64,10 +72,11 @@ FluBNF submits two models to FluSight, each under its own hub identity
   After the fit, the Oracle step blends the filter's forecast growth with
   donor growth from past seasons at the same calendar week: each forecast
   sample path draws one donor growth path from an earlier season (within
-  two epiweeks, any jurisdiction) and grows at the geometric mean, half
-  and half, of the filter's growth and the donor's, propagated in closed
-  form from the filter's own state. The donors come from the Groundhog's
-  own donor bank: NHSN admissions growth and FluSurv-NET
+  two epiweeks, any jurisdiction) and grows at the weighted geometric mean
+  of the filter's growth and the donor's, at weight one quarter on the
+  filter's growth from the 2026-10-17 round (one half before), propagated
+  in closed form from the filter's own state. The donors come from the
+  Groundhog's own donor bank: NHSN admissions growth and FluSurv-NET
   hospitalization-rate growth, half and half
   ([docs/ORACLE-SIHRS.md](docs/ORACLE-SIHRS.md)).
 * **Groundhog** (`NAU_PyBNF-GroundHogCGR`), empirical. The last observed
@@ -102,7 +111,10 @@ series needs no group column), kept apart
 from the FluSight hub and never submitted. The columns may be named date
 (or week, week_ending, target_end_date), group (or target_group,
 location, region, jurisdiction) and value (or count, cases, admissions,
-observation); other columns, except as_of, are ignored. Comma, semicolon
+observation); other columns, except as_of, are ignored. A group named
+Overall, as in the template, or US is the national row: scored beside the
+other groups, not pooled with them. Renamed, or alone in its file, Overall
+is an ordinary group. Comma, semicolon
 or tab separated; UTF-8, UTF-16 or Windows-1252; dates as YYYY-MM-DD,
 M/D/YYYY or M/D/YY on one weekday, moved to the Saturday that ends each
 week. For a true retrospective,
@@ -110,7 +122,8 @@ give the data as each week saw it: one CSV with an as_of column, or a
 folder of snapshot files, one per as_of, each named by its date
 (2024-10-05.csv, admissions_2024-10-05.csv) or holding an as_of column.
 Each replayed week then sees the snapshot that held it. `flubnf dataset
-import` takes the same file or folder.
+import` takes the same file or folder. What the console assumes of such
+data, and what needs code, is in [docs/ADAPTING.md](docs/ADAPTING.md).
 
 ## Install and run
 
@@ -127,10 +140,13 @@ Linux, or macOS by hand:
 
     git clone https://github.com/elyfmiller/flubnf && cd flubnf
     ./setup.sh
+    ./setup_engine.sh
     .venv/bin/flubnf app
 
 `flubnf app` serves the console at http://127.0.0.1:8710 and opens it in a
-native window, or in your browser when pywebview is unavailable. Double
+native window. It opens your browser instead when pywebview is
+unavailable, or on Linux when there is no GTK or Qt to draw the window,
+and then prints the console's address in the terminal. Double
 clicking [`FluBNF.command`](FluBNF.command) or [`FluBNF.app`](FluBNF.app/)
 in a clone does the same, first run setup included. Windows is
 experimental: clone outside `Documents` and double click

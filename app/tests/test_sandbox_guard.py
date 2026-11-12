@@ -319,7 +319,8 @@ def test_run_and_retro_refuse_a_sandbox_claim_under_the_engine_lock(monkeypatch)
     src_run = inspect.getsource(ui_forecast.run_models)
     src_retro = inspect.getsource(ui_retro.retro_run)
     for src in (src_run, src_retro):
-        lock = src.index("with _engine_lock:")
+        # retro_run holds an ExitStack beside it: `with _engine_lock, ...:`
+        lock = src.index("with _engine_lock")
         assert src.index("_sandbox_live_reason()", lock) > lock
     monkeypatch.setitem(ui_state._sandbox_status, "claim", "m1")
     assert "being prepared" in ui_shared._sandbox_live_reason()

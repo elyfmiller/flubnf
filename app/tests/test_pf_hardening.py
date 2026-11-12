@@ -130,7 +130,14 @@ def _prep_env(monkeypatch, tmp_path, resolve, netgen_fails_for=()):
         p.write_text("begin parameters\nend parameters\n")
         return p
 
-    def fake_netgen(cmd, **kw):
+    real_run = pf.subprocess.run
+
+    def fake_netgen(cmd, *a, **kw):
+        # only prepare's BNG2.pl call: the patch is the subprocess module's
+        # own, so a thread of the console's (its version probe) would
+        # otherwise land here and write m.net into the checkout
+        if not (cmd and cmd[0] == "perl"):
+            return real_run(cmd, *a, **kw)
         cwd = Path(kw.get("cwd", "."))
         if cwd.name not in netgen_fails_for:
             (cwd / "m.net").write_text("# net\n")
@@ -170,9 +177,21 @@ def test_one_unresolvable_state_costs_itself_not_the_run(monkeypatch,
 def test_a_location_that_fails_mid_replicate_leaves_no_partial_cells(
         monkeypatch, tmp_path):
     """Containment is per LOCATION: a netgen failure on replicate 2 leaves
-    no replicate-1 cell beside the recorded failure."""
+    no replicate-1 cell beside the recorded failure. Replicate 2 runs
+    BNG2.pl only when its model differs from replicate 1's (an identical
+    one gets copies of replicate 1's network files), so its model differs
+    here."""
+    import flubnf.sihrs_fit as sf
     _prep_env(monkeypatch, tmp_path, lambda loc, **kw: _State(),
               netgen_fails_for=("Flaky_r1",))
+    same = sf.materialize_model
+
+    def materialize(s, template, out_path, suffix, extra_tokens=None, **kw):
+        p = same(s, template, out_path, suffix, extra_tokens, **kw)
+        if Path(out_path).parent.name == "Flaky_r1":
+            p.write_text(p.read_text() + "# replicate 2\n")
+        return p
+    monkeypatch.setattr(sf, "materialize_model", materialize)
     w = tmp_path / "wr"
     cells = pf.prepare(_spec(["Ohio", "Flaky"]), w)
 
@@ -394,13 +413,16 @@ def test_a_statusless_workroot_reads_every_cell_as_before(tmp_path):
 # --------------------------------------------- runner process-group plumbing
 
 def test_runner_popen_kwargs_puts_a_runner_in_its_own_group():
+    # `env` aside (every runner gets one: test_perl_bng_env, test_codegen_cache)
+    def _no_env(kw):
+        return {k: v for k, v in kw.items() if k != "env"}
     posix = pf.runner_popen_kwargs({}, _os_name="posix")
-    assert posix == {"start_new_session": True}
+    assert _no_env(posix) == {"start_new_session": True}
     nt = pf.runner_popen_kwargs({"creationflags": 0x4000}, _os_name="nt")
     assert nt["creationflags"] == 0x4000 | pf._CREATE_NEW_PROCESS_GROUP
     # the base kwargs ride along untouched
     both = pf.runner_popen_kwargs({"close_fds": True}, _os_name="posix")
-    assert both == {"close_fds": True, "start_new_session": True}
+    assert _no_env(both) == {"close_fds": True, "start_new_session": True}
 
 
 def test_record_and_unrecord_runner_pids_round_trip(tmp_path):

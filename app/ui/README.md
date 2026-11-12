@@ -19,7 +19,7 @@ One line per module. "Imports" names the app/ui modules a module imports at top 
 | `perflog.py` | the slow-request log (`app/state/logs/slow_requests.log`, middleware `slow_request_log` and `POST /api/perf`), and `append`, the rolling append both logs here use | none |
 | `downloadlog.py` | the download log (`app/state/logs/downloads.log`): one line per file served as a download from a run (`/output/download`, the weekly report downloads): local time, route, run, size, sha256 prefix, path | `perflog` |
 | `retro_seasons.py` | the retro roots (`RETRO_ROOT`, `RETRO_RESEAL`, `RETRO_SEAL`) and season claims; the season registry and status; completed weeks; live progress and ETA | `templating` |
-| `retro_prep.py` | season results preparation (one finalize job per root); the scores and relWIS caches; week map cards | `state`, `shared`, `retro_seasons` |
+| `retro_prep.py` | season results preparation (one finalize job per root); the relWIS figures' LRU (the parsed scores' LRU is `app/core/retro_store.scores_frame`, which `_SCORES_FRAMES` names here); week map cards, and their warm: once a job is done, every week's, newest first, until a forecast run, a Sandbox fit or experiment, or any season's replay starts; the removal mark (`_removing`): while a delete or a move holds a tree, no finalize starts on it and no cache is written into it (`_writing_into`), and the season page's APIs answer 503 with Retry-After | `state`, `shared`, `retro_seasons` |
 | `pipeline.py` | the forecast pipeline `_run_all` (engines, submissions, scoring, weekly report, forecast archive); the OS sleep guard | `state`, `shared`, `forms`, `versions` |
 | **Tabs** (`routes/`, each an APIRouter, included in this order) | | |
 | `routes/shell.py` | no tab: the endpoints `base.html` itself uses (versions poller, favicon, busy guard) | support modules |
@@ -146,7 +146,7 @@ One line per module. "Imports" names the app/ui modules a module imports at top 
 | `_dataset_upload.html` | the upload box: `_datasets_card.html`, `forecast.html`, `_dataset_replay.html`; loads `static/dataset_upload.js` |
 | `_dataset_check.html` | the upload box's result (problems, column mapping, preview): `_dataset_upload.html`, and `datasets_ui.render_check` for `/data/datasets/check` |
 | `_dataset_run.html` | `run.html`, for a run on a custom dataset (fans, export files) |
-| `_dataset_replay.html` | `retro.html` (the Your data tab: the upload box, or a dataset's replay settings and its replays) |
+| `_dataset_replay.html` | `retro.html` (the Your data tab: the upload box, or a dataset's replay settings and its replays); loads `static/dataset_replay.js` |
 | `_model_settings.html` | the Model settings panel: `forecast.html`, `retro.html`, and `_dataset_replay.html` (on the Your data tab: `datasets_ui.dataset_panel`, ids prefixed `dsr-`); loads `static/model_settings.js` |
 | `_tips.html` | macros for the "?" tips, imported by most pages (`base.html` loads `static/tips.js`) |
 
@@ -159,6 +159,9 @@ Template names that differ from their tab: `runs.html` is Storage, `run.html` is
 | `nau.css` | `base.html` (every page); its token blocks are embedded by `app/core/report_v2.py` and `report_season.py` |
 | `player.js` | `retro_season.html`; inlined by `report_season.py`; its name and color maps are parsed by `templating.py` and the reports |
 | `retro_progress.js` | `retro.html`, `retro_season.html` |
+| `estimate.js` | `retro.html`, on both tabs (the Settings form's Oracle option prices the replay through `retro_progress.js` FluBNFRetroCost; the Your data tab's Replay time line through `dataset_replay.js`), and `forecast.html` (the Run row's time line, through `forecast_form.js`); the browser's copy of `app/core/estimates.py`, reading the `data-est-*` attributes `estimates.page_params()` puts on a run form |
+| `forecast_form.js` | `forecast.html` (the form's two read-only lines, redone on every change of the form: the Run row's time line on the hub form, whose rule on the server is `routes/forecast.run_words`, and a dataset's line when the Groundhog has too little history for the anchor week) |
+| `dataset_replay.js` | `_dataset_replay.html` (beside Replay: the Groundhog donor badge and the Replay time line, redone on every change of the form; `datasets_ui.donor_line` and `replay_estimate` are the same rules on the server) |
 | `quips.js` | `forecast.html`, `retro.html`, `retro_season.html` |
 | `plotly.min.js` | `data.html`, `forecast.html`, `model.html`, `retro_season.html`, `retro_dataset.html`, `run.html` (dataset runs), `sandbox.html` |
 | `dataset-template.csv` | `_dataset_upload.html` download link (FluBNF's synthetic grouped-CSV template: three groups, Overall the sum, with populations) |

@@ -8,6 +8,7 @@ _storage_inventory, _storage_target and _tree_size here.
 """
 from __future__ import annotations
 
+from contextlib import contextmanager
 from pathlib import Path
 
 from fastapi import APIRouter, Form, Request
@@ -36,7 +37,8 @@ router = APIRouter()
 # runner computer's main console (the students' Mac Studio) the panel also
 # lists the students' experiments, outside the total, each deletable when
 # the runner is not replaying it (app/core/runner.py, imported inside the
-# functions).
+# functions). The engine's compiled-model cache is listed outside the total
+# too, cleared (here or by Reclaim) only while no engine job runs.
 
 @ttlcache.ttl_cache(ttl_s=60.0)
 def _tree_size(path: str) -> int:
@@ -167,8 +169,65 @@ def _busy_why(kind: str, ident: str, status: str = "") -> str:
     if kind == "retro-archive":
         return (f"{ident} is replaying; stop it before deleting its archived "
                 "runs.")
+    if kind == "engine-cache":
+        # `ident` is the reason (reclaim.codegen_cache_refusal's words)
+        return (f"The engine cache is kept while the engine runs ({ident}); "
+                "it can be cleared once the engine is idle.")
     return ("A console run is in progress and may be writing the archive; "
             "stop it first.")
+
+
+def _engine_busy_reason() -> str:
+    """Why this console's engine is in use ("" when idle): a console run
+    (a dataset run or replay included), a season replay, a Sandbox fit or
+    experiment. The Sandbox's Start reads the same reason."""
+    from app.ui.routes.sandbox import _sandbox_busy_reason
+    return _sandbox_busy_reason()
+
+
+def _engine_cache_row() -> dict | None:
+    """The engine cache's row (bngsim's compiled models, in the state
+    folder: reclaim.codegen_cache_dir): its size, and while an engine job
+    runs here or in another process, busy with why. None when there is
+    none on disk. Listed outside the total: a cache, not a record.
+    "protected" when the folder lies in a protected tree (no Delete, and
+    Reclaim leaves it out); "linked", the folder a linked cache leads to,
+    sized there and never cleared here; "old", bngsim's own folder
+    (pf.BNGSIM_OWN_CACHE, where the engine kept them before they moved to
+    the state folder) when it is still on disk: FluBNF leaves it where it
+    is, since other programs may share it, and the row says so."""
+    from app.core import reclaim, retro
+    from app.core.engines import pf
+    entries = reclaim.codegen_cache_entries()
+    link = reclaim.codegen_cache_link()
+    if not entries and link is None:
+        return None
+    d = reclaim.codegen_cache_dir()
+    size = sum(_tree_size(str(p)) for p in entries)
+    if link is not None and link.is_dir():
+        size += _tree_size(str(link))
+    protected = _storage_protected(d)
+    why = ("" if protected or not entries
+           else reclaim.codegen_cache_refusal(_engine_busy_reason()))
+    try:
+        old = Path(pf.BNGSIM_OWN_CACHE).expanduser().is_dir()
+    except (OSError, RuntimeError):
+        old = False
+    return {"id": d.name, "bytes": size,
+            "size_h": retro.human_bytes(size), "busy": bool(why),
+            "why": _busy_why("engine-cache", why) if why else "",
+            "protected": protected,
+            "linked": str(link) if link is not None else "",
+            "old": pf.BNGSIM_OWN_CACHE if old else ""}
+
+
+def _engine_cache_clearable() -> bool:
+    """Whether Storage's Delete and Reclaim may offer the cache at all:
+    something of it on disk (a link is never followed) outside every
+    protected tree. Busy is asked apart, since it passes."""
+    from app.core import reclaim
+    return bool(reclaim.codegen_cache_entries()) and not _storage_protected(
+        reclaim.codegen_cache_dir())
 
 
 # the panel's counted categories, in page order: (key, label)
@@ -254,7 +313,11 @@ def _storage_inventory() -> dict:
     its runs being counted as workroots. "cats" splits that total by
     category (the page's composition bar and legend). "students" holds
     the students' experiments on the runner computer's main console
-    (_students_here), outside the total; None everywhere else."""
+    (_students_here), outside the total; None everywhere else.
+    "engine_cache" is the engine's compiled-model cache (_engine_cache_row),
+    outside the total too; None when there is none. "engine_cache_warning"
+    is what the runners said when they could not write its folder
+    (pf.codegen_cache_warning), "" otherwise."""
     import re as _re
     from app.core import retro
     from app.core.runs import APP_STATE, is_research, run_display
@@ -372,6 +435,9 @@ def _storage_inventory() -> dict:
                          "size_h": retro.human_bytes(b)})
     inv["cats"] = cats
     inv["students"] = _student_experiments() if _students_here() else None
+    inv["engine_cache"] = _engine_cache_row()
+    from app.core.engines import pf
+    inv["engine_cache_warning"] = pf.codegen_cache_warning()
     return inv
 
 
@@ -474,6 +540,25 @@ def runs_clear(request: Request, confirm: str = Form("")):
     return _back(request, "/storage")
 
 
+def _replaying_why(kind: str, ident: str) -> str:
+    """Why a retrospective season, or an archived run of one (ident
+    <season>__archived_<stamp>), cannot be deleted while its season
+    replays, in _busy_why's words; "" otherwise and for every other kind.
+    Asked twice by a delete: with the other checks (_storage_target), then
+    again under _engine_lock once the tree is marked, the lock a Run
+    claims a season under, after refusing a marked tree: of a Resume and a
+    delete, one comes first and the other refuses."""
+    if kind == "retro-season":
+        st = _season_status(ident)
+        return _busy_why(kind, ident, st) if st in _RETRO_ACTIVE else ""
+    if kind == "retro-archive":
+        import re as _re
+        m = _re.match(r"(\d{4}-\d{2})", ident or "")
+        if m and _season_status(m.group(1)) in _RETRO_ACTIVE:
+            return _busy_why(kind, m.group(1))
+    return ""
+
+
 def _storage_target(kind: str, ident: str):
     """(path, busy_reason) for one storage delete request, after all
     validation EXCEPT the confirmation; (None, message) when refused."""
@@ -490,8 +575,9 @@ def _storage_target(kind: str, ident: str):
     elif kind == "retro-season":
         if not _valid_season(ident):
             return None, "Unrecognized season name."
-        if _season_status(ident) in _RETRO_ACTIVE:
-            return None, _busy_why(kind, ident, _season_status(ident))
+        why = _replaying_why(kind, ident)
+        if why:
+            return None, why
         p = retro_seasons.RETRO_ROOT / ident
         base = retro_seasons.RETRO_ROOT
     elif kind == "retro-archive":
@@ -499,9 +585,9 @@ def _storage_target(kind: str, ident: str):
         stamp = (retro.archive_stamp_of(ident, m.group(1)) if m else "")
         if not stamp:
             return None, "Unrecognized archived run identifier."
-        season = m.group(1)
-        if _season_status(season) in _RETRO_ACTIVE:
-            return None, _busy_why(kind, season)
+        why = _replaying_why(kind, ident)
+        if why:
+            return None, why
         p = retro_seasons.RETRO_ROOT / ident
         base = retro_seasons.RETRO_ROOT
     elif kind == "report-archive":
@@ -532,6 +618,22 @@ def _storage_target(kind: str, ident: str):
             return None, row["why"]
         base = runner.folder(name) / "experiments"
         p = base / eid
+    elif kind == "engine-cache":
+        # cleared by storage_delete through reclaim.clear_codegen_cache,
+        # which asks again under the engine lock
+        from app.core import reclaim
+        p = reclaim.codegen_cache_dir()
+        if ident != p.name:
+            return None, "Unrecognized storage entry."
+        if not reclaim.codegen_cache_entries():
+            return None, "Nothing is on disk under that name."
+        if _storage_protected(p):
+            return None, ("That folder is protected; the console never "
+                          "deletes it.")
+        why = reclaim.codegen_cache_refusal(_engine_busy_reason())
+        if why:
+            return None, _busy_why(kind, why)
+        return p, ""
     else:
         return None, "Unrecognized storage kind."
     # Containment by construction (separator-free identifiers). Not resolved
@@ -562,13 +664,53 @@ def storage_delete(request: Request, kind: str = Form(""),
     if confirm != ident:
         _flash("Not deleted: the deletion was not confirmed.", "warn")
         return _back(request, "/storage")
-    size_h = retro.human_bytes(retro.dir_size(p))
-    try:
-        retro.delete_tree(p)
-    except Exception as e:
-        _flash(f"Could not delete {ident}: {type(e).__name__}: "
-               f"{str(e)[:160]}.", "error", detail="Nothing else changed.")
-        return _back(request, "/storage")
+    if kind == "engine-cache":
+        return _clear_engine_cache(request)
+    # a season or archived run whose results are still being written
+    # after its replay or a results visit: a delete meanwhile could fail
+    # half way. Marked first, so no results page starts a finalize on it
+    # from here on (retro_prep._removing)
+    from contextlib import ExitStack
+    from app.ui import retro_prep
+    from app.ui.state import _engine_lock
+    with ExitStack() as held:
+        # marked under _engine_lock, and the season's status looked at
+        # again there: a Resume claimed since the first look is refused
+        # here, and one posted from now on finds the mark (routes/retro.py
+        # asks under the same lock). Released before the delete itself
+        with _engine_lock:
+            busy = held.enter_context(retro_prep._removing(p))
+            replaying = "" if busy else _replaying_why(kind, ident)
+        if busy == retro_prep._ALREADY_REMOVING:
+            # a second delete at once (a double click, another tab), or
+            # an import replacing the run: the first goes on and says so
+            _flash(f"Not deleted: {ident} is {busy}.", "warn",
+                   detail="Nothing else changed.")
+            return _back(request, "/storage")
+        if busy:
+            _flash(f"Not deleted: the {busy} of {ident} are still being "
+                   "prepared.", "warn", detail="Try again in a minute.")
+            return _back(request, "/storage")
+        if replaying:
+            _flash(f"Not deleted: {replaying[:1].lower()}{replaying[1:]}",
+                   "warn")
+            return _back(request, "/storage")
+        # its week maps may still be written after its replay or a
+        # results visit: stopped first, or a delete meanwhile could fail
+        # half way (retro_prep._stop_warm). Under the mark, so no
+        # finalize starts a new warm once this one stops
+        if not retro_prep._stop_warm(p):
+            _flash(f"Not deleted: the week maps of {ident} are still being "
+                   "prepared.", "warn", detail="Try again in a minute.")
+            return _back(request, "/storage")
+        size_h = retro.human_bytes(retro.dir_size(p))
+        try:
+            retro.delete_tree(p)
+        except Exception as e:
+            _flash(f"Could not delete {ident}: {type(e).__name__}: "
+                   f"{str(e)[:160]}.", "error",
+                   detail="Nothing else changed.")
+            return _back(request, "/storage")
     _invalidate_scans()
     noun = {"workroot": "workroot", "retro-season": "retrospective season",
             "retro-archive": "archived retrospective run",
@@ -577,6 +719,30 @@ def storage_delete(request: Request, kind: str = Form(""),
     tail = ("Its ledger row remains as the run's record."
             if kind == "workroot" else "")
     _flash(f"Deleted the {noun} {ident}: {size_h} freed.", "ok", detail=tail)
+    return _back(request, "/storage")
+
+
+#: what a cleared engine cache means, said wherever one is cleared
+_CACHE_CLEARED = ("The engine compiles each model again on its next fit, "
+                  "which takes a little longer once; no forecast, score or "
+                  "report changes.")
+
+
+def _clear_engine_cache(request: Request):
+    """Storage's Delete on the engine cache: cleared unless an engine job
+    runs, asked again under the engine lock (reclaim.clear_codegen_cache)."""
+    from app.core import reclaim, retro
+    from app.ui.state import _engine_lock
+    out = reclaim.clear_codegen_cache(busy=_engine_busy_reason,
+                                      lock=_engine_lock)
+    _invalidate_scans()
+    if out["refused"]:
+        why = (_busy_why("engine-cache", out["refused"]) if out["busy"]
+               else f"{out['refused']}.")
+        _flash(f"Not deleted: {why[:1].lower()}{why[1:]}", "warn")
+        return _back(request, "/storage")
+    _flash(f"Cleared the engine cache: {retro.human_bytes(out['bytes'])} "
+           "freed.", "ok", detail=_CACHE_CLEARED)
     return _back(request, "/storage")
 
 
@@ -628,22 +794,63 @@ def storage_clear_workroots(request: Request, confirm: str = Form("")):
 
 def _reclaim_skips() -> tuple:
     """(season entry names, workroot names) the reclaim must not touch right
-    now: seasons replaying or mid-finalize, and the active run's workroot."""
+    now: seasons replaying, mid-finalize or still warming their week map
+    cards (the warm reads each week's samples file, which a reclaim could
+    compress or remove under it), trees a delete, a move or an import's
+    Replace holds (retro_prep._removing's mark), and the active run's
+    workroot. The survey and the perform step take the same rule, so
+    their counts agree while nothing changes."""
+    from app.ui import retro_prep
     skip_seasons = {s for s in retro_seasons._known_seasons()
                     if _season_status(s) in _RETRO_ACTIVE}
     for key, job in list(_results_jobs.items()):
-        if job and not job["done"].is_set():
+        if not job:
+            continue
+        warming = job.get("warm") is not None and not job["warm"].is_set()
+        if not job["done"].is_set() or warming:
             skip_seasons.add(Path(key).name)
+    with retro_prep._results_lock:
+        marked = list(retro_prep._REMOVING)
+    skip_seasons.update(Path(k).name for k in marked)
     return skip_seasons, set(_live_workroot_ids())
 
 
+@contextmanager
+def _reclaim_hold(tree: Path):
+    """Around reclaim's work on one season tree (one week's prune, one
+    file's compress: reclaim.execute's `hold`): held under the lock a
+    delete's, a move's or a Replace's mark is taken under
+    (retro_prep._results_lock), it yields False while such a mark holds
+    the tree, and True otherwise. So the mark never comes between this
+    look and the work: a delete or a Replace that arrives during one
+    file's compress waits for that file, then marks the tree, and reclaim
+    leaves the rest of it alone."""
+    from app.ui import retro_prep
+    with retro_prep._results_lock:
+        yield not retro_prep._being_removed(tree)
+
+
 def _reclaim_survey() -> dict:
+    """reclaim.survey's plan, plus the engine cache: cache_bytes (in
+    total_est) when it may be cleared now, else cache_why, why it is kept.
+    A protected cache is left out, as protected seasons are. The cache
+    stays out of the confirmation token: clearing more or less of it loses
+    nothing."""
     from app.core import reclaim
     from app.core.runs import APP_STATE
     skip_seasons, skip_workroots = _reclaim_skips()
-    return reclaim.survey(retro_seasons.RETRO_ROOT, APP_STATE / "workroots",
+    plan = reclaim.survey(retro_seasons.RETRO_ROOT, APP_STATE / "workroots",
                           skip_seasons=skip_seasons,
                           skip_workroots=skip_workroots)
+    plan["cache_bytes"], plan["cache_why"] = 0, ""
+    if _engine_cache_clearable():
+        why = reclaim.codegen_cache_refusal(_engine_busy_reason())
+        if why:
+            plan["cache_why"] = why
+        else:
+            plan["cache_bytes"] = reclaim.codegen_cache_bytes()
+    plan["total_est"] += plan["cache_bytes"]
+    return plan
 
 
 @router.get("/api/storage/reclaim")
@@ -678,6 +885,13 @@ def api_storage_reclaim():
                        f"{hb(plan['compress_bytes'])} now; estimated "
                        f"{hb(plan['est_compress_saved'])} freed, every week "
                        "stays scoreable and playable")})
+    if plan["cache_bytes"]:
+        cats.append({
+            "key": "engine-cache",
+            "label": "Engine cache (compiled models)",
+            "bytes": plan["cache_bytes"], "bytes_h": hb(plan["cache_bytes"]),
+            "detail": ("the engine compiles each model again on its next "
+                       "fit; no forecast changes")})
     counts = f"{plan['weeks']}/{plan['workroots']}/{plan['compress_files']}"
     return {"categories": cats, "total": plan["total_est"],
             "total_h": hb(plan["total_est"]), "confirm": counts}
@@ -694,9 +908,16 @@ def storage_reclaim(request: Request, confirm: str = Form("")):
     plan = _reclaim_survey()
     counts = f"{plan['weeks']}/{plan['workroots']}/{plan['compress_files']}"
     if plan["total_est"] <= 0 and plan["compress_files"] == 0:
-        _flash("Nothing to reclaim.", "warn",
-               detail="No completed week or run carries intermediates, and "
-               "every stored week is already compressed.")
+        nothing = ("No completed week or run carries intermediates, and "
+                   "every stored week is already compressed.")
+        if plan["cache_why"]:
+            # the cache alone, and an engine job holds it: said, as
+            # Storage's Delete says it
+            why = _busy_why("engine-cache", plan["cache_why"])
+            _flash(f"Not reclaimed: {why[:1].lower()}{why[1:]}", "warn",
+                   detail=nothing)
+        else:
+            _flash("Nothing to reclaim.", "warn", detail=nothing)
         return _back(request, "/storage")
     if confirm != counts:
         _flash("Not reclaimed: the storage panel changed since the report.",
@@ -706,7 +927,15 @@ def storage_reclaim(request: Request, confirm: str = Form("")):
     skip_seasons, skip_workroots = _reclaim_skips()
     out = reclaim.execute(retro_seasons.RETRO_ROOT, APP_STATE / "workroots",
                           skip_seasons=skip_seasons,
-                          skip_workroots=skip_workroots)
+                          skip_workroots=skip_workroots,
+                          hold=_reclaim_hold)
+    # the engine cache, when the report offered it: asked again under the
+    # engine lock, so a run started since keeps it
+    cache = {"bytes": 0, "refused": "", "busy": False}
+    if plan["cache_bytes"]:
+        from app.ui.state import _engine_lock
+        cache = reclaim.clear_codegen_cache(busy=_engine_busy_reason,
+                                            lock=_engine_lock)
     _invalidate_scans()
     hb = retro.human_bytes
     bits = []
@@ -722,8 +951,19 @@ def storage_reclaim(request: Request, confirm: str = Form("")):
         bits.append(f"{hb(out['compress_saved'])} by compressing "
                     f"{out['compress_files']} stored week"
                     f"{'' if out['compress_files'] == 1 else 's'} in place")
-    _flash(f"Reclaimed {hb(out['total'])}.", "ok",
-           detail=("; ".join(bits) + ". " if bits else "")
+    if cache["bytes"]:
+        bits.append(f"{hb(cache['bytes'])} by clearing the engine cache")
+    # kept because an engine job holds it, at the survey or under the
+    # lock: said in Storage's words; any other refusal as it came
+    held = plan["cache_why"] or (cache["refused"] if cache["busy"] else "")
+    if held:
+        kept = _busy_why("engine-cache", held) + " "
+    elif cache["refused"]:
+        kept = f"The engine cache was kept: {cache['refused']}. "
+    else:
+        kept = ""
+    _flash(f"Reclaimed {hb(out['total'] + cache['bytes'])}.", "ok",
+           detail=("; ".join(bits) + ". " if bits else "") + kept
            + "Every stored week, score, report and submission file is "
            "kept; the sealed validation record and the hub clone were not "
            "touched.")

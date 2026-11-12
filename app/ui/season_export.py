@@ -137,8 +137,10 @@ def report_job(root: Path, season: str, archive: str = "", build: str = "",
                versions: dict | None = None) -> dict:
     """Start (or join) the build of this tree's season report in the
     background; its status (job_status). A fresh cached report finishes at
-    once."""
+    once. A delete or a move that takes the run during the build ends it
+    in its own sentence (retro_store.TreeBusy), with nothing written."""
     from app.core import report_season
+    from app.core.retro_store import TreeBusy
     root = Path(root)
     key = str(root)
     with _JOBS_LOCK:
@@ -163,6 +165,11 @@ def report_job(root: Path, season: str, archive: str = "", build: str = "",
                        name=report_season.download_name(season, archive),
                        size_h=_size_h(p.stat().st_size),
                        done=None, total=None)
+        except TreeBusy as e:
+            # a delete or a move took the run during the build: its
+            # sentence says so, and the build wrote nothing
+            job.update(state="error", done=None, total=None,
+                       error=str(e)[:300])
         except Exception as e:
             # the page shows why; the console's log keeps the trace
             traceback.print_exc()

@@ -28,6 +28,20 @@ from app.ui.routes import sandbox as rs                  # noqa: E402
 client = TestClient(srv.app)
 STATIC = Path(__file__).resolve().parents[1] / "ui" / "static"
 
+#: the console's notice store: what _flash queues for the next page
+NOTICE = ("flash", "flash_kind", "flash_detail")
+
+
+@pytest.fixture(autouse=True)
+def _no_notice_left():
+    """A refusal here queues a notice in ui_state._status for the next page
+    the user sees. No page here reads the last one, so it would join the
+    next file's first notice (test_forecast_text's gap refusal began with
+    "Stop it from the Sandbox tab first."). Each test leaves none."""
+    yield
+    for key in NOTICE:
+        ui_state._status.pop(key, None)
+
 
 @pytest.fixture
 def box(sandbox_root):
@@ -255,3 +269,10 @@ def test_the_one_run_refusals_claim_no_engine_a_groundhog_run_does_not_use(box):
         assert rs._sandbox_busy_reason() == "a console run is in progress"
     finally:
         ui_state._status["running"] = None
+
+
+def test_the_refusal_above_leaves_no_notice_for_the_next_file():
+    """Runs right after the one-run refusal (file order): its notice and
+    the "?" detail went with it, so the next file's first notice stands
+    alone."""
+    assert [k for k in NOTICE if k in ui_state._status] == []

@@ -107,6 +107,22 @@ _REAL_HUB_MISSING = _core_data.hub_missing
 
 
 @pytest.fixture(scope="session", autouse=True)
+def _node_warm():
+    """On Windows, launch node once before any test does. A fresh runner's
+    first node launch pays its cold start (33 s on a pass, past 60 s once,
+    2026-10-23), and the node tests' 60 s timeouts are fuses against a hang,
+    not speed checks: whichever test launched node first would carry it."""
+    if os.name == "nt" and shutil.which("node"):
+        import subprocess
+        try:
+            subprocess.run([shutil.which("node"), "-e", "0"],
+                           capture_output=True, timeout=300)
+        except Exception:
+            pass
+    yield
+
+
+@pytest.fixture(scope="session", autouse=True)
 def _app_state_untouched():
     """The whole suite leaves the working tree's app/state as it found it,
     and adds nothing to the checkout's top folder."""
@@ -134,6 +150,25 @@ def _engine_pinned_private(monkeypatch):
     lwf._CHECK.clear()
     lwf._BUILD.clear()
     lwf._PENDING.clear()
+
+
+@pytest.fixture(autouse=True)
+def _no_map_card_warm(monkeypatch):
+    """No season's map-card warm (retro_prep, after a results job) runs in
+    the background and outlives its test; the warm's own tests turn it
+    on themselves."""
+    from app.ui import retro_prep
+    monkeypatch.setattr(retro_prep, "_WARM_MAP_CARDS", False)
+
+
+@pytest.fixture(autouse=True)
+def _no_slow_request_log(monkeypatch):
+    """No request is logged as slow (app/ui/perflog.py): on a slow runner
+    any request can take its 300 ms, and the log would land in the state
+    folder a test points APP_STATE at and compares (test_reclaim's
+    snapshots). The log's own tests set SLOW_MS themselves."""
+    from app.ui import perflog
+    monkeypatch.setattr(perflog, "SLOW_MS", float("inf"))
 
 
 @pytest.fixture(autouse=True)
