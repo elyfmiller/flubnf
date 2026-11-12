@@ -146,6 +146,16 @@ def _no_map_card_warm(monkeypatch):
 
 
 @pytest.fixture(autouse=True)
+def _no_slow_request_log(monkeypatch):
+    """No request is logged as slow (app/ui/perflog.py): on a slow runner
+    any request can take its 300 ms, and the log would land in the state
+    folder a test points APP_STATE at and compares (test_reclaim's
+    snapshots). The log's own tests set SLOW_MS themselves."""
+    from app.ui import perflog
+    monkeypatch.setattr(perflog, "SLOW_MS", float("inf"))
+
+
+@pytest.fixture(autouse=True)
 def _runner_registry_in_tmp(tmp_path, monkeypatch):
     monkeypatch.setattr(pf, "RUNNER_PIDS_FILE", tmp_path / "pf_runners.json")
 
