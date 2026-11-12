@@ -6,6 +6,40 @@ and CDC's rules. The season's facts are in
 
 ## Now
 
+- 2026-11-12 (22:04 UTC): ROUND 2026-11-14 MERGED ON THE HUB, AND THE
+  5 PM ET FIELD CHECK. cdcepi #4060 merged at 20:31 UTC (merge commit
+  07c0814e, in main 7cf88ab9); both files on main are byte-identical to
+  the checked ones (Oracle ec45db1c..., 53; Groundhog 4178cfd5..., 49).
+  The field (tools/field_round2.sh, which now records each file's commit
+  time; tools/field_compare.py): 37 other teams committed after the hub
+  posted the 11-07 week (14:46 UTC), all four NAU teams among them; three
+  earlier ones left out (GT_Influencers-ensemble, HallAI-FluTrend,
+  docxology-panelqr).
+  - h0: in line. Our median over the median of the other teams, typical
+    0.98x (Oracle) and 0.97x (Groundhog), no location outside 1/1.5 to
+    1.5x. This morning's ten low h0 flags came from teams that forecast
+    before the data.
+  - h3: on the high side, as the review saw. US h3 medians: Oracle
+    27,233, Groundhog 30,739, against a field median of 20,521 (35 teams
+    with a US row; 3 above the Oracle, 2 above the Groundhog). By
+    location: typical 1.25x (Oracle, 16 above 1.5x, 4 below 1/1.5:
+    Nebraska, Montana, DC, Iowa, all with a falling last week) and 1.42x
+    (Groundhog, 14 above, none below); each model in the field's top
+    three in 13 locations. Above every other team: the Oracle's New
+    Jersey (1,587 against a field maximum of 1,558; weeks 91, 157, 256,
+    383) and the Groundhog's Maine (185 against 158; weeks 14, 16, 23,
+    38) and Utah (283 against 280).
+  - The NAU member table (Spencer's 1.5x; the five other members all
+    in): the Oracle typical 1.05x, apart in 13 of 53 (nine high at 1.50
+    to 1.75x, four low as above); the Groundhog typical 1.28x, apart in
+    12 of 49, all high, the widest Maine 2.22x and Puerto Rico 2.05x
+    (whose last week fell). No red flag; flat or higher holds (amended
+    rule). The member rule's reading is still Open (2026-11-05); in
+    round 2026-11-07 Ely let such flags stand.
+  - This lane's read: nothing new enough to reopen the merged files.
+    If one location is reconsidered, the Groundhog's Maine is the
+    clearest. A change now is a new hub pull request before the 9 PM ET
+    cutoff (deadline 11 PM ET); Ely decides.
 - 2026-11-12 (19:20 UTC): DEV IS OPEN AGAIN (App lane): THIS BRANCH CAN
   MERGE, WITH THE GATE FIX AND THE REPORT'S RATIO ON THE CAP'S LEVEL. For
   Ely's merge into dev; nothing here touches model or output code.
