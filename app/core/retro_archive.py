@@ -140,10 +140,19 @@ def archive_run(retro_root: Path, season: str, stamp: str | None = None,
 def delete_tree(path: Path) -> None:
     """Remove a season or archive tree permanently.
 
-    A symlinked tree loses only its link (never follow into data we do not own)."""
+    A symlinked tree loses only its link (never follow into data we do not own).
+    An imported run's imported.json goes first, so a delete that fails part
+    way never leaves part of a run that reads as a whole import (an import's
+    sweep would otherwise delete an old run set aside beside it, taking the
+    part left for that run's copy). An imported.json that is a folder is
+    never read as one, and goes with the rest."""
+    from app.core.replay_bundle import IMPORTED_MARK
     p = Path(path)
     _SUMMARY_CACHE.pop(str(p), None)
     if p.is_symlink():
         p.unlink()
         return
+    mark = p / IMPORTED_MARK
+    if p.is_dir() and (mark.is_symlink() or mark.is_file()):
+        mark.unlink(missing_ok=True)
     shutil.rmtree(p)

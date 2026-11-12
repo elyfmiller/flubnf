@@ -127,18 +127,33 @@ def _record(name: str) -> dict:
                  f"without size-matched donors, submitted 2026-10-24; "
                  f"{fmt(pooled_form)} for the pooled form submitted "
                  f"2026-10-10 and 2026-10-17).")]})
-    two, blend = 0.719, 0.704
-    # both scores beat the baseline (two checks), so the badge says how far
-    # this one fell behind the blend it was tested in, from the two values
+    # the August 2026 ensemble gate on the seal of 2026-08-19, three
+    # seasons pooled, before the donor-pool exclusion (docs/archive/
+    # RELEASE-1.0.md, the seal table and the two-strain entry: equal thirds
+    # 0.7189 against the two-member 0.7039). 0.719 is the three-member
+    # ensemble (filter, analogue, two-strain), not the two-strain model
+    # alone, and has no cell count; 0.704 is the 50/50 blend of the
+    # filter and the analogue on 15,460 cells. No bar for the model alone
+    with_it, without, cells = 0.719, 0.704, "15,460"
+    # both scores beat the baseline (two checks), so the badge says how much
+    # worse the ensemble scored with it added, from the two values
     return _bars({
-        "bars": [("Two-strain SIHRS", two, True),
-                 ("Blend it was tested in", blend, False)],
-        "facts": [],
-        "behind": {"text": f"{fmt(two - blend)} behind the blend"},
+        "bars": [("Ensemble with it (equal thirds)", with_it, True),
+                 ("Ensemble without it (50/50)", without, False)],
+        "facts": [("Seal", "2026-08-19"),
+                  ("Seasons", "2023-24 to 2025-26"),
+                  ("Donor pool", "before the exclusion")],
+        "behind": {"text": f"{fmt(with_it - without)} worse as a third "
+                           f"member"},
         "lines": [
-            (f"It scored worse than the blend it was tested in, in the "
-             f"August 2026 evaluation (relWIS {fmt(two)} against "
-             f"{fmt(blend)}), so it is kept for research runs only.")]})
+            (f"Adding it as a third equal member scored worse: relWIS "
+             f"{fmt(with_it)} for the ensemble in equal thirds against "
+             f"{fmt(without)} for the 50/50 blend of the Liu-West filter "
+             f"and the analogue (lower is better)."),
+            ("Both figures: seal 2026-08-19, three seasons, before the "
+             f"donor-pool exclusion. The 50/50 figure is on {cells} cells; "
+             f"the equal-thirds figure has no cell count."),
+            "So it is kept for research runs only."]})
 
 
 def _engine_public() -> bool:

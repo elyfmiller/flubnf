@@ -23,6 +23,11 @@ pipeline does):
   * runner scripts, shard lists, prep manifests, cells_done/, HALT flags,
     .prog files.
 
+CACHE (cleared only while no engine job runs; rebuilt on demand, so no
+number changes):
+  * the engine runners' bngsim compiled-model cache, <state>/engine-cache/
+    bngsim-codegen (pf.codegen_cache_dir; clear_codegen_cache).
+
 Every function refuses protected trees itself, so no caller mistake can
 reach them. An interrupted week keeps every checkpoint and resumes.
 """
@@ -32,6 +37,7 @@ import json
 import os
 import re
 import shutil
+from contextlib import nullcontext
 from pathlib import Path
 
 from app.core import retro
@@ -83,7 +89,9 @@ def inside_any(p: Path, roots) -> bool:
     the folder itself (os.stat identity over the path and its parents), so
     another spelling of one folder matches: upper case or /users/ for
     /Users/ on a case-insensitive volume. Unresolvable paths count as
-    inside."""
+    inside. An inode of 0 (a volume that reports no file identity, as
+    some Windows network shares do) is no identity: such a folder is
+    matched by name only, else every folder there would match."""
     try:
         rp = Path(p).resolve()
     except (OSError, RuntimeError):
@@ -100,7 +108,8 @@ def inside_any(p: Path, roots) -> bool:
             st = os.stat(r)
         except OSError:
             continue                     # absent: no folder to match
-        ids.add((st.st_dev, st.st_ino))
+        if st.st_ino:
+            ids.add((st.st_dev, st.st_ino))
     if not ids:
         return False
     for q in (rp, *rp.parents):
@@ -108,7 +117,7 @@ def inside_any(p: Path, roots) -> bool:
             st = os.stat(q)
         except OSError:
             continue                     # not on disk (yet): its parents are
-        if (st.st_dev, st.st_ino) in ids:
+        if st.st_ino and (st.st_dev, st.st_ino) in ids:
             return True
     return False
 
@@ -169,15 +178,27 @@ def season_week_dirs(root: Path) -> list:
     return [p.parent for p in retro.season_sample_files(root)]
 
 
-def prune_season(root: Path) -> dict:
+def _held(hold, root: Path):
+    """`hold(root)` (the console's: Storage's _reclaim_hold), or a block
+    that always lets the work go on: around one week's prune or one
+    file's compress, it yields whether the tree may be touched now."""
+    return hold(root) if hold is not None else nullcontext(True)
+
+
+def prune_season(root: Path, hold=None) -> dict:
     """Prune every completed week in a season tree. Refuses protected
-    trees wholesale. Returns {"bytes": freed, "weeks": n_pruned}."""
+    trees wholesale. Returns {"bytes": freed, "weeks": n_pruned}. `hold`
+    (see execute) is asked before each week: once it says no, the rest of
+    the tree is left as it is."""
     root = Path(root)
     if is_protected(root):
         return {"bytes": 0, "weeks": 0}
     freed = weeks = 0
     for wd in season_week_dirs(root):
-        b = prune_week(wd)
+        with _held(hold, root) as free:
+            if not free:
+                break
+            b = prune_week(wd)
         if b:
             freed += b
             weeks += 1
@@ -277,33 +298,212 @@ def compressible_files(root: Path) -> list:
             if p.name == retro.SAMPLES_JSON and not is_protected(p)]
 
 
-def compress_tree(root: Path) -> dict:
+def compress_tree(root: Path, hold=None) -> dict:
     """Compress every plain-JSON stored week in one season tree, preserving
-    each file's mtime (caches stay valid). Returns {"saved", "files"}."""
+    each file's mtime (caches stay valid). Returns {"saved", "files"}.
+    `hold` (see execute) is asked before each file: once it says no, the
+    rest of the tree is left as it is."""
     saved = files = 0
     for p in compressible_files(root):
-        try:
-            before = p.stat().st_size
-            gz = retro.compress_samples_file(p)
-            saved += before - gz.stat().st_size
-            files += 1
-        except OSError:
-            continue              # one stuck file must not sink the sweep
+        with _held(hold, root) as free:
+            if not free:
+                break
+            try:
+                before = p.stat().st_size
+                gz = retro.compress_samples_file(p)
+                saved += before - gz.stat().st_size
+                files += 1
+            except OSError:
+                continue          # one stuck file must not sink the sweep
     return {"saved": saved, "files": files}
+
+
+# ------------------------------------------- the engine's compiled-model cache
+# bngsim compiles each model's right-hand side once and keeps the library in
+# the state folder (pf.codegen_cache_dir; BNGSIM_CODEGEN_CACHE_DIR). Nothing
+# there is a record: the same .net compiles to the same library, so a cleared
+# cache costs the next fits their compile time and changes no number. But a
+# fit compiling or loading a library while its folder goes could fail or
+# fall back to bngsim's interpreted right-hand side, so the cache is cleared
+# only while no engine job runs: the console's own claims (the caller's
+# `busy`), and no live runner in any runner registry, the terminal's, the
+# students' runner's and the cache's own holders included
+# (engine_runners_live). The folder is first
+# renamed aside, one atomic step under the caller's lock, so a fit that
+# starts meanwhile compiles into a fresh folder and never meets a
+# half-deleted one; the folder set aside is deleted after.
+
+#: a cache folder set aside for deletion: <name><ASIDE><pid>-<ns>, in the
+#: cache's own parent (a clear cut short leaves it for the next clear)
+CODEGEN_ASIDE = ".clearing-"
+
+
+def codegen_cache_dir() -> Path:
+    """The engine runners' compiled-model cache (pf.codegen_cache_dir)."""
+    from app.core.engines import pf
+    return pf.codegen_cache_dir()
+
+
+def codegen_cache_entries() -> list:
+    """The cache folder, when it exists, then any folder an earlier clear set
+    aside and did not finish deleting. A link is never followed: a cache
+    someone linked elsewhere is theirs."""
+    d = codegen_cache_dir()
+    out = []
+    if d.is_dir() and not d.is_symlink():
+        out.append(d)
+    try:
+        out += sorted(p for p in d.parent.iterdir()
+                      if p.name.startswith(d.name + CODEGEN_ASIDE)
+                      and p.is_dir() and not p.is_symlink())
+    except OSError:
+        pass
+    return out
+
+
+def codegen_cache_link() -> Path | None:
+    """Where the cache folder leads when it is a link (the cache moved to
+    another disk by hand), else None. Storage lists it; nothing here
+    clears it: a cache someone linked elsewhere is theirs."""
+    d = codegen_cache_dir()
+    if not d.is_symlink():
+        return None
+    return Path(os.path.realpath(d))
+
+
+def codegen_cache_bytes() -> int:
+    """Bytes the cache holds (its folder and any set aside); 0 with none."""
+    return sum(_size(p) for p in codegen_cache_entries())
+
+
+def runner_registries() -> list:
+    """Every registry an engine runner of this install is recorded in: the
+    console's (pf.RUNNER_PIDS_FILE: the forecast path, replays, the
+    Sandbox), a terminal replay's (flubnf/cli_sandbox.py), and the
+    students' runner's (app/core/runner.py), read at call time; and the
+    cache's own holders (pf.codegen_holders_file), in the state folder,
+    where every one of those records its runners too, so a console of
+    another checkout on the same FLUBNF_STATE_DIR is seen as well."""
+    from app.core import runner
+    from app.core.engines import pf
+    from flubnf.cli_sandbox import _terminal_registry
+    return [Path(pf.RUNNER_PIDS_FILE), Path(_terminal_registry()),
+            runner.state_dir() / runner.REGISTRY_FILE,
+            pf.codegen_holders_file()]
+
+
+def engine_runners_live(registries=None) -> int:
+    """How many recorded engine runners are alive now, in any registry
+    (runner_registries by default): a pid counts when its live command line
+    names the runner script it was recorded with, the pairing the takeover
+    sweep uses (flubnf/cli.py), so a recycled pid does not hold the cache
+    forever. An entry recorded without its script counts while its pid
+    lives. An unreadable registry holds nothing. A runner is counted once
+    however many registries list it (its own and the cache's holders)."""
+    from flubnf.cli import _pid_cmdline
+    seen = set()
+    for reg in (runner_registries() if registries is None else registries):
+        try:
+            entries = json.loads(Path(reg).read_text(encoding="utf-8"))
+        except (OSError, ValueError):
+            continue
+        if not isinstance(entries, dict):
+            continue
+        for pid_s, meta in entries.items():
+            try:
+                pid = int(pid_s)
+            except (TypeError, ValueError):
+                continue
+            if pid <= 0 or pid in seen:
+                continue
+            script = (str(meta.get("runner") or "")
+                      if isinstance(meta, dict) else "")
+            cmd = _pid_cmdline(pid)
+            if cmd and (os.path.basename(script) in cmd if script else True):
+                seen.add(pid)
+    return len(seen)
+
+
+def codegen_cache_refusal(busy: str = "", registries=None) -> str:
+    """Why the cache may not be cleared now ("" when it may): `busy`, the
+    caller's own reason (a console run, a replay, a Sandbox fit), else a
+    live engine runner of another process."""
+    if busy:
+        return busy
+    n = engine_runners_live(registries)
+    if n:
+        return (f"{n} engine runner{'' if n == 1 else 's'} "
+                f"{'is' if n == 1 else 'are'} fitting on this computer")
+    return ""
+
+
+def clear_codegen_cache(busy=None, lock=None, registries=None) -> dict:
+    """Clear the compiled-model cache unless an engine job runs. `busy` is
+    a callable giving the caller's own busy reason ("" when idle; a string
+    serves too), asked under `lock` (the console's engine lock, so no run
+    is claimed between the check and the rename). Returns {"bytes": freed,
+    "refused": why it was kept ("" when cleared), "busy": whether that was
+    an engine job}."""
+    from contextlib import nullcontext
+    import time
+    with (lock if lock is not None else nullcontext()):
+        why = codegen_cache_refusal(busy() if callable(busy) else
+                                    (busy or ""), registries)
+        if why:
+            return {"bytes": 0, "refused": why, "busy": True}
+        d = codegen_cache_dir()
+        if is_protected(d):
+            return {"bytes": 0, "busy": False,
+                    "refused": "the engine cache's folder is protected"}
+        if d.is_dir() and not d.is_symlink():
+            to = d.with_name(f"{d.name}{CODEGEN_ASIDE}{os.getpid()}"
+                             f"-{time.time_ns()}")
+            try:
+                os.rename(d, to)
+            except OSError as e:
+                return {"bytes": 0, "busy": False, "refused": (
+                    f"the engine cache's folder could not be moved aside "
+                    f"({type(e).__name__}: {e})")}
+    freed = 0
+    for p in codegen_cache_entries():
+        if p != d:                       # set aside: no fit can reach it
+            freed += _delete(p)
+    return {"bytes": freed, "refused": "", "busy": False}
 
 
 # ------------------------------------------------------------ the full plan
 
+def _research_entries(research_root: Path) -> list:
+    """Season trees under one research root (compress-only), as the retro
+    root's: an import's temp tree and a Replace's old run set aside or
+    being deleted (replay_bundle.is_temp_name) are passed over, and the
+    survey and the perform step take the same list. [] when the root is
+    absent or protected."""
+    from app.core.replay_bundle import is_temp_name
+    rr = Path(research_root)
+    if not rr.is_dir() or is_protected(rr):
+        return []
+    return [p for p in sorted(rr.iterdir())
+            if not is_temp_name(p.name)
+            and (p / "weeks").is_dir() and not is_protected(p)]
+
+
 def _season_entries(retro_root: Path, skip: set) -> list:
     """Season trees under the retro root (live and archived), minus skipped
     (busy) names and protected trees. Symlinked seasons are operated on
-    through the link, as every read/write path does."""
+    through the link, as every read/write path does. An import's temp tree
+    and a Replace's old run set aside (replay_bundle.is_temp_name) are not
+    season trees: a live import's samples are never compressed under it,
+    and the survey and the perform step pass over them alike."""
+    from app.core.replay_bundle import is_temp_name
     root = Path(retro_root)
     if not root.is_dir():
         return []
     out = []
     for p in sorted(root.iterdir()):
         if p.name in skip or not (p.is_dir() or p.is_symlink()):
+            continue
+        if is_temp_name(p.name):
             continue
         if not (p / "weeks").is_dir() or is_protected(p):
             continue
@@ -330,10 +530,7 @@ def survey(retro_root: Path, workroot_base: Path,
     managed = _season_entries(retro_root, skip_seasons)
     research = []
     for rr in research_roots:
-        rr = Path(rr)
-        if rr.is_dir() and not is_protected(rr):
-            research += [p for p in sorted(rr.iterdir())
-                         if (p / "weeks").is_dir() and not is_protected(p)]
+        research += _research_entries(rr)
     for entry in managed:
         pruned_here = False
         for wd in season_week_dirs(entry):
@@ -379,10 +576,19 @@ def plan_counts(plan: dict) -> tuple:
 def execute(retro_root: Path, workroot_base: Path,
             research_roots=None,
             skip_seasons: set | None = None,
-            skip_workroots: set | None = None) -> dict:
+            skip_workroots: set | None = None,
+            hold=None) -> dict:
     """Perform the reclaim the survey described, against the tree as it
     stands NOW (every busy and protection rule re-applied per entry).
-    Returns actual bytes freed per category."""
+    Returns actual bytes freed per category.
+
+    `hold(tree)`, a context manager yielding True or False, is entered
+    around each week's prune and each file's compress in a season tree,
+    and the work is done inside it only when it yields True; on False the
+    rest of that tree is left alone. The console's (Storage's
+    _reclaim_hold) holds the lock a delete's, a move's or a Replace's mark
+    is taken under and says whether such a mark holds the tree, so a mark
+    can never come between that look and the work."""
     if research_roots is None:
         research_roots = RESEARCH_ROOTS      # read at call time: patchable
     skip_seasons = set(skip_seasons or ())
@@ -390,21 +596,17 @@ def execute(retro_root: Path, workroot_base: Path,
     out = {"week_bytes": 0, "weeks": 0, "workroot_bytes": 0, "workroots": 0,
            "compress_saved": 0, "compress_files": 0}
     for entry in _season_entries(retro_root, skip_seasons):
-        r = prune_season(entry)
+        r = prune_season(entry, hold)
         out["week_bytes"] += r["bytes"]
         out["weeks"] += r["weeks"]
-        c = compress_tree(entry)
+        c = compress_tree(entry, hold)
         out["compress_saved"] += c["saved"]
         out["compress_files"] += c["files"]
     for research in research_roots:
-        research = Path(research)
-        if not research.is_dir() or is_protected(research):
-            continue
-        for p in sorted(research.iterdir()):
-            if (p / "weeks").is_dir() and not is_protected(p):
-                c = compress_tree(p)
-                out["compress_saved"] += c["saved"]
-                out["compress_files"] += c["files"]
+        for p in _research_entries(research):
+            c = compress_tree(p, hold)
+            out["compress_saved"] += c["saved"]
+            out["compress_files"] += c["files"]
     for w in _workroots(workroot_base, skip_workroots):
         b = prune_workroot(w)
         if b:

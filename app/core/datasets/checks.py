@@ -9,6 +9,11 @@
   _check_groups     names: charset, reserved, national, collisions, one
                     name per location
   _check_structure  duplicates, gaps and weeks after their as_of
+
+and, over a whole dataset, dataset_checks; donor_counts (the Groundhog's
+donor weeks at every week, in one pass), groundhog_donors (the newest
+week's, horizon by horizon) and groundhog_shortfall (what the newest week
+lacks), which the console's forms show and nothing stores.
 """
 from __future__ import annotations
 
@@ -45,6 +50,9 @@ KINDS = ("count", "rate")
 #: the gap rule: consecutive dates within a group may differ by at most 8
 #: days (one week plus a day's slack for rounding), so no week is missing
 MAX_GAP_DAYS = 8
+#: dates on this many weekdays or more, most a day after the one before in
+#: their group, read as a daily file (the weekday problem says so: _daily)
+DAILY_MIN_WEEKDAYS = 5
 
 #: an as_of written M/D that reads both ways (03/01/2024) is read
 #: month-first only when the file proves that order, and then only when
@@ -64,11 +72,18 @@ NAME_MARKS = ("Mn", "Mc")
 RESERVED_NAMES = ("ALL",)
 
 #: spellings (case-insensitive) that make a group the dataset's NATIONAL row
-#: (owner decision 2026-09-24): us_national.US_SPELLINGS plus 'National'. It
-#: gets a minted key like every group (never the literal FIPS 'US', so it
-#: cannot pass for FluSight's series), is flagged national in meta.json and
-#: is reported beside pooled scores, never inside them. One per dataset.
-NATIONAL_NAMES = ("US", "USA", "UNITED STATES", "US (NATIONAL)", "NATIONAL")
+#: (owner decision 2026-09-24): us_national.US_SPELLINGS plus 'National', and
+#: 'Overall', the console's own template's word (dataset-template.csv; Ely's
+#: decision 2026-11-10), and no other aggregate word. 'Overall' is the
+#: national row only beside other groups (BESIDE_ONLY): a file of that one
+#: group is an ordinary series. It gets a minted key
+#: like every group (never the literal FIPS 'US', so it cannot pass for
+#: FluSight's series), is flagged national in meta.json at upload (a stored
+#: dataset keeps the flag it was stored with) and is reported beside pooled
+#: scores, never inside them. One per dataset.
+NATIONAL_NAMES = ("US", "USA", "UNITED STATES", "US (NATIONAL)", "NATIONAL",
+                  "OVERALL")
+BESIDE_ONLY = ("OVERALL",)
 WEEKDAYS = ("Monday", "Tuesday", "Wednesday", "Thursday", "Friday",
             "Saturday", "Sunday")
 
@@ -374,6 +389,15 @@ def _check_rows(rep: Report, raw_rows: list, cols: dict, *, kind,
             hint = (" Read day-first they would all be "
                     f"{WEEKDAYS[swapped[0].weekday()]}s, but day-first dates "
                     "are not accepted: write them as YYYY-MM-DD.")
+        elif len(wds) >= DAILY_MIN_WEEKDAYS and _daily(rows):
+            hint = (" These look like daily counts: FluBNF reads one row "
+                    "per week. Sum each week's days into one row dated the "
+                    "Saturday that ends it (Sunday to Saturday), then "
+                    "upload again." if kind != "rate" else
+                    " These look like daily values: FluBNF reads one row "
+                    "per week. Combine each week's days into one row dated "
+                    "the Saturday that ends it (Sunday to Saturday), then "
+                    "upload again.")
         rep.add("weekday", f"The dates fall on {len(wds)} different weekdays: "
                 f"{', '.join(what)} ({_rows(lines)}; e.g., {ex}). Every "
                 "date must be the same day of its week."
@@ -662,6 +686,16 @@ def is_national_name(name) -> bool:
     return str(name or "").strip().upper() in NATIONAL_NAMES
 
 
+def national_of(names) -> str | None:
+    """The national row a dataset's group names hold by today's spellings
+    (as _check_groups reads them: 'Overall' only beside other groups);
+    None for none or more than one."""
+    names = list(names)
+    hits = [n for n in names if is_national_name(n) and (
+        len(names) > 1 or str(n).strip().upper() not in BESIDE_ONLY)]
+    return hits[0] if len(hits) == 1 else None
+
+
 def _check_groups(rep: Report, raw_rows: list, cols: dict):
     """Names: charset, reserved spellings, collisions after the PF stem
     and case folding, one name per location (hubverse), and at most one
@@ -708,6 +742,10 @@ def _check_groups(rep: Report, raw_rows: list, cols: dict):
     national = sorted({n for n, keys in name2keys.items()
                        if is_national_name(n)
                        or any(is_national_name(k) for k in keys)})
+    if len(name2keys) == 1:         # 'Overall' alone is an ordinary group
+        national = [n for n in national
+                    if {x.strip().upper() for x in (n, *name2keys[n])}
+                    & (set(NATIONAL_NAMES) - set(BESIDE_ONLY))]
     if len(national) > 1:
         rep.add("national_multiple", f"{len(national)} groups are spelled as "
                 f"a national row ({', '.join(repr(n) for n in national)}; "
@@ -761,7 +799,8 @@ def series_name(name) -> str:
     if not any(c.isalnum() for c in text):
         return "series"
     s = _suggest(text).rstrip()
-    if is_national_name(s) or s.upper() in RESERVED_NAMES:
+    if ((is_national_name(s) and s.upper() not in BESIDE_ONLY)
+            or s.upper() in RESERVED_NAMES):
         s += " series"
     return s
 
@@ -786,6 +825,21 @@ def _weekly(rows: list, twin=None) -> bool:
         if any((q - p).days > MAX_GAP_DAYS for p, q in zip(ds, ds[1:])):
             return False
     return bool(rows)
+
+
+def _daily(rows: list) -> bool:
+    """True when most consecutive dates within a group (and snapshot) are
+    one day apart: a file of daily counts, not weeks on mixed weekdays
+    (a weekly file with a few stray weekdays steps 6, 7 or 8 days)."""
+    by = {}
+    for _, a, _, key, d, _, _ in rows:
+        by.setdefault((a, key), set()).add(d)
+    steps = Counter()
+    for ds in by.values():
+        ds = sorted(ds)
+        steps.update((b - a).days for a, b in zip(ds, ds[1:]))
+    n = sum(steps.values())
+    return n > 0 and steps[1] * 2 > n
 
 
 def _check_structure(rep: Report, rows: list, cols: dict, *, shift: int = 0,
@@ -903,13 +957,8 @@ def dataset_checks(rep: Report) -> None:
                 "least two weeks are needed.")
         return
     from flubnf import analogue as AN
-    newest = {}
-    for a, name, _, d, v, _ in rep.records:
-        k = (name, d)
-        if v is not None and (k not in newest
-                              or (a or date.min) >= newest[k][0]):
-            newest[k] = (a or date.min, float(v))
-    bank = {k: v for k, (_, v) in newest.items() if v > 0}
+    newest = _newest(rep.records)
+    bank = {k: v for k, v in newest.items() if v > 0}
     last = max(d for _, d in newest)
     n = len(AN.donor_ratios(bank, AN.epiweek(last), AN.season_of(last), 1,
                             exclude_seasons=()))
@@ -918,3 +967,343 @@ def dataset_checks(rep: Report) -> None:
             f"{TOO_LITTLE_HISTORY}: at the newest week it finds {n} weeks like it in earlier seasons and needs "
             f"{AN.MIN_DONORS}, so it will not forecast this data on its "
             "own.")
+
+
+def _newest(records) -> dict:
+    """{(group name, week): value} from a report's records, each week's
+    newest snapshot (the final data); weeks with no value left out."""
+    newest = {}
+    for a, name, _, d, v, _ in records:
+        k = (name, d)
+        if v is not None and (k not in newest
+                              or (a or date.min) >= newest[k][0]):
+            newest[k] = (a or date.min, float(v))
+    return {k: v for k, (_, v) in newest.items()}
+
+
+# ------------------------------------------- the Groundhog's donor weeks
+
+#: the Groundhog's horizons, in its own unit: weeks after the as-of (the
+#: hub's horizons 0 to 3; app/core/engines/analogue.run)
+GROUNDHOG_HORIZONS = (1, 2, 3, 4)
+
+
+def donor_counts(bank, weeks, *, bandwidth=None,
+                 horizons=GROUNDHOG_HORIZONS) -> dict:
+    """{week: (donor weeks at each of `horizons`)} for each as-of in
+    `weeks` (dates): what len(flubnf.analogue.donor_ratios(...)) gives on
+    `bank` ({(group, date): value}) cut at that as-of, as the engine reads
+    a dataset (no week after the as-of; no donor season excluded, a
+    dataset run's default), at `bandwidth` (None: the shipped donor
+    window). The Groundhog forecasts a horizon from MIN_DONORS of them.
+
+    One pass over the bank instead of a scan per week and horizon (520
+    weeks of 200 groups: under a second, not minutes): each donor cell (a
+    finite positive value whose week h later is one too) counts once per
+    horizon under its (season, epiweek), and a week sums the earlier
+    seasons within the window. A donor whose week h later falls after the
+    as-of (a season's first weeks, whose window reaches back over the
+    season start) is taken off again, as the cut bank never holds it."""
+    import bisect
+    import math
+    from collections import defaultdict
+
+    from flubnf import analogue as AN
+    bw = AN.DEFAULT_BANDWIDTH if bandwidth is None else int(bandwidth)
+    cells = {h: defaultdict(Counter) for h in horizons}  # epiweek->season->n
+    by_day = {h: Counter() for h in horizons}            # date -> n
+    for (loc, d), v0 in bank.items():
+        if not (math.isfinite(v0) and v0 > 0):
+            continue
+        s, e = AN.season_of(d), AN.epiweek(d)
+        for h in horizons:
+            v1 = bank.get((loc, d + timedelta(days=7 * h)))
+            if v1 is None or not (math.isfinite(v1) and v1 > 0) \
+                    or not math.isfinite(v1 / v0):
+                continue
+            cells[h][e][s] += 1
+            by_day[h][d] += 1
+    days = sorted(set().union(*by_day.values()))
+    near = {}
+    out = {}
+    for t in weeks:
+        S, E = AN.season_of(t), AN.epiweek(t)
+        if E not in near:
+            near[E] = [e for e in range(1, 54)
+                       if AN.calendar_distance(e, E) <= bw]
+        per = []
+        for h in horizons:
+            n = sum(c for e in near[E] for s, c in cells[h][e].items()
+                    if s < S)
+            lo = bisect.bisect_right(days, t - timedelta(days=7 * h))
+            for d in days[lo:bisect.bisect_left(days, t)]:
+                if (AN.season_of(d) < S
+                        and AN.calendar_distance(AN.epiweek(d), E) <= bw):
+                    n -= by_day[h][d]
+            per.append(n)
+        out[t] = tuple(per)
+    return out
+
+
+def window_weeks_a_season(epiweek: int, bandwidth=None) -> int:
+    """How many weeks of one ordinary earlier season (MMWR weeks 1 to 52)
+    fall within the donor window of `epiweek`, for one group: 2 x
+    bandwidth + 1, but one fewer around a week 53, which most seasons do
+    not have (flubnf.analogue.calendar_distance puts it between 52 and
+    1)."""
+    from flubnf import analogue as AN
+    bw = AN.DEFAULT_BANDWIDTH if bandwidth is None else int(bandwidth)
+    return sum(1 for e in range(1, 53)
+               if AN.calendar_distance(e, int(epiweek)) <= bw)
+
+
+def groundhog_donors(rep: Report):
+    """The Groundhog's donor weeks at the newest week of a checked file,
+    one count per horizon (donor_counts on the final data, at the shipped
+    donor window), or None when the file did not read or holds under two
+    weeks: {"counts": (one per horizon), "n": the fewest, "need":
+    MIN_DONORS, "enough": how many horizons reach it, "seasons": about
+    how many more earlier seasons of every group would bring the fewest
+    to it (0 when it is there; None when the file's own seasons stand
+    against a figure, see below), "open": how many groups with data the
+    file's seasons say nothing for while they show the others' give
+    nothing (0 unless so), "open_group": that group's name when "open"
+    is 1 (else None), "open_new": whether those groups have no earlier
+    season in the file at all, "one_season": with "open" 0, how many
+    groups' seasons show it through one season only (0 unless so),
+    "one_group": that group's name when "one_season" is 1 (else None),
+    "unspoken": with "seasons" None, how many horizons at 0 no earlier
+    season with a case speaks for (0 unless so; _seasons_heard): every
+    horizon at 0 when none does}.
+    A count is one per group and week. It forecasts each horizon that
+    reaches MIN_DONORS and skips the others, so the fewest says whether
+    it forecasts all four. The stored notice (dataset_checks, horizon 1)
+    is not changed by it.
+
+    "seasons" takes what an earlier season of the file gave the fewest
+    horizon: its count over the earlier seasons in which some group with
+    a case that season holds a week of the window (a horizon that
+    reaches into weeks reading 0 gains less from each; more_seasons). A
+    group's season reading 0 throughout (or nothing at all) says nothing
+    about growth and makes no season one of them: the figure divided by
+    it came out several times too large (review of #93 at 42db2a82,
+    finding 3). A group with fewer such seasons than another, or none,
+    is not taken to give what the other's give: counted group by group
+    and shared out over the groups (at ac51731d, finding 5), the group
+    with the most seasons set every group's rate, and the figure came
+    out smaller than seasons like the file's reach (at f2fd03ef). Of a
+    figure too large that such seasons reach and one too small that
+    they do not, the check gives the first.
+
+    With nothing to go by in a file of the newest season only (no
+    earlier week with a value), an ordinary season of every group
+    (window_weeks_a_season: four weeks around a week 53, else five): a
+    newcomer's file, for whom it is the most useful figure. A file that
+    does hold earlier seasons, none of which speaks for a horizon at 0
+    (they read 0 throughout, or the weeks it reads are not reported or
+    come after the newest week), gives no figure: seasons like its own
+    may be no ordinary ones (a summer of zeros, a season reported from
+    October to May only), and such files said "about 6", where seasons
+    like their own never bring the horizon off 0 (at f2fd03ef). Every
+    horizon at 0 is "unspoken", and the check says more seasons may.
+
+    A horizon at 0 although earlier seasons hold a week of the window
+    and the week that horizon later, where some group's seasons show
+    that more like them give it nothing (_seasons_say: a summer of
+    zeros, say, not seasons reading 0 throughout), has nothing to go by
+    either, and no ordinary season stands for the file's: "seasons" is
+    None, and the check gives no figure (datasets_ui.model_view). Where
+    every group with data shows it through two seasons or more ("open"
+    and "one_season" 0), more seasons like these would not help; where
+    some groups have no season that shows it, seasons of theirs may, and
+    the check says so instead (review of #93 at d5a7eb16, findings 1 and
+    2); where every group shows it but some through one season only, one
+    season is too few to say more would not help, and the check says
+    more seasons may (at 42db2a82, finding 2)."""
+    from flubnf import analogue as AN
+    s = rep.summary
+    if not rep.ok or not s or s.get("weeks", 0) < 2:
+        return None
+    bank = _newest(rep.records)
+    if not bank:
+        return None
+    last = max(d for _, d in bank)
+    counts = tuple(donor_counts(bank, [last])[last])
+    n, need = min(counts), AN.MIN_DONORS
+    S, E = AN.season_of(last), AN.epiweek(last)
+    # the weeks of earlier seasons within the donor window
+    window = {d for d in {d for _, d in bank}
+              if AN.season_of(d) < S
+              and AN.calendar_distance(AN.epiweek(d), E)
+              <= AN.DEFAULT_BANDWIDTH}
+    cased = _cased(bank)
+    # the earlier seasons in which some group with a case that season
+    # holds a week of the window: a group's season reading 0 throughout
+    # gave nothing and says nothing
+    seasons = {AN.season_of(d) for g, d in bank
+               if d in window and (g, AN.season_of(d)) in cased}
+    more = more_seasons(need, n, len(seasons),
+                        max(1, len(s.get("groups") or ())),
+                        window_weeks_a_season(E))
+    heard = _seasons_heard(bank, window, counts, cased) if not n else None
+    left, one, spoken = heard if heard is not None else (None, set(), 0)
+    earlier = {g for g, d in bank if AN.season_of(d) < S}
+    zeros = sum(1 for c in counts if not c)
+    # a horizon at 0 that no season speaks for: the ordinary figure only
+    # for a file of the newest season only
+    if heard is not None or (zeros and earlier):
+        more = None
+    return {"counts": counts, "n": n, "need": need,
+            "enough": sum(1 for c in counts if c >= need),
+            "seasons": more, "open": len(left or ()),
+            "open_group": (next(iter(left)) if left and len(left) == 1
+                           else None),
+            "open_new": bool(left) and not (left & earlier),
+            "one_season": 0 if left else len(one),
+            "one_group": (next(iter(one)) if not left and len(one) == 1
+                          else None),
+            "unspoken": zeros - spoken if more is None else 0}
+
+
+def more_seasons(need: int, n: int, seasons: int, groups: int,
+                 ordinary: int) -> int:
+    """About how many more earlier seasons of every group bring `n` donor
+    weeks to `need` (0 when `n` is there): `seasons` earlier seasons of
+    the file gave the `n` (groundhog_donors says which count), so one
+    more like them gives n / seasons; with no `n` or no such season, an
+    ordinary season gives `ordinary` weeks (window_weeks_a_season) for
+    each of the `groups`. Worked out in whole numbers, as the ceiling of
+    an exact fraction: in floats 15 weeks over 13 seasons gave 14 where
+    13 bring it to 30 (15 / (15 / 13) is 13.000000000000002; review of
+    #93 at ac51731d, finding 2).
+
+    The `groups` count for an ordinary season only. Each group's seasons
+    counted apart and the `n` shared out over the groups (at ac51731d,
+    finding 5) took a group with fewer seasons, or none that gave
+    anything, to give what the group with the most gave: one group's
+    three seasons beside another's one said "about 2", where 2 more
+    seasons like the file's give 25 of 30, and a group at 0 in every
+    week halved the figure (review of #93 at f2fd03ef). Counted by the
+    file's seasons, the figure is what more seasons like the file's
+    reach; where a group's seasons would give more than the file shows,
+    it is too large, and more seasons still reach it."""
+    if n >= need:
+        return 0
+    if n > 0 and seasons > 0:
+        return -(-(need - n) * seasons // n)
+    return -(-(need - n) // (ordinary * groups))
+
+
+def _cased(bank) -> set:
+    """The (group, season)s of `bank` ({(group, date): value}) with a case:
+    a finite value above 0 in some week of that season. A group's season
+    reading 0 throughout says nothing about growth either way: it is no
+    proof that more seasons give a horizon nothing, and no measure of
+    what a season gives (review of #93 at 42db2a82, findings 1 and 3)."""
+    import math
+
+    from flubnf import analogue as AN
+    return {(g, AN.season_of(d)) for (g, d), v in bank.items()
+            if math.isfinite(v) and v > 0}
+
+
+def _seasons_say(bank, window, counts):
+    """What the file's earlier seasons show of a horizon at 0 donor weeks
+    (`counts`, one per GROUNDHOG_HORIZONS): None when no group's seasons
+    show that more like them leave it at 0 (groundhog_donors gives a
+    figure only for a file of the newest season only); else the groups
+    with data whose seasons do not show it at such a horizon (an empty
+    set when every group's do). _seasons_heard says how, and which
+    groups show it through one season only."""
+    heard = _seasons_heard(bank, window, counts)
+    return None if heard is None else heard[0]
+
+
+def _seasons_heard(bank, window, counts, cased=None):
+    """What the file's earlier seasons show of a horizon at 0 donor weeks
+    (`counts`, one per GROUNDHOG_HORIZONS): None when no group's seasons
+    show that more like them leave it at 0 (groundhog_donors gives a
+    figure only for a file of the newest season only); else (left, one,
+    spoken): the groups with data whose seasons do not show it at such a
+    horizon, of the others those that show it through one season only
+    there, and how many horizons at 0 a season speaks for.
+    `left` and `one` empty: every group's seasons show it through two or
+    more, and more seasons like these would not help. `cased`:
+    _cased(bank), worked out here when not given.
+
+    A pair is a week of `window` (earlier seasons' weeks within the donor
+    window) and the week h later, both in `bank` for one group: what the
+    Groundhog reads for a donor week (donor_counts). At a horizon that
+    counts 0, every pair gave none. That alone is no proof: one season of
+    zeros does it, and real seasons would help (review of #93, re-check
+    at 099907c, finding 1). A group's season reading 0 throughout (or
+    nothing) says nothing about growth either way and is left out (at
+    42db2a82, finding 1: two such seasons said "would not help"). So at
+    a horizon at 0, a group shows it through each season of it with a
+    case that holds a pair there, whichever weeks read 0: the weeks h
+    later, the window's weeks having cases (R1's 36, 24, 12 and 0), or
+    the window's weeks themselves (a summer of zeros). Either way a
+    season like it gives that horizon nothing.
+
+    One season alone does not say that more would not help (at 42db2a82,
+    finding 2: one run of zeros at weeks 4 to 8 said it, where six
+    ordinary seasons give 34, 33, 32 and 31): a group that shows it
+    through one season only is in `one`, and the check gives neither a
+    figure (seasons like that one would not reach it) nor "would not
+    help". That season's window may read 0 too: a file starting in June
+    cuts the season before to its summer of zeros, which says nothing,
+    and the one season left with a case gave every horizon nothing
+    (review of #93 at ac51731d, the independent check). It gave "about 6
+    more earlier seasons", which seasons like it never reach; a file
+    starting in May, whose season before has cases in May, has two such
+    seasons and says "would not help".
+
+    A horizon at 0 that no season with a case holds a pair for (its
+    weeks not reported, or after the newest week) is not spoken for: it
+    is left out here and of `spoken` (at ac51731d, finding 3).
+
+    A group with no such season (one with the newest season only, say)
+    could still gain from real seasons. No count of groups decides it: one
+    small group does not speak for five new ones (review of #93 at
+    d160002b, finding 2), and five old groups do not speak for one new
+    one (at 3120298e, finding 3) or for five (at d5a7eb16, findings 1
+    and 2). Where some groups show it and others do not, the check says
+    both, and gives neither a figure nor "would not help"
+    (datasets_ui.no_more_seasons)."""
+    from flubnf import analogue as AN
+
+    if cased is None:
+        cased = _cased(bank)
+    groups = {g for g, _ in bank}
+    spoken, left, one = 0, set(), set()
+    for h, c in zip(GROUNDHOG_HORIZONS, counts):
+        if c:
+            continue
+        # each group's seasons with a case holding a pair there; a season
+        # reading 0 throughout is not one
+        held = {(g, AN.season_of(d)) for g, d in bank
+                if d in window and (g, AN.season_of(d)) in cased
+                and (g, d + timedelta(days=7 * h)) in bank}
+        if not held:
+            continue
+        spoken += 1
+        per = Counter(g for g, _ in held)
+        two = {g for g, k in per.items() if k >= 2}
+        left |= groups - set(per)
+        one |= set(per) - two
+    return (left, one - left, spoken) if spoken else None
+
+
+def groundhog_shortfall(rep: Report):
+    """At the newest week of a checked file, what the Groundhog lacks, or
+    None when every horizon has MIN_DONORS donor weeks (or the file did not
+    read): {"n": the fewest donor weeks at any horizon, "need":
+    MIN_DONORS, "seasons": about how many more earlier seasons of every
+    group would give the rest, None when the file's own seasons stand
+    against a figure} (groundhog_donors, which says how the seasons are
+    worked out).
+    The stored notice (dataset_checks) is not changed by it."""
+    d = groundhog_donors(rep)
+    if d is None or d["n"] >= d["need"]:
+        return None
+    return {"n": d["n"], "need": d["need"], "seasons": d["seasons"]}

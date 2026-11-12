@@ -8,6 +8,7 @@ Start with the [README](../README.md); each area of the tree has its own index l
 | Anyone installing or updating | [LAUNCHERS.md](LAUNCHERS.md) | what each launcher and setup script does, who calls it, what the one-line reinstall moves where, every `FLUBNF_*` variable |
 | Getting the engine | [ENGINE.md](ENGINE.md) | the public engine, public PyBNF, the default, which installs itself; choosing the private engine, the lab's PyBNF fork, the fallback; its archive, bundle or GitHub routes; which build is running |
 | Windows users | [WINDOWS.md](WINDOWS.md) | `setup.ps1`, `FluBNF.bat`, the particle-filter engine (the public engine, the private fallback, install, updates, the production build, failures), when an update cannot go through, Controlled Folder Access, limitations |
+| Outside groups and other targets | [ADAPTING.md](ADAPTING.md) | what works today, with no code, for your own weekly data and for another target, pathogen, geography or season calendar; what the console assumes; what needs code |
 | The mechanistic model | [ORACLE-SIHRS.md](ORACLE-SIHRS.md) | the Oracle SIHRS: filter plus the Oracle step, and its record |
 | Students writing a model | [SANDBOX.md](SANDBOX.md) | the Sandbox: from an example or the template to a fitted model of your own |
 | Students working from a terminal, and proposing a model | [CONTRIBUTING.md](CONTRIBUTING.md) | the `model`, `experiment` and `storage` commands (JSON, exit codes), a clone on the Mac Studio, a fork and a branch, a proposal, its pull request and what CI refuses |

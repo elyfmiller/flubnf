@@ -132,8 +132,46 @@ def _invalidate_scans() -> None:
 
 
 # === Request helpers ===
+#: when each step of the console run in progress began, as (label,
+#: time.monotonic()) pairs: _phase_start opens the list, _phase adds the
+#: steps the Running card shows and _phase_mark the ones it does not; the
+#: pipeline writes them to the run's run_timing.json (_phase_seconds)
+_phase_marks: list = []
+
+#: at most this many marks: a caller that never starts a run cannot grow
+#: the list without end
+_PHASE_MARKS_MAX = 200
+
+
 def _phase(msg):
     _status["phase"] = msg
+    _phase_mark(msg)
+
+
+def _phase_mark(label: str) -> None:
+    """Note that a step of the console run began now. Shows nothing."""
+    import time
+    if len(_phase_marks) < _PHASE_MARKS_MAX:
+        _phase_marks.append((str(label), time.monotonic()))
+
+
+def _phase_start(label: str) -> None:
+    """A console run begins: the marks restart at its first step."""
+    _phase_marks.clear()
+    _phase_mark(label)
+
+
+def _phase_seconds(end: float | None = None) -> list:
+    """[{"phase": label, "seconds": s}] in order: each step lasts until the
+    next one begins, the last until `end` (time.monotonic(), now when
+    None)."""
+    import time
+    end = time.monotonic() if end is None else end
+    marks = list(_phase_marks)
+    return [{"phase": label,
+             "seconds": round(max((marks[i + 1][1] if i + 1 < len(marks)
+                                   else end) - t, 0.0), 3)}
+            for i, (label, t) in enumerate(marks)]
 
 
 def _name_workroot(workroot: Path, running: str) -> bool:

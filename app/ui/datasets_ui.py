@@ -52,6 +52,7 @@ from app.ui import forms, pipeline, retro_seasons, shared, templating, versions
 from app.ui.dataset_upload import (TOO_MANY_FILES, _LONE, _capped_form,
                                    _files_of, _form_columns, _kind_field,
                                    _lone_snapshot, _message_view,
+                                   _read_before, _stored_before,
                                    _too_many_message, _whole_dates,
                                    check_status, check_view, render_check)
 from app.ui import state as ui_state
@@ -218,6 +219,189 @@ def _render_data(request, _code: int = 200, **extra):
 
 
 
+#: the SIHRS member on a dataset, in the check's words
+FILTER = "Liu-West filter"
+
+
+def donor_unit(groups: int) -> str:
+    """What a donor count counts, in words: the Groundhog's 30 are of
+    group and week pairs, so with several groups a week counts once in
+    each ("group-weeks"); one group's are plain weeks."""
+    return "weeks" if groups <= 1 else "group-weeks"
+
+
+def groundhog_notice(donors: dict, groups: int) -> str:
+    """The check's Groundhog notice (shown, never stored) from the newest
+    week's donor weeks (checks.groundhog_donors), '' when every horizon
+    has enough. It quotes the counts the badge and the fix go by: the
+    fewest, and the most when the horizons differ. Several groups count
+    one per group and week, so the words say group-weeks."""
+    from app.core.datasets.checks import TOO_LITTLE_HISTORY
+    counts, need = donors["counts"], donors["need"]
+    lo, hi, k = min(counts), max(counts), donors["enough"]
+    if lo >= need:
+        return ""
+    unit = donor_unit(groups)
+    found = (f"{lo} {unit}" if lo == hi else
+             f"{lo} to {hi} {unit}")
+    by = "" if lo == hi else ", depending on the horizon,"
+    if not k:
+        return (f"{TOO_LITTLE_HISTORY}: at the newest week it finds {found} "
+                f"like it in earlier seasons{by} and needs {need}, so it "
+                "will not forecast this data on its own.")
+    return (f"{TOO_LITTLE_HISTORY} at some horizons: at the newest week it "
+            f"finds {found} like it in earlier seasons{by} and needs {need} "
+            f"at each, so it will forecast {k} of its {len(counts)} "
+            "horizons on its own.")
+
+
+def model_view(rep, chk: dict, kind: str = "") -> dict:
+    """What a check's preview says of each model on a valid file: one
+    badge apiece ("models": [(name, state, word)]), the Groundhog's
+    notice ("groundhog", groundhog_notice) and how to fix it
+    ("groundhog_fix"): about N more earlier seasons, or, for counts
+    without a population, a population column (and the engine when it is
+    not ready) so the Liu-West filter can fit it. No N when a horizon
+    finds no week like it although the file's earlier seasons hold the
+    weeks it reads and show it (no_more_seasons): more such seasons would
+    not help, or, where some groups have no season that shows it or show
+    it through one season only, more seasons may. No N either where the
+    file holds earlier seasons and none of them speaks for such a
+    horizon: more seasons may (an N only for a file of the newest season
+    only).
+    The Groundhog's badge, notice and fix go by one count, its donor
+    weeks at the newest week's scarcest horizon
+    (checks.groundhog_donors), as the Forecast tab's line
+    does (donor_weeks): "ready" only when every horizon has enough, "some
+    horizons only" when some do. Shown in the check only: the notice
+    dataset_checks stores (horizon 1) is unchanged."""
+    from app.core.datasets.checks import groundhog_donors
+    s = rep.summary or {}
+    count = (kind or s.get("inferred_kind")) == "count"
+    pop = bool(s.get("has_population"))
+    ready = pipeline._pf_engine_state() == "ready"
+    pf = (("neutral", "counts only") if not count else
+          ("warn", "needs a population" + ("" if ready else " and the engine"))
+          if not pop else
+          ("warn", "needs the engine") if not ready else ("ok", "ready"))
+    donors = groundhog_donors(rep)
+    if donors is None:          # not a valid file of two weeks: as stored
+        gh = (("warn", "too little history") if chk.get("groundhog")
+              else ("ok", "ready"))
+        return {"models": [(GROUNDHOG, *gh), (FILTER, *pf)],
+                "groundhog_fix": ""}
+    short = donors["n"] < donors["need"]
+    gh = (("ok", "ready") if not short else
+          ("warn", "some horizons only") if donors["enough"] else
+          ("warn", "too little history"))
+    out = {"models": [(GROUNDHOG, *gh), (FILTER, *pf)],
+           "groundhog": groundhog_notice(
+               donors, len(s.get("groups") or ())),
+           "groundhog_fix": ""}
+    if short:
+        k = donors["seasons"]
+        pf_fix = (f"Add a population column"
+                  f"{'' if ready else ' and set up the engine'}"
+                  f" so the {FILTER} can fit it" if count and not pop else
+                  f"Set up the engine so the {FILTER} can fit it"
+                  if count and not ready else "")
+        if k is None:
+            # a horizon the file's own seasons give nothing: no figure
+            several = len(s.get("groups") or ()) > 1
+            named = (donors.get("open_group") if donors.get("open")
+                     else donors.get("one_group"))
+            nothing = no_more_seasons(
+                donors["counts"], donors.get("open", 0),
+                donors.get("open_new", False), donors.get("one_season", 0),
+                group=named if several else None,
+                unspoken=donors.get("unspoken", 0))
+            out["groundhog_fix"] = (f"{nothing} {pf_fix}." if pf_fix
+                                    else nothing)
+        else:
+            more = (f"about {k} more earlier season{'' if k == 1 else 's'}"
+                    " of data")
+            out["groundhog_fix"] = (f"{pf_fix}, or give {more}." if pf_fix
+                                    else f"Give {more}.")
+    return out
+
+
+def no_more_seasons(counts, open_groups: int = 0,
+                    open_new: bool = False, one_season: int = 0, *,
+                    group: str | None = None, unspoken: int = 0) -> str:
+    """The check's words for a horizon at 0 donor weeks although earlier
+    seasons in the file hold the weeks it reads (checks.groundhog_donors
+    gives no "seasons" figure then). Where every group's seasons show it
+    through two seasons or more (`open_groups` and `one_season` 0): more
+    seasons like the file's give that horizon nothing. Where `open_groups`
+    groups have no season that shows it, none at all when `open_new`: the
+    earlier seasons in the file give no week like it there, and seasons
+    of those groups may, with neither a figure nor "would not help"
+    (review of #93 at d5a7eb16, findings 1 and 2). Where every group's
+    seasons show it but `one_season` groups' through one season only: the
+    same, one season being too few to say more would not help (at
+    42db2a82, finding 2). One such group in a file of several is named
+    (`group`), one with no season that shows it as well as one that
+    shows it through one season only; a file of one group, a single
+    series with no group column say, names none (review of #93 at
+    ac51731d, finding 4, and at f2fd03ef).
+
+    `unspoken` of the horizons at 0 have no earlier season with a case
+    holding the weeks they read (weeks not reported, or after the newest
+    week): they are not counted with the others, which the file's seasons
+    do speak for, and a sentence of their own says more seasons may there
+    (at ac51731d, finding 3: two unreported horizons were counted in
+    "would not help there"). Where every horizon at 0 is one of them, in
+    a file that holds earlier seasons, that sentence is the whole of it
+    (at f2fd03ef: such a file said "about 6 more earlier seasons", which
+    seasons like its own never reach)."""
+    z = sum(1 for c in counts if not c) - unspoken
+    if unspoken and not z:
+        if unspoken == len(counts):
+            return ("No earlier season in the file has a week like it at "
+                    "any horizon, but the earlier seasons in the file show "
+                    "nothing either way, and more seasons may.")
+        return (f"At {unspoken} horizon{'' if unspoken == 1 else 's'} no "
+                "earlier season in the file has a week like it, but the "
+                "earlier seasons in the file show nothing either way "
+                "there, and more seasons may.")
+    tail = ("" if not unspoken else
+            f" At {unspoken} more horizon{'' if unspoken == 1 else 's'} "
+            "there is none either, but the earlier seasons in the file "
+            "show nothing either way there, and more seasons may.")
+    if open_groups or one_season:
+        if open_groups == 1 and group is not None:
+            but = (f"but earlier seasons of group '{group}', which has "
+                   "none in the file, may." if open_new else
+                   f"but more seasons of group '{group}', whose seasons "
+                   "show nothing either way, may.")
+        elif open_groups:
+            who = ("the group" if open_groups == 1
+                   else f"the {open_groups} groups")
+            but = (f"but earlier seasons of {who} without any may."
+                   if open_new else
+                   f"but more seasons of {who} whose seasons show nothing "
+                   "either way may.")
+        elif one_season == 1:
+            but = ((f"but for group '{group}' only one season says so, "
+                    if group is not None else
+                    "but only one season says so, ")
+                   + "and more seasons may.")
+        else:
+            but = (f"but for {one_season} groups only one season says so, "
+                   "and more seasons may.")
+        if z == len(counts):
+            return ("No earlier season in the file has a week like it at "
+                    f"any horizon, {but}")
+        return (f"At {z} horizon{'' if z == 1 else 's'} the earlier "
+                f"seasons in the file give no week like it, {but}{tail}")
+    if z == len(counts):
+        return ("No earlier season in the file has a week like it at any "
+                "horizon, so more seasons like these would not help.")
+    return (f"At {z} horizon{'' if z == 1 else 's'} no earlier season in "
+            "the file has a week like it, so more seasons like these would "
+            f"not help there.{tail}")
+
+
 @router.post("/data/datasets/check")
 async def check(request: Request):
     """Check one upload and store nothing: JSON with the result box's HTML
@@ -273,6 +457,8 @@ async def check(request: Request):
             except Exception:
                 pass
     chk = check_view(rep, kind=kind, columns=columns, files=len(fs))
+    if chk.get("preview"):
+        chk.update(await run_in_threadpool(model_view, rep, chk, kind))
     lone = _lone_snapshot(rep, as_snaps, len(fs))
     if lone:
         chk["notices"] = [lone] + chk["notices"]
@@ -329,6 +515,7 @@ async def upload(request: Request):
         return _render_data(request, upload={
             **back, "chk": _message_view("Say whether the values are counts "
                                          "or rates.")}, _code=400)
+    t0 = time.time()
     try:
         for f in fs:
             f.file.seek(0)
@@ -364,8 +551,12 @@ async def upload(request: Request):
     counts = (f"{ng} group{'s' if ng != 1 else ''}, "
               f"{nw} week{'s' if nw != 1 else ''}.")
     # the same bytes under a name with the same id (its letters dropped
-    # by the id's slug) open the dataset already stored: said, by its name
-    again = bool(name) and ds.name != name[:80]
+    # by the id's slug), or under its own, open the dataset already
+    # stored: said, by its name, with any national row read otherwise now
+    before = _stored_before(ds, t0)
+    again = before or (bool(name) and ds.name != name[:80])
+    if before and (moved := _read_before(ds)):
+        warn.append(moved)
     done = (f"This file is already stored as {ds.name}: {counts}" if again
             else f"Stored the dataset {ds.name}: {counts}")
     snaps = ""
@@ -450,6 +641,53 @@ def _dataset_view(ds) -> dict:
                        "the particle-filter engine is not installed"
                        if state == "absent" else
                        "the particle-filter engine install is incomplete")}
+
+
+#: each dataset's Groundhog donor weeks per forecast week (donor_weeks), by
+#: id and digest (a dataset's files never change under its id): counted
+#: once per console and kept in memory only, never in the dataset's folder
+_DONORS: dict = {}
+#: the datasets whose counts are kept at once
+DONOR_CACHE = 8
+
+
+def donor_weeks(ds) -> dict:
+    """{forecast week (ISO): the fewest donor weeks the Groundhog finds at
+    any of its four horizons}, for every forecast week of `ds`, at the
+    shipped donor window (checks.donor_counts; it forecasts each horizon
+    that has MIN_DONORS and skips the rest, so a week under it at its
+    fewest is not forecast in full). One count per group and week
+    (donor_unit). Counted on the final data: a vintage-true dataset's
+    earlier snapshots may hold fewer weeks, so a week there can count more
+    than its replay finds. The upload check's badge goes by the same
+    fewest count (model_view)."""
+    return _donor_entry(ds)["weeks"]
+
+
+def _donor_entry(ds) -> dict:
+    """The cached {"weeks": donor_weeks, "cells": the final data's
+    values} of `ds`, counted on first use."""
+    key = (ds.id, ds.meta.get("digest"))
+    hit = _DONORS.get(key)
+    if hit is None:
+        from datetime import date
+        from app.core.datasets.checks import donor_counts
+        truth = ds.truth()
+        bank = {(g, date.fromisoformat(d)): v for (g, d), v in truth.items()}
+        weeks = [date.fromisoformat(w) for w in ds.forecast_dates()]
+        hit = {"weeks": {w.isoformat(): min(c)
+                         for w, c in donor_counts(bank, weeks).items()},
+               "cells": len(truth)}
+        while len(_DONORS) >= DONOR_CACHE:
+            _DONORS.pop(next(iter(_DONORS)), None)
+        _DONORS[key] = hit
+    return hit
+
+
+def donor_need() -> int:
+    """The donor weeks the Groundhog needs at every horizon."""
+    from flubnf import analogue as AN
+    return int(AN.MIN_DONORS)
 
 
 def _ledger_for(ds_id: str, n: int = 5) -> list:
@@ -562,6 +800,11 @@ def forecast_page(request: Request, ds):
     with the dataset's groups, weeks, fans and runs."""
     from app.core.runs import spec_settings
     view = _dataset_view(ds)
+    # each week's Groundhog donor weeks, for the page's warning on a week
+    # too thin to forecast (the Forecast tab renders it), and what they
+    # count with several groups (donor_unit)
+    view.update(donor_weeks=donor_weeks(ds), donor_need=donor_need(),
+                donor_unit=donor_unit(len(ds.groups)))
     dates = ds.forecast_dates()
     newest = dates[-1] if dates else ""
     form = dict(_LAST.get(ds.id) or {
@@ -1104,6 +1347,79 @@ def replay_window(dates: list) -> tuple:
     return dates[0], dates[-1]
 
 
+#: a Groundhog-only replay reads "under a minute" only up to this many
+#: weeks x groups x data cells. The 200-group review file (104,000 cells)
+#: replayed at 15.8 s a week on the lab Mac (2026-11-10), most of it the
+#: persistence baseline reading the data again for every group, so about
+#: 8e7 is a minute there; a quarter of that leaves a slower computer room.
+#: Past it the line says nothing rather than guess (the cost model prices
+#: fits only: app/core/estimates.py). static/dataset_replay.js reads it
+#: from the form.
+GROUNDHOG_QUICK = 20_000_000
+
+
+def donor_line(weeks, counts: dict, need: int) -> tuple:
+    """The Replay form's donor badge for `weeks` (ISO): (state, text), as
+    static/dataset_replay.js donorBadge words it; ('', '') with no week.
+    Informs only: Replay stays on, a week without donors ends "no
+    forecast", and the count is at the shipped donor window."""
+    if not weeks:
+        return "", ""
+    ok = sum(1 for w in weeks if counts.get(w, 0) >= need)
+    return ("ok" if ok == len(weeks) else "warn",
+            f"Groundhog donors: enough in {ok} of {len(weeks)} "
+            f"week{'' if len(weeks) == 1 else 's'}")
+
+
+def replay_estimate(weeks, groups: int, engine: str, *, replicates=None,
+                    particles=None, season_start: str = "",
+                    cells: int = 0) -> str:
+    """The time line beside Replay, as static/dataset_replay.js computes
+    it in the browser: with the filter, the cost model's span for `weeks`
+    (ISO) of `groups` x Independent Runs fits each (app/core/estimates.py:
+    the fits alone, at this console's width, 1 to 4 times the model before
+    a recorded ratio), "about 1.2 to 4.8 h"; the Groundhog alone "under a
+    minute" up to GROUNDHOG_QUICK; '' for nothing to say. Blank
+    `replicates` and `particles` are the shipped values, a blank
+    `season_start` each week's August 1."""
+    from app.core import estimates as ES
+    if not weeks:
+        return ""
+    if engine != "all":
+        return ("under a minute"
+                if len(weeks) * groups * cells <= GROUNDHOG_QUICK else "")
+    K = forms._knobs.BY_KEY
+    reps = int(replicates or K["pf.replicates"].default)
+    parts = int(particles or K["pf.particles"].default)
+    try:
+        nobs = [ES.n_obs_for(w, season_start) for w in weeks]
+    except ValueError:
+        return ""
+    lo, hi = ES.span(ES.run_seconds(nobs, groups * reps, parts))
+    return ES.human(lo, hi)
+
+
+def replay_facts(ds, dates: list, first: str, last: str) -> dict:
+    """What the Replay form's two read-only lines need: the donor weeks
+    of every forecast week (donor_weeks) and the estimate's data-est-*
+    attributes (estimates.page_params) for the page's script, and both
+    lines for the default range (all groups, the Groundhog alone, as the
+    form opens), so they read right without script."""
+    from app.core import estimates as ES
+    entry, need = _donor_entry(ds), donor_need()
+    counts, cells = entry["weeks"], entry["cells"]
+    weeks = [w for w in dates if first <= w <= last]
+    state, text = donor_line(weeks, counts, need)
+    return {"est": {**ES.page_params(None), "data-cells": str(cells),
+                    "data-gh-quick": str(GROUNDHOG_QUICK)},
+            "donors_json": templating._script_json(
+                {"need": need, "weeks": {w: counts.get(w, 0)
+                                         for w in dates}}),
+            "donor_state": state, "donor_text": text,
+            "est_text": replay_estimate(weeks, len(ds.groups), "analogue",
+                                        cells=cells)}
+
+
 def retro_context(selected: str = "") -> dict:
     """The Retrospective tab's "Your data" tab: the stored datasets (for
     its picker) and the one it shows (``selected``, else the first), with
@@ -1147,6 +1463,7 @@ def retro_context(selected: str = "") -> dict:
                 "last": dates[-1] if dates else "",
                 "default_first": w0, "default_last": w1,
                 "dates": dates, "replays": reps}
+        view.update(replay_facts(ds, dates, w0, w1))
     # the Model settings panel of the tab's form (ids prefixed dsr-),
     # following the form's own model select; the counts-only rows hide
     # for a rate dataset (the page sets its kind)

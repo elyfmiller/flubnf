@@ -409,30 +409,37 @@ def _bound_checks() -> None:
 def _read_checks() -> None:
     """The results kept on disk, once per state folder; "due" is not kept
     (summary's window for the reference date, rebuilt here). A file this
-    process has checked already keeps its own result."""
+    process has checked already keeps its own result. Read and merged
+    under _KEEP_LOCK, and the folder marked read only once its rows are in
+    memory: a request that finds it read finds its rows too, so no
+    _keep_checks writes a snapshot taken before the merge over them."""
     import json
     from app.core import hubcheck
     p = _checks_path()
     with _CHECKED_LOCK:
         if str(p) in _CHECKS_READ:
             return
-        _CHECKS_READ.add(str(p))
-    rows = []
-    try:
-        d = json.loads(p.read_text(encoding="utf-8"))
-        if d.get("rules") != _rules_digest():
-            return
-        for path, mtime, size, s in d.get("files") or []:
-            ref = s.get("reference_date") or ""
-            s["due"] = hubcheck.submission_window(ref) if s.get("round") else None
-            rows.append((str(path), int(mtime), int(size), s))
-    except Exception:
-        return                        # unreadable: the files are checked again
-    with _CHECKED_LOCK:
-        for path, mtime, size, s in rows:
-            if path not in _CHECKED:
-                _CHECKED[path] = (mtime, size, s)
-        _bound_checks()
+    with _KEEP_LOCK:
+        with _CHECKED_LOCK:
+            if str(p) in _CHECKS_READ:
+                return                # another request read it meanwhile
+        rows = []
+        try:
+            d = json.loads(p.read_text(encoding="utf-8"))
+            if d.get("rules") == _rules_digest():
+                for path, mtime, size, s in d.get("files") or []:
+                    ref = s.get("reference_date") or ""
+                    s["due"] = (hubcheck.submission_window(ref)
+                                if s.get("round") else None)
+                    rows.append((str(path), int(mtime), int(size), s))
+        except Exception:
+            rows = []                 # unreadable: the files are checked again
+        with _CHECKED_LOCK:
+            for path, mtime, size, s in rows:
+                if path not in _CHECKED:
+                    _CHECKED[path] = (mtime, size, s)
+            _bound_checks()
+            _CHECKS_READ.add(str(p))
 
 
 def _keepable(s: dict) -> bool:
@@ -1029,19 +1036,43 @@ def output_report(request: Request, date: str = ""):
     return HTMLResponse(_report_for_serving(d))
 
 
-def _weekly_report_name(date: str, suffix: str = "") -> str:
+def _weekly_report_name(date: str, suffix: str = "", run_id: str = "") -> str:
     """Saved weekly report name (every run writes report.html). An as-of
     date names it by its hub reference date, as the submission CSVs are
     (2026-09-26 -> 2026-10-03-NAU_PyBNF-weekly-report.html), so a report
     sorts beside the files it describes; `suffix` is its files' own
-    (_report_suffix: -modified). Anything else (a run id with no
-    results.json yet) keeps the older FluBNF-weekly-report-<x>.html."""
+    (_report_suffix: -modified). `run_id` is a run's own (_report_tag):
+    every run's report carries it, so two runs of a week never save under
+    one name; only Output's archived week keeps the reference date's name
+    alone. Anything else (a run id with no results.json yet) keeps the
+    older FluBNF-weekly-report-<x>.html."""
     if re.fullmatch(r"\d{4}-\d{2}-\d{2}", date or ""):
         ref = _reference_date(date)
         if ref:
-            return f"{ref}-NAU_PyBNF-weekly-report{suffix}.html"
+            tag = f"-{run_id}" if run_id else ""
+            return f"{ref}-NAU_PyBNF-weekly-report{tag}{suffix}.html"
     return f"FluBNF-weekly-report-{date}.html" if date \
         else "FluBNF-weekly-report.html"
+
+
+def _report_run_id(dirpath: Path) -> str:
+    """The run a report folder holds: the workroot's id, or the run an
+    archive records (archive.json); "" when neither says."""
+    from app.core import archive_record as _ar
+    from app.core.runs import is_run_id
+    d = Path(dirpath)
+    return d.name if is_run_id(d.name) else str(
+        (_ar.read_record(d) or {}).get("run_id") or "")
+
+
+def _report_tag(dirpath: Path) -> str:
+    """The run id a saved report carries: a run's own, always (its
+    workroot's name), whatever other runs of the week exist or which one
+    the archive holds; none for an archived week (archive/<date>, Output's
+    Archived weeks download), which keeps the reference date's name."""
+    from app.core.runs import is_run_id
+    name = Path(dirpath).name
+    return name if is_run_id(name) else ""
 
 
 def _report_suffix(dirpath: Path) -> str:
@@ -1049,11 +1080,9 @@ def _report_suffix(dirpath: Path) -> str:
     modified settings without the override (pipeline names them so), ""
     otherwise. The run is the workroot's id, or the run an archive holds;
     its ledger row says, else the folder's own record (_folder_suffix)."""
-    from app.core import archive_record as _ar
-    from app.core.runs import Ledger, is_run_id
+    from app.core.runs import Ledger
     d = Path(dirpath)
-    rid = d.name if is_run_id(d.name) else str(
-        (_ar.read_record(d) or {}).get("run_id") or "")
+    rid = _report_run_id(d)
     try:
         spec = ((Ledger().row(rid) or {}).get("spec") or "") if rid else ""
     except Exception:
@@ -1107,7 +1136,8 @@ def _weekly_report_file(dirpath: Path, date: str, request: Request = None,
     _report_for_serving(dirpath)
     downloadlog.write(route or "report download", f)
     return FileResponse(f, filename=_weekly_report_name(
-                            date, _report_suffix(dirpath)),
+                            date, _report_suffix(dirpath),
+                            _report_tag(dirpath)),
                         media_type="text/html",
                         content_disposition_type="attachment")
 

@@ -1221,7 +1221,7 @@ def test_a_group_column_or_a_column_of_text_reads_as_before():
                         b"2024-10-05,01,5\n2024-10-12,01,6\n"))
     assert rep.series == "" and rep.summary["format"] == "hubverse"
     # text under a name no alias knows could be the group: asked for
-    rep = D.validate(csv_text("week_ending,state,cases", rows).encode())
+    rep = D.validate(csv_text("week_ending,ward,cases", rows).encode())
     assert rep.codes == ["missing_columns"] and rep.series == ""
     assert rep.problems[0].message.startswith("No column for the group")
     # and a second column of dates: one date column only

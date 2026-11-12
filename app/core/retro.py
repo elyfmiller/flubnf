@@ -1305,35 +1305,205 @@ def score_season(root: Path, season: str) -> pd.DataFrame:
 
 #: bump when the aggregate's construction or cached shape changes
 #: (v2: a fitted US block is excluded from the sum; v3: no blend row;
-#: v4: the FluSight cell rule, log-scale relWIS and coverage per member)
+#: v4: the FluSight cell rule, log-scale relWIS and coverage per member).
+#: It also keys every week's national quantile sets
+#: (playback_cache/us_quantiles/), which a rescore no longer rebuilds: any
+#: change to national_week_quantiles must bump it
+#: (app/tests/test_season_cache.py pins the construction to this value)
 NATIONAL_CACHE_V = 4
 
 #: the analogue's national Monte Carlo draws, matching the PF's 3 x 10k
 _NATIONAL_DRAWS = 30_000
 
+#: the per-week national quantile sets, under playback_cache: a
+#: SUBDIRECTORY, so report_season._newest_input's playback_cache/*.json
+#: glob never takes them for new report inputs
+US_QUANTILES_DIRNAME = "us_quantiles"
+
+
+def national_week_quantiles(d: dict, levels: list) -> tuple:
+    """(pf_nat, an_nat) for one stored week's forecasting samples `d`
+    (read_samples), each {horizon: {level: quantile}} of the US built from
+    the week's STATE forecasts (national_aggregate's construction):
+
+      * pf: per-state draws summed by draw index; quantiles of the sums.
+      * analogue (quantiles, not draws): each state's quantile curve
+        inverted and sampled with uniforms seeded by (as-of, location,
+        horizon), the draws summed across states and re-quantiled.
+
+    Cached per week by _national_week (NATIONAL_CACHE_V keys it)."""
+    import zlib
+    from app.core import us_national as usn
+    asof = d["asof"]
+    # sum jurisdictions only: a fitted US block would double the nation
+    pf_locs = [l for l in d.get("pf", {}) if not usn.is_us(l)]
+    an_locs = [l for l in d.get("analogue", {}) if not usn.is_us(l)]
+    pf_nat, an_nat = {}, {}
+    for h in hz.HORIZONS:
+        arrs = []
+        for loc in pf_locs:
+            a = np.asarray(d["pf"][loc].get(h, []), float)
+            if a.size:
+                arrs.append(a)
+        if arrs:
+            n = min(a.size for a in arrs)
+            tot = np.zeros(n)
+            for a in arrs:      # a non-finite draw in ANY state poisons
+                tot += a[:n]    # that index; the finite filter drops it
+            tot = tot[np.isfinite(tot)]
+            if tot.size:
+                pf_nat[h] = {L: float(np.quantile(tot, L))
+                             for L in levels}
+        draws = None
+        for loc in an_locs:
+            q = d["analogue"][loc].get(h)
+            if not q:
+                continue
+            ks = sorted(q, key=float)
+            lv = np.asarray([float(k) for k in ks])
+            # monotone repair against tiny stored quantile inversions
+            vv = np.maximum.accumulate(
+                np.asarray([float(q[k]) for k in ks]))
+            rng = np.random.default_rng(
+                zlib.crc32(f"{asof}|{loc}|{h}".encode()))
+            v = np.interp(rng.random(_NATIONAL_DRAWS), lv, vv)
+            draws = v if draws is None else draws + v
+        if draws is not None:
+            draws = draws[np.isfinite(draws)]
+            if draws.size:
+                an_nat[h] = {L: float(np.quantile(draws, L))
+                             for L in levels}
+    return pf_nat, an_nat
+
+
+def _samples_content_bytes(sp: Path, st: os.stat_result) -> int:
+    """How many bytes a stored samples file holds once read, modulo 2**32:
+    a plain file's size, a gzip file's own record of it (the last four
+    bytes, little-endian, as gzip writes them). The same before and after
+    compress_samples_file."""
+    if not str(sp).endswith(".gz"):
+        return st.st_size % 2 ** 32
+    with open(sp, "rb") as f:
+        f.seek(-4, os.SEEK_END)
+        return int.from_bytes(f.read(4), "little")
+
+
+def _national_week_key(sp: Path, levels: list) -> dict:
+    """One week's national quantile sets' validity key: the construction's
+    version and draws, the samples file's mtime to the nanosecond and the
+    bytes it holds once read (_samples_content_bytes), the levels and the
+    horizons. compress_samples_file keeps both the mtime and the content,
+    so reclaim's gzip leaves the week's cache valid; a samples file
+    replaced within the same second (a restore that keeps times, a file
+    system with coarse times) changes the size, the nanoseconds or both."""
+    st = sp.stat()
+    return {"v": NATIONAL_CACHE_V, "draws": _NATIONAL_DRAWS,
+            "mtime_ns": st.st_mtime_ns,
+            "bytes": _samples_content_bytes(sp, st),
+            "levels": list(levels), "horizons": list(hz.HORIZONS)}
+
+
+#: a temporary week cache older than this, in seconds, belongs to a writer
+#: that died between its write and its rename (a write takes milliseconds)
+_US_QUANTILES_TMP_STALE_S = 600.0
+
+
+def _sweep_us_quantiles_tmp(root: Path) -> None:
+    """Remove playback_cache/us_quantiles/*.tmp files left by a process
+    killed between writing a week's cache and renaming it
+    (_national_week), once they are _US_QUANTILES_TMP_STALE_S old; a
+    writer still at work is never touched. Never fatal."""
+    qd = Path(root) / "playback_cache" / US_QUANTILES_DIRNAME
+    now = time.time()
+    try:
+        tmps = list(qd.glob("*.tmp"))
+    except OSError:
+        return
+    for p in tmps:
+        try:
+            if now - p.stat().st_mtime > _US_QUANTILES_TMP_STALE_S:
+                p.unlink()
+        except OSError:
+            pass
+
+
+def _national_week(root: Path, sp: Path, levels: list) -> tuple:
+    """(asof, pf_nat, an_nat) for one stored week (national_week_quantiles),
+    from playback_cache/us_quantiles/<week>.json while its key holds, else
+    from the forecasting samples, then cached. A cache that cannot be read is a miss;
+    one that cannot be written (a sealed or read-only tree) is skipped, as
+    is one for a tree a delete or a move holds (retro_store.writing_into)
+    or a tree deleted meanwhile: no folder is made for either."""
+    from app.core.retro_store import writing_into
+    cf = (root / "playback_cache" / US_QUANTILES_DIRNAME
+          / f"{sp.parent.name}.json")
+    try:
+        key = _national_week_key(sp, levels)
+    except OSError:
+        key = None
+    if key is not None:
+        try:
+            c = json.loads(cf.read_text(encoding="utf-8"))
+            if c.get("key") == key:
+                # JSON keys are float reprs: float(k) gives each level back
+                return (str(c["asof"]),
+                        {h: {float(k): float(v) for k, v in q.items()}
+                         for h, q in c["pf"].items()},
+                        {h: {float(k): float(v) for k, v in q.items()}
+                         for h, q in c["analogue"].items()})
+        except Exception:
+            pass
+    d = read_samples(sp)
+    asof = d["asof"]
+    pf_nat, an_nat = national_week_quantiles(d, levels)
+    del d
+    if key is not None:
+        # a name per writer: two threads finishing one week never share it
+        tmp = cf.with_name(
+            f"{cf.name}.{os.getpid()}.{threading.get_ident()}.tmp")
+        text = json.dumps({"key": key, "asof": asof,
+                           "pf": pf_nat, "analogue": an_nat})
+        try:
+            with writing_into(root) as ok:
+                # never re-create a tree deleted meanwhile: no parents=True
+                if ok and Path(root).is_dir():
+                    cf.parent.parent.mkdir(exist_ok=True)
+                    cf.parent.mkdir(exist_ok=True)
+                    tmp.write_text(text, encoding="utf-8")
+                    os.replace(tmp, cf)
+        except OSError:
+            try:
+                tmp.unlink(missing_ok=True)
+            except OSError:
+                pass
+    return asof, pf_nat, an_nat
+
 
 def national_aggregate(root: Path) -> dict | None:
     """US-national relWIS constructed from the stored STATE forecasts,
-    each member on its own, states treated as independent:
-
-      * PF: per-state draws summed by draw index; quantiles of the sums.
-      * Analogue (quantiles, not draws): each state's quantile curve is
-        inverted and sampled with deterministically seeded uniforms, the
-        draws summed across states and re-quantiled.
+    each member on its own, states treated as independent
+    (national_week_quantiles: pf's draws summed by draw index, the
+    analogue's quantile curves sampled and summed).
 
     Scored per (week, horizon) against the hub's US truth like
     score_season (the same cell rule and baseline). Expensive, so cached in
     playback_cache/us_aggregate.json keyed by _national_cache_key; the
-    last computation's cost rides along as `seconds`.
+    last computation's cost rides along as `seconds`. Each week's quantile
+    sets are cached on their own (_national_week), so a rescore (new truth,
+    new scores.json) reads no forecasting samples.
 
     Returns {member: relWIS, "cells": {member: n}, "log_rel": {member:
     log-scale relWIS}, "cov": {member: {"50", "80", "95"}}, "weeks",
     "seconds"} (scoring.pooled_metrics over the member's national cells).
+
+    A delete or a move that holds the tree when the result is to be cached
+    (a results page or a report that passed its checks before the delete
+    began): nothing is written, neither the week caches nor this one, and
+    retro_store.TreeBusy is raised, as the weeks read may be a part of the
+    season. A tree deleted meanwhile is not made again.
     """
-    import zlib
     from datetime import timedelta
     from app.core import scoring
-    from app.core import us_national as usn
     from flubnf.quantiles import FLUSIGHT_QUANTILES as QL
     root = Path(root)
     wks = season_sample_files(root)
@@ -1348,51 +1518,15 @@ def national_aggregate(root: Path) -> dict | None:
     except Exception:
         pass
     t0 = time.monotonic()
+    # a recomputation follows any that a killed process left unfinished:
+    # its temporary week caches go now
+    _sweep_us_quantiles_tmp(root)
     truth, _n2f = scoring.load_truth()
     levels = [float(L) for L in QL]
     rows = []                       # (model, asof, horizon 0-based, metrics)
     for wp in wks:
-        d = read_samples(wp)
-        asof = d["asof"]
+        asof, pf_nat, an_nat = _national_week(root, wp, levels)
         T = pd.Timestamp(asof)
-        # sum jurisdictions only: a fitted US block would double the nation
-        pf_locs = [l for l in d.get("pf", {}) if not usn.is_us(l)]
-        an_locs = [l for l in d.get("analogue", {}) if not usn.is_us(l)]
-        pf_nat, an_nat = {}, {}
-        for h in hz.HORIZONS:
-            arrs = []
-            for loc in pf_locs:
-                a = np.asarray(d["pf"][loc].get(h, []), float)
-                if a.size:
-                    arrs.append(a)
-            if arrs:
-                n = min(a.size for a in arrs)
-                tot = np.zeros(n)
-                for a in arrs:      # a non-finite draw in ANY state poisons
-                    tot += a[:n]    # that index; the finite filter drops it
-                tot = tot[np.isfinite(tot)]
-                if tot.size:
-                    pf_nat[h] = {L: float(np.quantile(tot, L))
-                                 for L in levels}
-            draws = None
-            for loc in an_locs:
-                q = d["analogue"][loc].get(h)
-                if not q:
-                    continue
-                ks = sorted(q, key=float)
-                lv = np.asarray([float(k) for k in ks])
-                # monotone repair against tiny stored quantile inversions
-                vv = np.maximum.accumulate(
-                    np.asarray([float(q[k]) for k in ks]))
-                rng = np.random.default_rng(
-                    zlib.crc32(f"{asof}|{loc}|{h}".encode()))
-                v = np.interp(rng.random(_NATIONAL_DRAWS), lv, vv)
-                draws = v if draws is None else draws + v
-            if draws is not None:
-                draws = draws[np.isfinite(draws)]
-                if draws.size:
-                    an_nat[h] = {L: float(np.quantile(draws, L))
-                                 for L in levels}
         for model, qs in (("pf", pf_nat), ("analogue", an_nat)):
             for h in hz.HORIZONS:
                 q = qs.get(h)
@@ -1424,14 +1558,26 @@ def national_aggregate(root: Path) -> dict | None:
             result["log_rel"][model] = pm["log_rel"]
             result["cov"][model] = pm["cov"]
     result["seconds"] = round(time.monotonic() - t0, 1)
-    # atomic; an unwritable tree (sealed, read-only) just recomputes next time
-    try:
-        cf.parent.mkdir(parents=True, exist_ok=True)
-        tmp = cf.with_name(cf.name + ".tmp")
-        tmp.write_text(json.dumps({"key": key, "result": result}), encoding="utf-8")
-        os.replace(tmp, cf)
-    except OSError:
-        pass
+    # atomic; an unwritable tree (sealed, read-only) just recomputes next
+    # time. Nothing is written into a tree a delete or a move holds
+    # (retro_store.writing_into), and no folder is made for a tree deleted
+    # meanwhile (no parents=True)
+    from app.core.retro_store import TreeBusy, writing_into
+    text = json.dumps({"key": key, "result": result})
+    with writing_into(root) as ok:
+        if ok and root.is_dir():
+            try:
+                cf.parent.mkdir(exist_ok=True)
+                tmp = cf.with_name(cf.name + ".tmp")
+                tmp.write_text(text, encoding="utf-8")
+                os.replace(tmp, cf)
+            except OSError:
+                pass
+    if not ok:
+        # its weeks were going while it was worked out: no figure is given
+        # for them (us_national.aggregate_row says why)
+        raise TreeBusy("the run is being deleted or moved, so its national "
+                       "aggregate was not built")
     return result
 
 

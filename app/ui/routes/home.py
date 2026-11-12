@@ -10,6 +10,7 @@ from __future__ import annotations
 import html as _htmlmod
 import sys
 import time
+from pathlib import Path
 
 from fastapi import APIRouter, Request
 from fastapi.responses import HTMLResponse
@@ -466,6 +467,17 @@ def home(request: Request):
     from flubnf.settings import check as _check
     from app.ui.routes.output import _reference_date
     missing = _check(verbose=False)
+    # Start here comes first, before the map, when the map has no forecast.
+    # The cold paint cannot read the outlook (the import it exists to
+    # avoid), but with no stored run the map it reloads into has none: the
+    # card takes that place there too, so the reload leaves it where it is.
+    # With a stored run it sits beside the record, as the weekly view has
+    # it; a stored run whose outlook turns out empty is the one case the
+    # reload still moves it. Its steps say where this computer stands only
+    # off the cold paint (the data read imports pandas): plain until then
+    first = rid is None if pending else not ob["outlook_date"]
+    states = first and not pending
+    newest, data_why = _start_data() if states else ("", "")
     state._trace(f"home: outlook ready at +{time.perf_counter() - _t0:.2f}s "
                  f"(pending={pending}), rendering")
     return templates.TemplateResponse(request, "home.html", {
@@ -494,7 +506,98 @@ def home(request: Request):
         # private engine when the default is missing and that one is
         # installed here
         "engine_words": _engine_words(),
-        "engine_fallback": _engine_fallback()})
+        "engine_fallback": _engine_fallback(),
+        # Start here: its place (before the map on a first run) and, off
+        # the cold paint, its steps' states: the Data step's caption and
+        # the Forecast step's (home.html start_here)
+        "start_first": first, "start_states": states,
+        "start_newest": newest, "start_data_why": data_why,
+        "start_pf_state": _start_pf_state() if states else ""})
+
+
+def _sentence(words: str) -> str:
+    words = words.strip()
+    return words[:1].upper() + words[1:] + ("" if words.endswith(".") else ".")
+
+
+def _hub_step(gate: str) -> str:
+    """The step that gets the hub's data, in a sentence, after the run
+    gate's reason (data.hub_state's word), as the setup scripts take each
+    state: setup fetches into an absent or an empty folder (setup.ps1
+    only where nothing is) and widens a sparse clone; it refuses a file or
+    a folder that is no clone, which data.hub_missing's words say to move
+    first. A folder the gate passes with nothing a run can read ("") gets
+    a fresh clone once moved aside: setup leaves a clone that has its
+    folders as it is."""
+    from app.ui import templating
+    setup = templating.hub_setup_text()
+    if gate == "empty" and templating._platform() == "win32":
+        return f"Delete it, then {setup}."
+    if gate == "empty":
+        return f"To fetch the data into it, {setup}."
+    if gate == "sparse":
+        return f"To add it, {setup}."
+    if gate in ("absent", "file", "folder"):
+        return f"To fetch the data, {setup}."
+    return (f"Move or rename the folder, then {setup}: setup fetches a "
+            "fresh clone.")
+
+
+def _start_data() -> tuple:
+    """(week, why) for the first-run Data step. When a forecast can run
+    on the hub, week is the newest week the hub's own data holds (its
+    live target file or its archive), for "through <week>", and why is
+    "". Otherwise week is "" and why says what stops it, in a plain
+    sentence, then the step to take (_hub_step): the run gate's own
+    reason (data.hub_missing, the test a run must pass), no locations
+    table in the hub (a run that passes the gate reads it, and fails), or
+    no week in the hub at all. data.newest_week also counts the shipped
+    snapshots, which every copy holds: a week found only there is not the
+    hub's. A hub folder that is not there at all is hub_missing's to
+    report. It imports pandas: never on the cold paint, which exists to
+    avoid that import."""
+    d = state.data_mod
+    try:
+        why = d.hub_missing()
+        if why:
+            try:
+                gate = d.hub_state()
+            except Exception:
+                gate = ""
+            return "", f"{_sentence(why)} {_hub_step(gate)}"
+        hub = Path(d.HUB)
+        if hub.is_dir() and not Path(d.LOCATIONS).is_file():
+            return "", (f"The hub folder {hub} has no "
+                        f"auxiliary-data/locations.csv. {_hub_step('')}")
+        week = d.newest_week()
+        if week and week in d.shipped_weeks():
+            live, archive = d.live_newest_week(), d.archive_vintages()
+            if week != live and week not in archive:
+                week = max([w for w in (live, archive[-1] if archive
+                                        else None) if w], default=None)
+        if not week:
+            return "", (f"The hub folder {hub} holds no weeks of data. "
+                        f"{_hub_step('')}")
+        return week, ""
+    except Exception as e:
+        why = _sentence(f"the hub data could not be read: "
+                        f"{e or type(e).__name__}")
+        try:
+            step = _hub_step("")
+        except Exception:
+            return "", why
+        return "", f"{why} If it stays so, {step[:1].lower()}{step[1:]}"
+
+
+def _start_pf_state() -> str:
+    """The particle-filter engine in one word (pipeline._pf_engine_state:
+    absent, broken or ready), for the first-run Forecast step; "" when it
+    cannot be read."""
+    try:
+        from app.ui import pipeline
+        return pipeline._pf_engine_state()
+    except Exception:
+        return ""
 
 
 def _engine_words() -> str:

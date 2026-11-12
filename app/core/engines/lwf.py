@@ -204,26 +204,36 @@ def engine_current() -> bool:
     return lock_check()[0]
 
 
-#: lock checks running for a page: key -> {"done": Event, "result"}
+#: lock checks running for a page: key -> {"done": Event, "result", "at":
+#: when the answer came}. A page that stops waiting leaves its slot for the
+#: next look, which takes the answer only within CHECK_TTL_S of it, as
+#: lock_check's own store does.
 _PENDING: dict = {}
 
 
 def lock_check_soon(wait: float) -> tuple[bool, str] | None:
     """lock_check for a page: the answer when it is ready within `wait`
     seconds, None while it is still running (the page says nothing yet,
-    and a run's own preflight waits for it)."""
+    and a run's own preflight waits for it). An answer left by a page
+    that stopped waiting is dropped once CHECK_TTL_S old, and asked
+    again."""
     import threading
     py = python()
     key = (str(py), _file_key(py), _file_key(lock_path()))
     slot = _PENDING.get(key)
+    if (slot is not None and slot["done"].is_set()
+            and time.time() - slot["at"] >= CHECK_TTL_S):
+        _PENDING.pop(key, None)
+        slot = None
     if slot is None:
-        slot = {"done": threading.Event(), "result": None}
+        slot = {"done": threading.Event(), "result": None, "at": 0.0}
         _PENDING[key] = slot
 
         def _go():
             try:
                 slot["result"] = lock_check()
             finally:
+                slot["at"] = time.time()
                 slot["done"].set()
         threading.Thread(target=_go, daemon=True,
                          name="flubnf-public-lock-check").start()
@@ -827,7 +837,11 @@ def _run_lwf(c):
 '''
 
 #: the forecast path's shard runner (cf. pf._RUNNER): the same halt check
-#: between cells and status after every cell; {lwf_cell} runs each one
+#: between cells and status after every cell; {lwf_cell} runs each one.
+#: It writes each finished cell's seconds (secs, for pf.execute's
+#: pf_timing.json) just after the cell ends, and once execute sees STOP
+#: the runner is ended where it is: a cell that finished just before the
+#: STOP, before the runner wrote its seconds, has no seconds there
 RUNNER = '''"""Auto-generated public-engine runner. Executes one shard's cells
 sequentially (job_type = lwf, one PyBNF process per cell)."""
 import json, os, shutil, sys
@@ -839,6 +853,7 @@ cells = json.load(open({cells_json!r}))
 out = {out_json!r}
 halt = Path({halt_path!r})
 results = {{}}
+secs = {{}}                  # seconds per finished cell (execute's pf_timing.json)
 _t0 = _t.time()
 
 
@@ -850,6 +865,10 @@ def _write(path, payload, tries=10):
 
 
 def _publish(done):
+    try:
+        _write(out + ".secs.prog", secs)
+    except OSError:
+        pass
     try:
         _write(out, results)
     except OSError as e:
@@ -868,7 +887,9 @@ published = _publish(0)
 for _i, c in enumerate(cells, 1):
     if halt.exists():
         break
+    _tc = _t.monotonic()
     results[c["key"]] = _run_lwf(c)
+    secs[c["key"]] = round(_t.monotonic() - _tc, 3)
     published = _publish(_i)
 if not published:
     try:
@@ -937,6 +958,16 @@ def read_table(path: Path):
         raise Unreadable(f"{Path(path).name} is torn "
                          f"({'empty' if not lines else 'a header alone'})")
     header = lines[0].split()
+    # np.loadtxt reads a well-formed table to the same numbers, bit for
+    # bit, faster; it is kept only when every row has the header's width.
+    # Anything else (a token that is not a number, a ragged row) is read
+    # below, which gives the same numbers or the same refusal as before.
+    try:
+        arr = np.loadtxt(lines[1:], ndmin=2, comments=None)
+    except Exception:
+        arr = None
+    if arr is not None and arr.shape == (len(lines) - 1, len(header)):
+        return header, arr
     try:
         rows = [[float(x) for x in ln.split()] for ln in lines[1:]]
     except ValueError as e:

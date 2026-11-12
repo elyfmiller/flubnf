@@ -25,7 +25,7 @@ The public engine (lanl/PyBNF's Liu-West filter, `job_type = lwf`) is FluBNF's d
 | A clone named by `FLUBNF_TEST_HUB` | the clone checks in `app/tests/test_core.py`, `test_hubcheck.py`, `test_model_metadata.py`; the recorded sums in `test_experiment_summary.py`; `tests/test_sihrs_fit.py` |
 | `app/state` (sealed retrospectives) | `app/tests/test_site_build.py`, parts of `test_core.py`, `test_playback.py`; the recorded sums in `test_experiment_summary.py` (the shipped 2024-25 replay) |
 | JavaScriptCore (macOS only) | JS cases in `app/tests/test_player_js.py`, `test_retro_eta.py`, `test_retro_pf_name.py`, `test_sandbox_editor.py`, `test_forecast_retired_tab.py`, `test_template_date_helpers.py`, `test_contactmap.py` |
-| POSIX (on Windows) | `tests/test_engine_bundle.py`, `test_engine_public.py`, `test_engine_switch_sh.py`, `test_reinstall_script.py`, `test_launcher_update.py`, `test_mac_app_bundle.py` script runs; `app/tests/test_takeover_sweep.py`, parts of `test_pf_hardening.py`, `test_pf_shards.py` |
+| POSIX (on Windows) | `tests/test_engine_bundle.py`, `test_engine_public.py`, `test_engine_switch_sh.py`, `test_reinstall_script.py`, `test_reinstall_setup_wording.py`, `test_launcher_update.py`, `test_launcher_dep_refresh.py`, `test_mac_app_bundle.py` script runs; `app/tests/test_takeover_sweep.py`, parts of `test_pf_hardening.py`, `test_pf_shards.py`, `test_codegen_cache.py` |
 | Lab-only records (`research/`, `FLUBNF_ORACLE_RECORD`) | `tests/test_oracle*.py` record cases; `app/tests/test_oracle_text.py` B2 case |
 | `ruff` | the app/ui lint case in `app/tests/test_ui_layout.py` |
 | `FLUBNF_PUBLIC_REAL` (the `public-engine-install` CI job's wheel, lock and certificate) | `tests/test_public_engine_real.py`, the public engine's real install |

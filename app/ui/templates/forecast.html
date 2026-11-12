@@ -1,7 +1,10 @@
 {% extends "base.html" %}{% block title %}FluBNF · Forecast{% endblock %}
 {% block head %}<link rel="stylesheet" href="/static/tabs/forecast.css">
 <script src="/static/plotly.min.js"></script><script src="/static/charts.js"></script>
-<script src="/static/quips.js"></script>{% endblock %}
+<script src="/static/quips.js"></script>
+{# the form's read-only lines: the Run row's time line from the engine's
+   cost model (estimate.js) and a dataset's donor line (forecast_form.js) #}
+<script src="/static/estimate.js" defer></script><script src="/static/forecast_form.js" defer></script>{% endblock %}
 {% block content %}{% import "_tips.html" as tips %}
 <h1>Forecast</h1>
 {% import "_dataset_upload.html" as dsup %}
@@ -60,7 +63,10 @@
    {{ dsup.box("forecast") }}
   </details>
   {% endif %}
-  <form method="post" action="{{ '/run/dataset' if dataset else '/run' }}" id="fcform">
+  {# the hub form carries the cost model's constants (estimates.page_params)
+     for the Run row's time line (static/forecast_form.js) #}
+  {% set fc_est = run_est if (run_est is defined and run_est and not dataset) else none %}
+  <form method="post" action="{{ '/run/dataset' if dataset else '/run' }}" id="fcform"{{ (fc_est.est if fc_est else {}) | xmlattr }}>
    {% if dataset %}<input type="hidden" name="dataset" value="{{ dataset.id }}">{% endif %}
    {# two modes, one form (same controls, same run record): Real-time takes
       the latest archived week the calendar allows; Vintage names one #}
@@ -119,6 +125,23 @@
     <option value="">{{ "or pick a week" if dataset else "or pick an archived week" }} ({{ vintage_dates|length }})</option>
     {% for v in vintage_dates %}<option value="{{ v }}">{{ v }}</option>{% endfor %}
    </select>
+   {% endif %}
+   {# a dataset week too thin for the Groundhog: its donor weeks at the
+      anchor week (datasets_ui.donor_weeks, counted at the shipped donor
+      window), said while the Groundhog runs and the donor window and
+      Weeks to drop are at their defaults; static/forecast_form.js redoes
+      it as the form changes. Informs only: Run models stays on #}
+   {% if dataset and dataset.donor_weeks is defined and dataset.donor_need %}
+   {% set dn_need = dataset.donor_need %}
+   {% set dn_n = dataset.donor_weeks.get(anchor_week) if anchor_week else none %}
+   {% set dn_rows = {} %}{% for g in (knob_panel.groups if knob_panel else []) %}{% for r in g.rows %}{% set _ = dn_rows.update({r.key: r}) %}{% endfor %}{% endfor %}
+   {% set dn_off = [] %}{% for k in ("groundhog.bandwidth", "run.weeks_to_drop") %}{% set r = dn_rows.get(k) %}{% if r and not r.later and (r.value | trim) != "" and (r.value | float(-1.5)) != (r.default | float(-2.5)) %}{% set _ = dn_off.append(k) %}{% endif %}{% endfor %}
+   {% set dn_show = dn_n is not none and dn_n < dn_need and form.engine != "pf" and not dn_off %}
+   {# what a count counts: with several groups a week counts once in each
+      (datasets_ui.donor_unit: "weeks" or "group-weeks") #}
+   {% set dn_unit = dataset.donor_unit or "weeks" %}
+   <script type="application/json" id="fc-donor-data">{{ {"need": dn_need, "weeks": dataset.donor_weeks, "unit": dn_unit} | tojson }}</script>
+   {{ tips.alert("warn", ("The Groundhog has too little history for this week (" ~ dn_n ~ " of " ~ dn_need ~ " donor " ~ dn_unit ~ ").") if dn_show else "", id="fc-ds-donors", hidden=not dn_show) }}
    {% endif %}
    <script>
     (function () {
@@ -261,6 +284,17 @@
     {% if pre.failed %}<button type="button" class="quiet fc-chip" data-preset="failed" data-locs="{{ pre.failed | tojson | forceescape }}">Failed last run <span class="fc-chip-n">{{ pre.failed | length }}</span></button>{% endif %}
    </div>
    {% endif %}
+   {# the filter and the list in a fold: closed while the pick is one the
+      chips and the count already say (all 53, the 52 without US, US
+      only), open for any other pick, an unreadable state list or a
+      dataset; "Last pick" and "Failed last run" open it (the script
+      below). A closed fold still posts its boxes: /run gets the same form #}
+   {% set fl = form.locations or [] %}
+   {% set fl_st = fl | select("in", all_locs) | unique | list %}
+   {% set fl_preset = ("all" in fl) or (us_checked and not fl_st)
+        or (not us_checked and all_locs and fl_st | length == all_locs | length) %}
+   {% call tips.fold("Pick groups" if dataset else "Pick locations", id="fc-locpick",
+        open=(dataset or locations_error or not fl_preset), cls="fc-locpick") %}
    <input type="search" id="fc-locfilter" class="fc-locfilter" placeholder="Filter" autocomplete="off"
      aria-label="{{ 'Filter the groups' if dataset else 'Filter the locations' }}" aria-controls="fc-checklist">
    <div class="checklist" id="fc-checklist" role="group" aria-labelledby="fc-locs-lbl">
@@ -278,6 +312,7 @@
      {% endif %}
      <p class="fc-nomatch" id="fc-nomatch" hidden>No match</p>
    </div>
+   {% endcall %}
    {{ tips.label("Model", "fc-model", for_="model-pick") }}
    {% set pf_off = pf_state is defined and pf_state != "ready" %}
    {% if dataset %}
@@ -341,6 +376,10 @@
    <div class="fc-runrow">
     <button class="gold" data-guard="console-run">Run models</button>
     {% if lr %}<span id="fc-vslast" class="fc-vslast" aria-live="polite">{{ tips.badge("ok", "Same as last run", id="fc-vs-last") }}</span>{% endif %}
+    {# how long the run takes here: the models, the locations and the
+       cost model's span (routes/forecast.run_words), redone on every
+       change by static/forecast_form.js. Display only #}
+    {% if fc_est %}<div id="fc-est" class="fc-est" data-all="{{ fc_est.all }}" data-pf="{{ fc_est.pf }}" data-gh="{{ fc_est.gh }}"{% if fc_est.ratio %} data-ratio="{{ fc_est.ratio }}"{% endif %}{% if not fc_est.text %} hidden{% endif %}>{{ tips.meta([("clock", fc_est.text, "Run time")], label="Run time") }}</div>{% endif %}
    </div>
   </form>
   {% if lr %}
@@ -480,8 +519,13 @@
          b.setAttribute('aria-pressed', String(presetKey(b) === k));
        });
      }
+     // the fold around the filter and the list (closed for a preset pick)
+     var FOLD = document.getElementById('fc-locpick');
      function apply(b) {
        var key = presetKey(b);
+       // a remembered pick is shown in the list it came from
+       var p = b.getAttribute('data-preset');
+       if (FOLD && (p === 'last' || p === 'failed')) FOLD.open = true;
        if (key === 'all') {
          CKALL.checked = true;
          if (CKUS) CKUS.checked = true;
@@ -530,6 +574,8 @@
      }
      LIST.addEventListener('scroll', paintFade);
      addEventListener('resize', paintFade);
+     // a closed fold measures the list as empty: measure again on opening
+     if (FOLD) FOLD.addEventListener('toggle', paintFade);
      sync();
    })();
   </script>
@@ -889,6 +935,15 @@
  const ROBS = {{ run_obs_json | safe }};  // loc -> [[date, value]...] AS OF the run's vintage
  // member -> loc -> the weeks it treated as unreported (outcome data_flags)
  const RASIDE = {{ run_aside_json | safe }};
+ {#- the drawn run's ledger row, when this page's ledger holds it (the
+     hub's fan_run, a dataset page's fc_run) #}
+ {%- set fan_rid = ((aids.fan_run or {}).run_id if (aids is defined and aids) else (fc_run if fc_run is defined else "")) or "" %}
+ {%- set fan_row = ((ledger or []) | selectattr("run_id", "equalto", fan_rid) | first) if fan_rid else none %}
+ // member -> loc -> the zero-anchor rule that forecast a newest week of 0
+ // (the drawn run's data_flags: the rows RASIDE leaves out; those three
+ // fields only, routes/forecast.py _fan_zero_rules); null when this page's
+ // ledger does not hold the drawn run
+ const RZERO = {{ (fan_zero_rules(fan_row.outcome) if fan_row else none) | tojson }};
  // the hub's recorded FluSight-ensemble / -baseline forecasts for the run's
  // date, keyed like FANQ ({} when none were recorded: no toggle)
  const OFFQ = {{ official_json | default('{}', true) | safe }};
@@ -1110,6 +1165,24 @@
    // starts from the last week it used, where the model started
    const aside=new Set((RASIDE[FMODEL]||{})[loc]||[]);
    let ai=obsX.length-1; while(ai>=0&&aside.has(obsX[ai])) ai--;
+   // the FluSight ensemble and baseline lines start at this week, a
+   // reported 0 included: the zero-anchor move below is the Groundhog's
+   // own and does not apply to them
+   const oi=ai, ox=oi>=0?[obsX[oi]]:[], oy=oi>=0?[obsY[oi]]:[];
+   // a newest week of 0 under a zero-anchor rule is a reported week, so it
+   // is not set aside; but no rule starts from that 0 (FC-14). Extend
+   // starts from the newest positive week, as after a set-aside week.
+   // Level, Blend and the Poisson fallbacks start at the first horizon,
+   // with no line from the observed series. Without the drawn run's flags
+   // (RZERO null), a Groundhog fan from a 0 takes the first horizon.
+   if(ai>=0&&!(obsY[ai]>0)){
+     const zr=RZERO?(RZERO[FMODEL]||{})[loc]:(FMODEL==='analogue'?'unknown':'');
+     if(zr){
+       let pi=ai; while(pi>=0&&!(obsY[pi]>0)) pi--;
+       // Extend carries a positive week over at most 2 zeros (missing.MAX_CARRY)
+       ai=(zr==='extend'&&pi>=0&&ai-pi<=2)?pi:-1;
+     }
+   }
    const ax=ai>=0?[obsX[ai]]:[], ay=ai>=0?[obsY[ai]]:[];
    const fx=[...ax,...xs];
    const med=[...ay,...hs.map(h=>qs[h]['0.5'])];
@@ -1129,7 +1202,7 @@
      if(sx.length) traces.push({x:sx,y:sy,mode:'markers',name:'set aside',
        marker:{symbol:'x-open',size:9,color:css('--mut')}});
    }
-   if(SHOWOFF) traces.push(...offTraces(loc, xs, ax, ay));
+   if(SHOWOFF) traces.push(...offTraces(loc, xs, ox, oy));
    if(aftX.length) traces.push({x:aftX,y:aftY,mode:'lines+markers',
      // dotted ink, as on every surface; hollow markers tell it from the
      // dotted grey FluSight baseline

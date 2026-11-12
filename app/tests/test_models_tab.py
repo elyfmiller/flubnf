@@ -80,9 +80,14 @@ def test_the_record_sentences_ride_the_record_toggletip():
              "size-matched donors, submitted 2026-10-24; 0.670 for the "
              "pooled form submitted 2026-10-10 and 2026-10-17)."),),
         "/model/pf2s": (
-            ("It scored worse than the blend it was tested in, in the "
-             "August 2026 evaluation (relWIS 0.719 against 0.704), so it "
-             "is kept for research runs only."),),
+            ("Adding it as a third equal member scored worse: relWIS "
+             "0.719 for the ensemble in equal thirds against 0.704 for the "
+             "50/50 blend of the Liu-West filter and the analogue (lower "
+             "is better)."),
+            ("Both figures: seal 2026-08-19, three seasons, before the "
+             "donor-pool exclusion. The 50/50 figure is on 15,460 cells; "
+             "the equal-thirds figure has no cell count."),
+            "So it is kept for research runs only."),
     }
     for path, needles in wanted.items():
         t = client.get(path).text
@@ -99,14 +104,15 @@ def test_the_record_sentences_ride_the_record_toggletip():
     assert re.search(r'uk-stat--ok"><dt>2023-24</dt><dd><span class="uk-stat-v">'
                      r'0\.680</span>', gh)
     pf2s = client.get("/model/pf2s").text
-    # both bars beat the baseline (two checks): the badge says how far the
-    # two-strain fell behind the blend, from the two values; the Record
-    # "i" beside it names the comparison, so the badge has no "?"
-    assert '<span class="uk-badge-t">0.015 behind the blend</span>' in pf2s
+    # both bars beat the baseline (two checks): the badge says how much
+    # worse the ensemble scored with the two-strain added as a third
+    # member, from the two values; the Record "i" beside it names the
+    # comparison, so the badge has no "?"
+    assert '<span class="uk-badge-t">0.015 worse as a third member</span>' in pf2s
     assert "scored worse" not in pf2s.split('id="tt-md-rec"', 1)[0]
     assert 'id="tip-md-behind"' not in pf2s
     rec = _text(pf2s.split('id="tt-md-rec"', 1)[1].split("</span></span>", 1)[0])
-    assert "the blend it was tested in, in the August 2026 evaluation" in rec
+    assert "Adding it as a third equal member scored worse" in rec
 
 
 # ------------------------------------------------- equations: kit and plain

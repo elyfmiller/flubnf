@@ -65,17 +65,49 @@ def vintages() -> list:
     return sorted(set(archive_vintages()) | set(shipped_weeks()))
 
 
+def hub_state(data: bool = True) -> str:
+    """What stops a run reading the hub, in one word; "" when the clone's
+    data directories are there (data=False: when anything is there at the
+    hub path at all). "absent": nothing there. With data: "file", a file
+    in the folder's place; and for a folder without auxiliary-data (the
+    test flubnf.settings.check applies), "empty", "sparse" (a .git there:
+    a sparse checkout left without it) or "folder" (a folder that is no
+    git clone)."""
+    if not HUB.exists():
+        return "absent"
+    if not data:
+        return ""
+    if not HUB.is_dir():
+        return "file"
+    if (HUB / "auxiliary-data").is_dir():
+        return ""
+    try:
+        empty = not any(HUB.iterdir())
+    except OSError:
+        empty = False
+    if empty:
+        return "empty"
+    return "sparse" if (HUB / ".git").exists() else "folder"
+
+
 def hub_missing(data: bool = True) -> str:
     """Why no hub data can be read, in plain words; "" when the clone's
-    data directories are there (data=False: when the folder is there at
-    all, whatever it holds). The folder is absent, or a sparse checkout
-    left without them (the test flubnf.settings.check applies)."""
-    if not HUB.exists():
-        return f"there is no hub folder at {HUB}"
-    if data and not (HUB / "auxiliary-data").is_dir():
-        return (f"the hub folder {HUB} holds no data directories (a sparse "
-                "checkout without them)")
-    return ""
+    data directories are there (data=False: when anything is there at the
+    hub path at all). One sentence for each of hub_state's words. Where
+    setup cannot fetch the data into what is there (a file, a folder that
+    is no clone), the words say to move it first; setup itself is the
+    caller's to name."""
+    state = hub_state(data)
+    return {
+        "absent": f"there is no hub folder at {HUB}",
+        "file": f"the hub path {HUB} is a file, not a folder; move or "
+                "rename it first",
+        "empty": f"the hub folder {HUB} is empty",
+        "sparse": f"the hub folder {HUB} has no auxiliary-data folder (a "
+                  "sparse checkout without it)",
+        "folder": f"the hub folder {HUB} has no auxiliary-data folder and "
+                  "is not a git clone; move or rename it first",
+    }.get(state, "")
 
 
 def vintage_path(date: str) -> Path:

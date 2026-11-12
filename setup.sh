@@ -6,6 +6,22 @@ ok()   { printf "  \033[32m+\033[0m %s\n" "$*"; }
 warn() { printf "  \033[33m!\033[0m %s\n" "$*"; }
 
 HERE="$(cd "$(dirname "$0")" && pwd)"
+# How to run this again, as the user can type it. The one-line install
+# (install.sh) runs this in its folder while the user's shell stays where it
+# was, and says so (FLUBNF_SETUP_FROM=install): there the way back is the
+# install line, which also goes on to the engine. The one-line reinstall
+# (reinstall.sh) runs this in the new copy, the user's shell elsewhere too,
+# and says so (FLUBNF_SETUP_FROM=reinstall). Its line is no way back:
+# pasted again it sets this new copy aside as well, or finds it current and
+# does nothing. So the command names this folder.
+if [ "${FLUBNF_SETUP_FROM:-}" = install ]; then
+  again="paste the install line again"; Again="Paste the install line again"
+elif [ "${FLUBNF_SETUP_FROM:-}" = reinstall ]; then
+  again="run cd \"$HERE\" && ./setup.sh again"
+  Again="Run cd \"$HERE\" && ./setup.sh again"
+else
+  again="run ./setup.sh again"; Again="Run ./setup.sh again"
+fi
 # Checkouts live in ~/GitHub: macOS keeps FluBNF.app out of Documents
 # (FluBNF.command moves an older setup's). One already in ~/Documents/GitHub,
 # and none in ~/GitHub, is used where it is.
@@ -49,9 +65,117 @@ fi
 ok "$($PY -V) at $PY"
 
 say "analysis venv (.venv) + package"
-[ -d "$HERE/.venv" ] || $PY -m venv "$HERE/.venv"
-"$HERE/.venv/bin/pip" install -q -e "$HERE[app,dev]" && ok "flubnf installed editable"
-"$HERE/.venv/bin/pip" install -q bionetgen && ok "bionetgen (BNG2.pl) installed"
+VENV="$HERE/.venv"
+# The venv's scripts folder: bin, or Scripts in a venv a Windows Python made
+# (setup.ps1's, or this script's own under Git Bash).
+venv_bin() {
+  if [ ! -d "$VENV/bin" ] && [ -d "$VENV/Scripts" ]; then
+    printf '%s' Scripts
+  else
+    printf '%s' bin
+  fi
+}
+# One of the venv's programs by its file: a Windows venv holds python.exe,
+# pip.exe and flubnf.exe only, so the .exe is named when it is there (Git
+# Bash would find it without the suffix; this does not rely on that).
+vexe() {
+  if [ -f "$VENV/$VB/$1.exe" ]; then
+    printf '%s' "$VENV/$VB/$1.exe"
+  else
+    printf '%s' "$VENV/$VB/$1"
+  fi
+}
+runs_pip() { "$(vexe python)" -m pip --version >/dev/null 2>&1; }
+runs_console() {
+  [ -x "$(vexe flubnf)" ] && "$(vexe flubnf)" --help >/dev/null 2>&1
+}
+VB="$(venv_bin)"
+NOPIP=""
+ASIDE=""
+if [ -d "$VENV" ] && ! runs_pip; then
+  if runs_console; then
+    # No pip (uv makes such venvs, as does venv --without-pip), but the
+    # console runs from it: kept. A new venv needs the network for FluBNF's
+    # packages, so setting this one aside offline left no console at all.
+    NOPIP=1
+  else
+    # Neither runs (made where the venv module came without pip, or left by a
+    # Python since removed): set aside, never deleted, and made again.
+    BROKEN="$HERE/.venv.broken-$(date +%Y%m%d-%H%M%S)"
+    [ ! -e "$BROKEN" ] || BROKEN="$BROKEN-$$"
+    if mv "$VENV" "$BROKEN"; then
+      ASIDE="$BROKEN"
+      warn "the venv in .venv runs neither pip nor the console: it is kept as $(basename "$BROKEN") and made again"
+    else
+      warn "the venv in .venv runs neither pip nor the console, and it could not be moved aside."
+      warn "Move or delete \"$VENV\" and then $again."
+      exit 1
+    fi
+  fi
+fi
+if [ ! -d "$VENV" ]; then
+  # What venv says goes to stderr as ever, and is kept: it tells a missing
+  # venv module or ensurepip from a full disk or a folder that cannot be
+  # written to.
+  { VENV_ERR="$("$PY" -m venv "$VENV" 2>&1 1>&3)"; VENV_RC=$?; } 3>&1
+  [ -z "$VENV_ERR" ] || printf '%s\n' "$VENV_ERR" >&2
+  if [ "$VENV_RC" -ne 0 ]; then
+    warn "$PY could not make the venv (see above)."
+    if [ -n "$ASIDE" ]; then
+      # A failed try leaves things as they were: the half-made venv this run
+      # made goes, and the one set aside comes back (one more
+      # .venv.broken-<stamp> per failed try otherwise).
+      if rm -rf "$VENV" && mv "$ASIDE" "$VENV"; then
+        warn "The old venv is back in .venv."
+      fi
+    fi
+    if printf '%s' "$VENV_ERR" | tr -s '[:space:]' ' ' | grep -q \
+         -e 'ensurepip is not available' -e 'No module named venv' \
+         -e 'No module named ensurepip'; then
+      if command -v apt-get >/dev/null 2>&1; then
+        PYV="$("$PY" -c 'import sys; print("%d.%d" % sys.version_info[:2])' 2>/dev/null)"
+        warn "On Debian and Ubuntu the venv module is its own package:"
+        warn "  sudo apt install python${PYV:-3}-venv"
+        warn "then $again."
+      else
+        warn "Install a Python that has its venv module (Anaconda does:"
+        warn "anaconda.com/download), then $again."
+      fi
+    else
+      warn "$Again once the problem above is fixed."
+    fi
+    exit 1
+  fi
+  VB="$(venv_bin)"
+fi
+VPY="$(vexe python)"
+# pip's own script when the venv has it, else pip as a module (a venv given
+# pip by hand with ensurepip has pip3 but no pip).
+if [ -x "$(vexe pip)" ]; then PIP=("$(vexe pip)"); else PIP=("$VPY" -m pip); fi
+if [ -n "$NOPIP" ]; then
+  warn "the venv in .venv has no pip (a venv made by uv, say), so FluBNF's"
+  warn "packages and BioNetGen were not updated. The console runs with what is"
+  warn "installed. For setup to update them: \"$VPY\" -m ensurepip, then $again."
+elif "${PIP[@]}" install -q -e "$HERE[app,dev]"; then
+  ok "flubnf installed editable"
+elif [ -x "$(vexe flubnf)" ]; then
+  # an earlier install is there: an offline re-run keeps it
+  warn "FluBNF's packages did not update (see above; offline?). The console"
+  warn "runs with what is installed."
+else
+  warn "FluBNF did not install into .venv (see above; offline?). The console"
+  warn "needs it: $again once the problem above is fixed."
+  exit 1
+fi
+# BioNetGen is not needed to open the console, so a failure here is a warning.
+if [ -z "$NOPIP" ]; then
+  if "${PIP[@]}" install -q bionetgen; then
+    ok "bionetgen (BNG2.pl) installed"
+  else
+    warn "BioNetGen (BNG2.pl) did not install (see above). The console still"
+    warn "runs; fits need it. $Again to retry."
+  fi
+fi
 
 if [ "$(uname -s)" = Darwin ]; then
   say "FluBNF.app (FluBNF in the Dock)"
@@ -68,12 +192,43 @@ fi
 say "FluSight hub data"
 # The directories the app reads; both the repair and the fresh clone use this list.
 HUB_DIRS="auxiliary-data target-data model-output/FluSight-baseline model-output/FluSight-ensemble"
+# What must be there after it, inside them too: doctor fails a clone without
+# the vintages' archive (flubnf/doctor.py HUB_DATA_DIRS), so a cone that holds
+# auxiliary-data but not its archive is widened as well.
+HUB_NEEDS="$HUB_DIRS auxiliary-data/target-data-archive"
 missing_hub_dirs() {
   _m=""
-  for _d in $HUB_DIRS; do [ -d "$HUB/$_d" ] || _m="$_m $_d"; done
+  for _d in $HUB_NEEDS; do [ -d "$HUB/$_d" ] || _m="$_m $_d"; done
   printf '%s' "$_m"
 }
-if [ -d "$HUB/.git" ]; then
+# A clone is a folder git takes as its own top level. Its .git can be a
+# file (a worktree or a submodule); an empty or broken .git folder is no
+# clone, and git then answers for any repository around the folder.
+# Without git to ask, a .git there counts, as before.
+# A clone git will not read because another account owns it (git's
+# "dubious ownership") is no clone to git either: hub_is_clone then sets
+# HUB_REFUSED to the folder git asks to mark safe, and HUB_SAID to git's
+# first line. git's refusal names that folder, quoted, in every language;
+# only the hub itself counts (a folder inside another account's clone is
+# no clone of its own).
+HUB_REFUSED=""; HUB_SAID=""
+hub_is_clone() {
+  HUB_REFUSED=""; HUB_SAID=""
+  [ -e "$HUB/.git" ] || return 1
+  command -v git >/dev/null 2>&1 || return 0
+  if ! _top="$(git -C "$HUB" rev-parse --show-toplevel 2>/dev/null)"; then
+    _why="$(git -C "$HUB" rev-parse --show-toplevel 2>&1 >/dev/null)"
+    _real="$(cd "$HUB" 2>/dev/null && pwd -P)"
+    case "$_why" in
+      *"'$_real'"*safe.directory*)
+        [ -n "$_real" ] && HUB_REFUSED="$_real" \
+          && HUB_SAID="$(printf '%s\n' "$_why" | head -n 1 | sed 's/^fatal: //')" ;;
+    esac
+    return 1
+  fi
+  [ -n "$_top" ] && [ "$_top" -ef "$HUB" ]
+}
+if hub_is_clone; then
   ok "hub present: $HUB"
   # A by-hand `clone --sparse` holds only the root. Widen with `add`: it is
   # idempotent and fails harmlessly on a full clone, where `set` would prune
@@ -94,8 +249,24 @@ if [ -d "$HUB/.git" ]; then
       warn "whose upstream no longer has one of those directories)"
     fi
   fi
+elif [ -n "$HUB_REFUSED" ]; then
+  # A clone git will not read: moving it aside is no fix, and nothing is
+  # changed here. git's own step, alone on its line.
+  warn "git will not read the clone at \"$HUB\": the folder is not owned by"
+  warn "your account (as with a folder another account made, or one on some"
+  warn "external drives), so no data was fetched into it. git said:"
+  warn "  $HUB_SAID"
+  warn "If you trust it, let git read it with this line, then $again:"
+  warn "    git config --global --add safe.directory \"$HUB_REFUSED\""
 elif [ "${FLUBNF_NO_DATA:-0}" = "1" ]; then
   warn "data skipped (FLUBNF_NO_DATA=1) -- set FLUBNF_HUB later"
+elif [ -e "$HUB" ] \
+     && { [ ! -d "$HUB" ] || [ -n "$(ls -A "$HUB" 2>/dev/null)" ]; }; then
+  # Something there that is not a clone: git clone would fail on it, and
+  # git -C would reach any repository around it.
+  warn "\"$HUB\" is there but is not a git clone, so no data was fetched"
+  warn "into it. Move or rename it (or set FLUBNF_HUB to an existing clone),"
+  warn "then $again."
 else
   # Sparse: only the directories the app reads (~10x smaller than the full hub).
   echo "  fetching FluSight data (sparse, ~150 MB)…"
@@ -103,7 +274,7 @@ else
       https://github.com/cdcepi/FluSight-forecast-hub "$HUB" 2>/dev/null \
     && (cd "$HUB" && git sparse-checkout set $HUB_DIRS) \
     && ok "hub data ready (sparse): $HUB" \
-    || warn "data fetch failed (offline?) -- rerun setup.sh when connected"
+    || warn "data fetch failed (offline?) -- $again when connected"
 fi
 
 say "engine venv (pybnf + bngsim)"
@@ -168,6 +339,10 @@ ok "wrote $ENVF  (source it, or add to your shell profile)"
 say "doctor"
 # shellcheck disable=SC1090
 . "$ENVF"
-"$HERE/.venv/bin/python" -c "from flubnf.settings import check; import sys; sys.exit(1 if check() else 0)" \
-  && ok "all externals present -- you are ready: .venv/bin/flubnf app" \
-  || warn "some externals missing (listed above) -- console still runs: .venv/bin/flubnf app"
+if [ ! -x "$(vexe flubnf)" ]; then
+  warn "the console is not installed: .venv/$VB/flubnf is missing. $Again."
+  exit 1
+fi
+"$VPY" -c "from flubnf.settings import check; import sys; sys.exit(1 if check() else 0)" \
+  && ok "all externals present -- you are ready: .venv/$VB/flubnf app" \
+  || warn "some externals missing (listed above) -- console still runs: .venv/$VB/flubnf app"

@@ -337,15 +337,20 @@ def test_runners_get_bng_env_on_windows_and_what_they_are_given(tmp_path,
     stub.parent.mkdir()
     stub.write_text("# stub\n")
     monkeypatch.setattr(settings, "BNG", stub)
-    # production on macOS/Linux: inherited, as before
-    assert "env" not in pf.runner_popen_kwargs({}, _os_name="posix")
+    # production on macOS/Linux: this process's environment, plus bngsim's
+    # compiled-model cache in the state folder (test_codegen_cache.py)
+    monkeypatch.delenv(pf.CODEGEN_CACHE_ENV, raising=False)
+    cache = {pf.CODEGEN_CACHE_ENV: str(pf.codegen_cache_dir())}
+    assert pf.runner_popen_kwargs({}, _os_name="posix")["env"] == \
+        {**os.environ, **cache}
     # Windows: pinned (retro's runners come through here too)
     nt = pf.runner_popen_kwargs({}, _os_name="nt")
     assert nt["env"]["BNGPATH"] == os.path.realpath(str(stub.parent))
-    # the Sandbox passes its own, on every platform
+    # the Sandbox passes its own, on every platform: a copy of it
     given = {"BNGPATH": "x"}
     kw = pf.runner_popen_kwargs({}, _os_name="posix", env=given)
-    assert kw["env"] is given
+    assert kw["env"] == {**given, **cache} and kw["env"] is not given
+    assert given == {"BNGPATH": "x"}                    # the caller's untouched
 
 
 def test_execute_gives_the_runners_the_environment_it_is_handed(
@@ -806,7 +811,11 @@ def test_windows_runners_fit_without_bngsims_code_generation(monkeypatch):
     # a value someone set on purpose stays
     nt = pf.runner_popen_kwargs({}, _os_name="nt", env={"BNGSIM_NO_CODEGEN": "yes"})
     assert nt["env"]["BNGSIM_NO_CODEGEN"] == "yes"
-    # macOS and Linux: as before
-    assert "env" not in pf.runner_popen_kwargs({}, _os_name="posix")
+    # macOS and Linux keep code generation (their compiled models go to the
+    # state folder's cache: test_codegen_cache.py)
+    assert "BNGSIM_NO_CODEGEN" not in \
+        pf.runner_popen_kwargs({}, _os_name="posix")["env"]
     kw = pf.runner_popen_kwargs({}, _os_name="posix", env=given)
-    assert kw["env"] is given and "BNGSIM_NO_CODEGEN" not in given
+    assert kw["env"]["BNGPATH"] == "y" and kw["env"] is not given
+    assert "BNGSIM_NO_CODEGEN" not in kw["env"]
+    assert "BNGSIM_NO_CODEGEN" not in given

@@ -1016,6 +1016,11 @@ if ($bng.Code -eq 0) {
 $HubDirs = @("auxiliary-data", "target-data",
              "model-output/FluSight-baseline",
              "model-output/FluSight-ensemble")
+# What must be there after it, inside them too: doctor fails a clone without
+# the vintages' archive (flubnf/doctor.py HUB_DATA_DIRS), so a cone that holds
+# auxiliary-data but not its archive is widened as well. The check only: git
+# is given $HubDirs, and `add auxiliary-data` brings in the whole folder.
+$HubNeeds = @($HubDirs) + @("auxiliary-data/target-data-archive")
 
 function Get-MissingHubDirs {
     param([string]$Hub, [string[]]$Dirs)
@@ -1026,21 +1031,78 @@ function Get-MissingHubDirs {
     })
 }
 
+function Get-HubGitState {
+    <# What git makes of the hub folder, by doctor's rule (flubnf/doctor.py
+       _is_clone; setup.sh hub_is_clone). "clone": git takes the folder for
+       its own top level, its .git a folder or a file (a worktree or a
+       submodule). "refused": git will not read the clone there because
+       another account owns it (git's "dubious ownership": a folder another
+       account or an administrator made, or one on some external drives);
+       $script:HubSafeDir is then the folder git asks to mark safe, and
+       $script:HubGitSaid git's first line. "none": no .git, or an empty or
+       broken .git folder, where git answers for any repository around the
+       folder; the old Test-Path of .git took that for a clone. Without git
+       to ask, a .git there counts, as before. #>
+    param([string]$Hub)
+    $script:HubSafeDir = ""
+    $script:HubGitSaid = ""
+    if (-not (Test-Path -LiteralPath (Join-Path $Hub ".git"))) { return "none" }
+    if (-not (Get-Command git -ErrorAction SilentlyContinue)) { return "clone" }
+    # --show-cdup is blank exactly where the folder is git's top level, so
+    # no two spellings of one path (a junction, a mapped drive) are compared
+    $cdup = Invoke-Captured "git" @("-C", $Hub, "rev-parse", "--show-cdup")
+    if ($cdup.Code -eq 0) {
+        if ((@($cdup.Output) -join "").Trim() -eq "") { return "clone" }
+        return "none"
+    }
+    # git's refusal ends with its own fix, in every language it speaks:
+    #     git config --global --add safe.directory <folder>
+    $lines = @(@($cdup.Output) | ForEach-Object { "$_".Trim() } |
+               Where-Object { $_ })
+    $safe = ""
+    foreach ($l in $lines) {
+        if ($l -like "git config*safe.directory*") {
+            $safe = ($l -split "safe\.directory", 2)[1].Trim()
+            break
+        }
+    }
+    if ($safe.Length -gt 1 -and $safe.StartsWith("'") -and $safe.EndsWith("'")) {
+        $safe = $safe.Substring(1, $safe.Length - 2).Replace("'\''", "'")
+    }
+    if (-not $safe) { return "none" }
+    # only the hub itself: a folder inside another account's clone is no
+    # clone of its own
+    $named = $safe
+    if ($named.StartsWith("%(prefix)/")) { $named = $named.Substring(10) }
+    try {
+        $a = [System.IO.Path]::GetFullPath($named.Replace('/', '\')).TrimEnd('\')
+        $b = [System.IO.Path]::GetFullPath($Hub.Replace('/', '\')).TrimEnd('\')
+    } catch {
+        return "none"
+    }
+    if ($a -ne $b) { return "none" }        # -ne: case-insensitive, as Windows
+    $script:HubSafeDir = $safe
+    $said = $lines[0]
+    if ($said.StartsWith("fatal: ")) { $said = $said.Substring(7) }
+    $script:HubGitSaid = $said
+    return "refused"
+}
+
 function Repair-HubCone {
-    <# Widen an existing sparse clone's cone to $Dirs. A by-hand
-       `clone --sparse` holds only the root, and reapply cannot add what the
-       cone never held; `add` does, idempotently. ADD, NEVER SET: on a full
-       clone `set` deletes every unnamed dir, while `add` fails harmlessly
-       (exit 128). Measured on git 2.39.5. #>
-    param([string]$Hub, [string[]]$Dirs)
-    $absent = @(Get-MissingHubDirs $Hub $Dirs)
+    <# Widen an existing sparse clone's cone to $Dirs when any of $Needs is
+       absent. A by-hand `clone --sparse` holds only the root, and reapply
+       cannot add what the cone never held; `add` does, idempotently.
+       ADD, NEVER SET: on a full clone `set` deletes every unnamed dir,
+       while `add` fails harmlessly (exit 128). Measured on git 2.39.5. #>
+    param([string]$Hub, [string[]]$Dirs, [string[]]$Needs)
+    $absent = @(Get-MissingHubDirs $Hub $Needs)
     if ($absent.Count -eq 0) { return }
     Warn "this clone does not contain $($absent -join ', ')."
     Info "A clone made with --sparse checks out the top level and nothing"
     Info "else, so the data directories have to be asked for. Widening the"
     Info "sparse checkout now; this is where the download happens..."
     $add = Invoke-Captured "git" (@("-C", $Hub, "sparse-checkout", "add") + $Dirs)
-    $still = @(Get-MissingHubDirs $Hub $Dirs)
+    $still = @(Get-MissingHubDirs $Hub $Needs)
     if ($add.Code -eq 0 -and $still.Count -eq 0) {
         Ok "sparse checkout widened: the data directories are present now"
     } else {
@@ -1061,17 +1123,21 @@ Info "target: $Hub"
 $HubCloneFailed = $false
 $HubGit = Join-Path $Hub ".git"
 $GitPresent = [bool](Get-Command git -ErrorAction SilentlyContinue)
+# a clone by doctor's rule, not by a .git being there (Get-HubGitState)
+$HubState = Get-HubGitState $Hub
 if ($env:FLUBNF_NO_DATA -eq "1") {
     Warn "data skipped (FLUBNF_NO_DATA=1) -- set FLUBNF_HUB later"
-} elseif (Test-Path $HubGit) {
+} elseif ($HubState -eq "clone") {
     Ok "hub present: $Hub"
     if (-not $GitPresent) {
         Warn "git is not on PATH, so the hub was left exactly as it is on disk"
         # @(): PowerShell unrolls 0/1-element results; .Count needs the wrapper.
-        if ((@(Get-MissingHubDirs $Hub $HubDirs)).Count -gt 0) {
-            Warn "and it holds none of the data directories the app reads, so"
-            Warn "the console will open on 'Latest vintage: none'. Install Git"
-            Warn "from https://git-scm.com/download/win, open a NEW window, and"
+        $absent = @(Get-MissingHubDirs $Hub $HubNeeds)
+        if ($absent.Count -gt 0) {
+            Warn "and it does not contain $($absent -join ', '),"
+            Warn "which the app reads, so the console can open on 'Latest"
+            Warn "vintage: none'. Install Git from"
+            Warn "https://git-scm.com/download/win, open a NEW window, and"
             Warn "re-run this script; it will widen the checkout for you."
         }
     } else {
@@ -1093,7 +1159,7 @@ if ($env:FLUBNF_NO_DATA -eq "1") {
         $IsSparse = ($cfg.Code -eq 0 -and
                      ((@($cfg.Output) -join "").Trim() -eq "true"))
         if ($IsSparse) {
-            Repair-HubCone $Hub $HubDirs
+            Repair-HubCone $Hub $HubDirs $HubNeeds
             # A sparse cone changed by a newer release only takes effect on
             # reapply; a no-op when nothing changed.
             $re = Invoke-Captured "git" @("-C", $Hub, "sparse-checkout", "reapply")
@@ -1104,12 +1170,22 @@ if ($env:FLUBNF_NO_DATA -eq "1") {
         } else {
             # Full clone: reapply would fail (exit 128), so skip it.
             Info "full (non-sparse) clone: nothing to widen"
-            $absent = @(Get-MissingHubDirs $Hub $HubDirs)
+            $absent = @(Get-MissingHubDirs $Hub $HubNeeds)
             if ($absent.Count -gt 0) {
                 Warn "but it does not contain $($absent -join ', '), which the app reads"
             }
         }
     }
+} elseif ($HubState -eq "refused") {
+    # A clone git will not read: moving it aside is no fix, and nothing is
+    # changed here. git's own step, alone on its line.
+    Warn "git will not read the clone at $($Hub): the folder is not owned by"
+    Warn "your account (as with a folder another account or an administrator"
+    Warn "made, or one on some external drives), so it was left as it is."
+    Warn "git said:"
+    Write-Host "      $HubGitSaid"
+    Warn "If you trust it, let git read it with this line, then re-run this script:"
+    Write-Host "    git config --global --add safe.directory `"$HubSafeDir`""
 } elseif (Test-Path $Hub) {
     Warn "$Hub exists but is not a git clone, so it cannot be updated and a"
     Warn "clone into it would fail. Move or delete it, or point FLUBNF_HUB at"

@@ -26,10 +26,14 @@ import hashlib
 import json
 import os
 import re
+import secrets
 import shutil
 import socket
+import threading
 import time
 import zipfile
+import zlib
+from contextlib import contextmanager
 from dataclasses import dataclass, field
 from datetime import datetime, timezone
 from pathlib import Path, PurePosixPath
@@ -49,6 +53,42 @@ MAX_RATIO = 100
 
 _SEASON_RE = re.compile(r"\d{4}-\d{2}")
 _CHUNK = 1024 * 1024
+
+#: what reading a member whose compressed bytes are damaged raises (a bad
+#: CRC or header, a corrupt deflate stream, data that ends early), and
+#: what one changed byte in the zip's table of contents raises: the
+#: encrypted flag set (RuntimeError), a compression method, flag or "zip
+#: version needed" zipfile does not read (NotImplementedError, the last
+#: from the ZipFile constructor itself); refused as a damaged bundle,
+#: never a raw error
+_UNREADABLE = (zipfile.BadZipFile, zlib.error, EOFError, RuntimeError,
+               NotImplementedError)
+
+#: the compression methods a member may name: export_season deflates every
+#: member; stored is plain zip. Any other (bzip2, which reads deflated bytes
+#: as a raw OSError, LZMA, a byte no reader knows) only a changed table of
+#: contents gives, so it is refused as a damaged bundle before it is read
+_METHODS = (zipfile.ZIP_STORED, zipfile.ZIP_DEFLATED)
+
+
+def _check_method(info: zipfile.ZipInfo, name: str) -> None:
+    """Refuse a member whose compression method no FluBNF bundle uses,
+    with the words a member that cannot be unpacked gets."""
+    if info.compress_type not in _METHODS:
+        raise BundleError(f"{name}: {info.filename} could not be unpacked; "
+                          "the bundle is damaged or altered.")
+
+
+def _check_offset(info: zipfile.ZipInfo, name: str) -> None:
+    """Refuse a member whose local header would lie before the start of
+    the file, with the words a member that cannot be unpacked gets. One
+    changed byte raising the end record's central-directory offset shifts
+    every member that way (zipfile subtracts the difference), and its seek
+    there raised a raw OSError (EINVAL), which read as a disk error. Only
+    this is checked: a real disk error still says so."""
+    if info.header_offset < 0:
+        raise BundleError(f"{name}: {info.filename} could not be unpacked; "
+                          "the bundle is damaged or altered.")
 
 
 class BundleError(ValueError):
@@ -239,6 +279,7 @@ def inspect_bundle(path: Path, name: str = "") -> dict:
                 raise BundleError(f"{name} has no {MANIFEST} at its "
                                   "top level, so it is not a replay bundle.")
             for i in infos:
+                _check_offset(i, name)
                 if i.filename.endswith("/"):
                     continue                          # a directory entry
                 if not _safe_member(i.filename):
@@ -254,14 +295,27 @@ def inspect_bundle(path: Path, name: str = "") -> dict:
                     raise BundleError(f"{name}: {i.filename} claims a "
                                       f"{i.file_size // max(1, i.compress_size)}x "
                                       "inflation; refused.")
+                _check_method(i, name)
             try:
-                manifest = json.loads(z.read(MANIFEST).decode("utf-8"))
+                raw = z.read(MANIFEST)
+            except _UNREADABLE:
+                raise BundleError(f"{name}: {MANIFEST} could not be "
+                                  "unpacked; the bundle is damaged or "
+                                  "altered.") from None
+            try:
+                manifest = json.loads(raw.decode("utf-8"))
             except (ValueError, UnicodeDecodeError) as e:
                 raise BundleError(f"{name}: {MANIFEST} is not valid "
                                   f"JSON ({e}).") from None
     except zipfile.BadZipFile as e:
         raise BundleError(f"{name} is not a readable zip file ({e}).") \
             from None
+    except _UNREADABLE:
+        # the constructor's: a "zip version needed" this reader does not
+        # know (one changed byte in the table of contents)
+        raise BundleError(f"{name}: its table of contents asks for a zip "
+                          "feature no FluBNF bundle uses; the bundle is "
+                          "damaged or altered.") from None
     if not isinstance(manifest, dict):
         raise BundleError(f"{name}: {MANIFEST} is not an object.")
     if manifest.get("format_version") != FORMAT_VERSION:
@@ -344,83 +398,700 @@ def _extract_member(z: zipfile.ZipFile, name: str, dst: Path,
                           f"{MANIFEST}; the bundle is damaged or altered.")
 
 
+#: one lock per destination tree (key -> [lock, holders]; under
+#: _IMPORT_LOCKS_GUARD): two imports of one bundle at once (a double
+#: click; the console's route runs in a thread pool) shared one temp tree
+#: and each deleted the other's work
+_IMPORT_LOCKS: dict = {}
+_IMPORT_LOCKS_GUARD = threading.Lock()
+
+
+@contextmanager
+def _import_lock(dst: Path):
+    """Held around one import into `dst` (by its resolved path): a second
+    import of the same bundle in this process waits for the first, then
+    finds its tree. The entry goes once no one holds or waits for it."""
+    try:
+        key = str(Path(dst).resolve())
+    except OSError:
+        key = str(Path(dst).absolute())
+    with _IMPORT_LOCKS_GUARD:
+        entry = _IMPORT_LOCKS.setdefault(key, [threading.Lock(), 0])
+        entry[1] += 1
+    try:
+        with entry[0]:
+            yield
+    finally:
+        with _IMPORT_LOCKS_GUARD:
+            entry[1] -= 1
+            if not entry[1]:
+                _IMPORT_LOCKS.pop(key, None)
+
+
+#: an import's temp tree is <dst>.importing-<pid>-<random>, its own: two
+#: processes importing one bundle (a terminal `flubnf retro import` and the
+#: console) once shared <dst>.importing, each deleting the other's work, so
+#: one said "Imported" over a tree with files missing. <dst>.importing
+#: alone is an older build's name. A Replace's old tree, renamed aside
+#: while the new one goes in, is <dst>.replaced-<pid>-<random>
+#: (_move_aside); a process stopped before it deleted that tree leaves it
+#: for the same sweep, which puts it back under its name when nothing is
+#: there (_sweep_stale_temps). An old tree let go is renamed once more,
+#: to <dst>.dropping-<pid>-<random>, before it is deleted (_drop_aside):
+#: what a delete stopped part way leaves the sweep removes by that name
+_TEMP_RE = re.compile(r"\.importing(?:-(\d+)-[0-9a-f]+)?"
+                      r"|\.replaced-(\d+)-[0-9a-f]+"
+                      r"|\.dropping-(\d+)-[0-9a-f]+")
+
+#: a whole folder name that is an import's temp tree or a Replace's old
+#: tree set aside or being deleted (<run><_TEMP_RE>): never a season or a
+#: run, so Storage's reclaim passes over it (is_temp_name)
+_TEMP_NAME_RE = re.compile(r".+(?:" + _TEMP_RE.pattern + r")")
+
+
+def is_temp_name(name: str) -> bool:
+    """Whether a folder name under the retro root is an import's temp tree
+    or a Replace's old tree set aside or being deleted, not a season or a
+    run."""
+    return _TEMP_NAME_RE.fullmatch(name or "") is not None
+
+
+#: a temp tree nothing has written for this long is a leftover, whatever
+#: its process (a pid can be reused)
+STALE_TEMP_S = 3600.0
+
+
+def _temp_tree(dst: Path) -> Path:
+    """A new, empty temp tree beside `dst` for this call alone (the retro
+    root made when it is not there yet, as an import always did)."""
+    dst.parent.mkdir(parents=True, exist_ok=True)
+    for _ in range(8):
+        tmp = dst.with_name(f"{dst.name}.importing-{os.getpid()}-"
+                            f"{secrets.token_hex(4)}")
+        try:
+            tmp.mkdir()
+            return tmp
+        except FileExistsError:
+            continue
+    raise BundleError(f"could not make a temporary folder beside {dst}.")
+
+
+def _process_alive(pid: int) -> bool:
+    """Whether `pid` is a live process on this machine (never signals it;
+    Windows asks without terminating). True when it cannot be told: the
+    age rule then decides."""
+    try:
+        from flubnf.cli import _pid_alive
+    except Exception:                    # noqa: BLE001 - cannot tell
+        return True
+    return _pid_alive(pid)
+
+
+def _newest_mtime(p: Path) -> float:
+    """The newest modification time in a tree (links not followed): when
+    an import last wrote into it."""
+    try:
+        newest = os.lstat(p).st_mtime
+    except OSError:
+        return 0.0
+    if not os.path.isdir(p) or os.path.islink(p):
+        return newest
+    for top, dirs, names in os.walk(p, onerror=lambda e: None):
+        for n in dirs + names:
+            try:
+                newest = max(newest, os.lstat(os.path.join(top, n)).st_mtime)
+            except OSError:
+                pass
+    return newest
+
+
+def _remove_quietly(p: Path) -> None:
+    """Remove a temp tree (a link loses only itself); a failure leaves it
+    for a later sweep. An imported.json in it goes first, as in
+    _drop_aside, so a removal stopped part way is never put back as a
+    run."""
+    try:
+        if p.is_symlink():
+            p.unlink()
+        else:
+            try:
+                (p / IMPORTED_MARK).unlink(missing_ok=True)
+            except OSError:
+                pass
+            shutil.rmtree(p, ignore_errors=True)
+    except OSError:
+        pass
+
+
+def _whole_import(dst: Path, sha: str = "") -> bool:
+    """Whether `dst` holds a whole import: its imported.json marker, which
+    is written last, in the temp tree, before the tree goes in under its
+    name; with `sha`, an import of the bundle whose sha256 that is."""
+    info = imported_info(dst)
+    return bool(info) and (not sha or info.get("bundle_sha256") == sha)
+
+
+def _bundle_of(root: Path) -> str:
+    """The bundle_sha256 an imported tree's imported.json names; "" when
+    it names none, or there is none to read."""
+    sha = imported_info(root).get("bundle_sha256")
+    return sha if isinstance(sha, str) else ""
+
+
+def _same_bundle(aside: Path, dst: Path) -> bool:
+    """Whether `dst` holds a whole import of the bundle the old run set
+    aside in `aside` came from: both imported.json files name one
+    bundle_sha256. A value missing or unreadable on either side is never a
+    match."""
+    sha = _bundle_of(aside)
+    return bool(sha) and _bundle_of(dst) == sha
+
+
+def _restore_aside(dst: Path, asides: list) -> Path | None:
+    """With nothing at `dst`, the newest of the old runs stopped Replaces
+    set aside (`asides`) renamed back to that name; the name it had, or
+    None. Only a whole one (its imported.json still there: _drop_aside
+    renames a run it lets go, and deletes that first) goes back. Two
+    processes can sweep at once (the import lock is per process): a
+    FileNotFoundError means the other one moved it first, which is done,
+    not an error. Any other failure leaves it aside, for a later sweep."""
+    asides = [p for p in asides if _whole_import(p)]
+    if not asides or dst.exists() or dst.is_symlink():
+        return None
+    back = max(asides, key=lambda p: (_newest_mtime(p), p.name))
+    try:
+        os.rename(back, dst)
+    except FileNotFoundError:
+        return None                   # another process's sweep: done
+    except OSError:
+        return None                   # left aside, never deleted for it
+    from app.core import retro
+    retro._SUMMARY_CACHE.pop(str(dst), None)
+    return back
+
+
+def _sweep_stale_temps(dst: Path, now: float | None = None,
+                       kept: list | None = None,
+                       restored: list | None = None) -> list:
+    """Remove the temp trees earlier imports into `dst` left behind: one
+    whose process is no longer alive, and any (an older build's
+    <dst>.importing included) nothing has written for STALE_TEMP_S.
+    Another import's tree, still being written by a live process, is never
+    touched. A leftover inside a protected folder (reclaim's roots: the
+    sealed records, the hub clone, FLUBNF_PROTECT_ROOTS) is never deleted
+    either: it is left where it is and added to `kept`, for the import to
+    refuse. Returns the paths removed.
+
+    The old run a stopped Replace set aside (<dst>.replaced-<pid>-<random>,
+    by the same two rules) may be the only copy of that run, so it is
+    deleted only once the run's name holds a whole import of the same
+    bundle as it (both imported.json files name one bundle_sha256), never
+    on age alone, and never on a value missing or unreadable on either
+    side. With nothing at the name, the newest whole one is renamed back
+    to it and added to `restored`; the others of its bundle are then older
+    copies of the same import and go. Any other stays where it is for good
+    (another bundle's import at the name, something that is not an import,
+    or no bundle named), and every import of the run says where
+    (_asides_left). An old run a Replace was deleting
+    (<dst>.dropping-<pid>-<random>) goes by the two rules alone: it was
+    let go once the new run stood."""
+    from app.core import reclaim
+    prefix = dst.name + "."
+    try:
+        cands = sorted(p for p in dst.parent.iterdir()
+                       if p.name.startswith(prefix))
+    except OSError:
+        return []
+    now = time.time() if now is None else now
+    stale, asides = [], []
+    for p in cands:
+        m = _TEMP_RE.fullmatch(p.name[len(dst.name):])
+        if m is None:
+            continue
+        pid = int(m.group(1) or m.group(2) or m.group(3) or 0)
+        if ((pid and not _process_alive(pid))
+                or now - _newest_mtime(p) > STALE_TEMP_S):
+            stale.append(p)
+            if m.group(2):
+                asides.append(p)
+    back = _restore_aside(dst, asides)
+    if back is not None and restored is not None:
+        restored.append(back)
+    gone = []
+    for p in stale:
+        if not (p.exists() or p.is_symlink()):
+            continue                  # put back, here or by another sweep
+        if p in asides and not _same_bundle(p, dst):
+            continue                  # kept for good: _asides_left names it
+        if reclaim.is_protected(p):
+            if kept is not None:
+                kept.append(p)
+            continue
+        if p in asides:
+            _drop_aside(p, dst)
+        else:
+            _remove_quietly(p)
+        gone.append(p)
+    return gone
+
+
+def _asides_left(dst: Path, now: float | None = None, but=()) -> list:
+    """The old runs Replaces set aside beside `dst` that stay there for
+    good while the run's name holds what it holds (the sweep deletes one
+    only for a whole import of its own bundle at the name), sorted: each
+    <dst>.replaced-<pid>-<random> no Replace is still using (its process
+    ended, nothing written in it for STALE_TEMP_S, or this process's own:
+    imports into one tree run one at a time here) whose bundle is not the
+    one at the name. `but`: what this import set aside itself, which its
+    own words name. Nothing is touched."""
+    prefix = dst.name + "."
+    try:
+        cands = sorted(p for p in dst.parent.iterdir()
+                       if p.name.startswith(prefix))
+    except OSError:
+        return []
+    now = time.time() if now is None else now
+    out = []
+    for p in cands:
+        m = _TEMP_RE.fullmatch(p.name[len(dst.name):])
+        if m is None or not m.group(2) or p in but:
+            continue
+        pid = int(m.group(2))
+        if (pid != os.getpid() and _process_alive(pid)
+                and now - _newest_mtime(p) <= STALE_TEMP_S):
+            continue                  # a live Replace's, still in use
+        if not _same_bundle(p, dst):
+            out.append(p)
+    return out
+
+
+def _asides_left_words(season: str, stamp: str, left: list,
+                       whole: bool) -> str:
+    """What every import of the run says while old runs Replaces set aside
+    stay beside it for good (_asides_left): where, and, only while a whole
+    import (of any bundle) is at the run's name (`whole`), that they may go
+    by hand. With none there, a folder set aside may hold the only copy of
+    the run, and the words say that instead. "" when there are none."""
+    if not left:
+        return ""
+    one = len(left) == 1
+    where = (str(left[0]) if one else
+             ", ".join(str(p) for p in left[:-1]) + f" and {left[-1]}")
+    head = (f"An earlier Replace set a run of {season} aside in {where}, "
+            "and the console keeps it there: " if one else
+            f"Earlier Replaces set runs of {season} aside in {where}, and "
+            "the console keeps them there: ")
+    if not whole:
+        return head + ("no whole import is under the run's own name, so "
+                       + ("it may be the only copy of the run." if one else
+                          "they may be the only copies of the run."))
+    return head + (("it can" if one else "they can") + " be deleted by hand "
+                   f"once the run imported as {stamp} is the one wanted.")
+
+
+def _aside_name(dst: Path) -> Path:
+    """A new <dst>.replaced-<pid>-<random> for a Replace to set the old run
+    aside under."""
+    return dst.with_name(f"{dst.name}.replaced-{os.getpid()}-"
+                         f"{secrets.token_hex(4)}")
+
+
+def _move_aside(dst: Path, aside: Path | None = None) -> Path | None:
+    """A Replace's first step: the tree at `dst` renamed (one rename in its
+    own folder, so all or nothing) to `aside` (_aside_name's
+    <dst>.replaced-<pid>-<random>), a name the sweep knows, and touched,
+    so another import's sweep leaves it while this process lives. A link
+    is moved as a link. None when nothing is at the name any more (another
+    process's Replace moved it first). The import names `aside` before
+    the call, so a Ctrl-C anywhere after the rename (here too) finds the
+    old run to put back."""
+    from app.core import retro
+    aside = aside or _aside_name(dst)
+    try:
+        os.rename(dst, aside)
+    except FileNotFoundError:
+        return None
+    retro._SUMMARY_CACHE.pop(str(dst), None)
+    if not aside.is_symlink():
+        try:
+            os.utime(aside)
+        except OSError:
+            pass
+    return aside
+
+
+def _drop_aside(aside: Path, dst: Path) -> None:
+    """The old run a Replace set aside, let go: renamed first (one rename
+    in its own folder, all or nothing) to <dst>.dropping-<pid>-<random>,
+    then deleted as any run is (retro.delete_tree: a link loses only
+    itself). A delete stopped part way so leaves a tree the sweep removes
+    by its name, never part of a run under a .replaced- name, which the
+    sweep might put back or keep for good. Nothing to rename means another
+    process's sweep took it; a rename the disk refuses deletes it where it
+    is, as before. Its imported.json goes first either way, so what such a
+    delete leaves is never put back as a run; a failure leaves it for a
+    later sweep."""
+    from app.core import retro
+    gone = dst.with_name(f"{dst.name}.dropping-{os.getpid()}-"
+                         f"{secrets.token_hex(4)}")
+    try:
+        os.rename(aside, gone)
+    except FileNotFoundError:
+        return                        # another process's sweep took it
+    except OSError:
+        gone = aside                  # deleted where it is
+    try:
+        if not gone.is_symlink():
+            (gone / IMPORTED_MARK).unlink(missing_ok=True)
+        retro.delete_tree(gone)
+    except OSError:
+        pass
+
+
+def _put_back(aside: Path, dst: Path) -> bool:
+    """The old tree back at its name when the new one could not go in;
+    False when that failed (it is left aside, and the caller says where)."""
+    try:
+        os.rename(aside, dst)
+    except OSError:
+        return False
+    return True
+
+
+def _already(season: str, stamp: str) -> str:
+    return f"{season} from this bundle was already imported as {stamp}."
+
+
+def _at_name_words(season: str, stamp: str, dst: Path, sha: str) -> str:
+    """Why a plain import is refused when something is at the run's name:
+    "already imported" only over a whole import of this bundle (its
+    imported.json names this bundle's sha256). Another file's whole import
+    (one a sweep may have just put back), or a folder that is not a whole
+    import (a stray cache file, part of a run), is said to be what it is,
+    and that a Replace puts this bundle's run in its place."""
+    if _whole_import(dst, sha):
+        return _already(season, stamp)
+    if _whole_import(dst):
+        return (f"{season} is imported as {stamp} from another file; a "
+                "Replace import puts this bundle's run in its place.")
+    return (f"{season} from this bundle was not imported: what is at {dst} "
+            "is not a whole import; a Replace import puts this bundle's run "
+            "in its place.")
+
+
+def _protected_words(season: str, stamp: str) -> str:
+    """#104's refusal: a Replace never deletes in a protected folder."""
+    return (f"{season} from this bundle is imported as {stamp} in a "
+            "protected folder, which the console never deletes; nothing "
+            "was replaced.")
+
+
+def _put_back_words(stamp: str, aside: Path, ours: bool) -> str:
+    """What an import says when its sweep put an earlier Replace's old run
+    back under its name: the run imported as `stamp` when it is this
+    bundle's (`ours`), else an earlier run from another file (a Replace of
+    another file stopped before it let the old run go, and the run it put
+    in deleted since)."""
+    what = (f"the run imported as {stamp}" if ours
+            else "an earlier run from another file")
+    return (f"An earlier Replace stopped part way and left {what} in "
+            f"{aside.name}; it is back under its own name now.")
+
+
+def _not_theirs(season: str, dst: Path) -> str:
+    return (f"{season} from this bundle was not imported: something that "
+            f"is not this bundle's import appeared at {dst} while it was "
+            "imported")
+
+
 def import_bundle(path: Path, retro_root: Path, replace: bool = False,
-                  build: str = "", name: str = "") -> ImportResult:
+                  build: str = "", name: str = "",
+                  removing=None) -> ImportResult:
     """Import a bundle as the read-only archived entry
     <retro_root>/<season>__archived_<export stamp>. Refuses a second import
     of the same bundle ("already imported as <stamp>") unless `replace`.
-    Every member is verified against the manifest while extracting; the
-    tree appears under its final name only once complete. A week whose
+    Two imports into one tree at once run one after the other (a lock per
+    tree in this process), so the second, without `replace`, is refused
+    once the first is done. Each call extracts into a temp tree of its own
+    (<dst>.importing-<pid>-<random>), so an import in another process (a
+    terminal's and the console's) never writes into or deletes this one's;
+    only leftovers are swept. The tree's name is looked at again just
+    before the rename, so a tree that appeared meanwhile is never deleted
+    without `replace`, and of two that reach the rename at once one
+    stands and the other is refused in words. A Replace renames the old
+    tree aside (<dst>.replaced-<pid>-<random>), the new one in, and only
+    then deletes the old one, so a process killed part way never leaves
+    part of a run at the name. What it left aside is put back under the
+    run's name by the next import's sweep when nothing is there (a plain
+    import is then refused, and says the run is back), and is deleted
+    only once a whole import of its own bundle is at the name; one that
+    stays for good is named by every import of the run, refused or not,
+    with the words that it can be deleted by hand while a whole import is
+    at the name, and that it may be the only copy of the run while none
+    is. A plain import says "already imported" only over a whole import
+    of this bundle (_at_name_words).
+    The old run is deleted only for this bundle's whole import (its
+    imported.json with this bundle's sha256), renamed .dropping- first;
+    when the new tree cannot go in and the old one cannot go back, it is
+    left aside and the refusal says where. Every member is verified against the manifest while extracting (a
+    member whose compressed bytes are damaged is refused as a damaged
+    bundle); the tree appears under its final name only once complete,
+    every member present at its size. A week whose
     oracle.json travelled was exported with its quantiles only when
     current, so they are made newer than the samples extracted after
     them; a bundle without oracle.json lands as it always did (its
     quantiles older than its samples, rebuilt where they are read), each
     such week's quantiles set older outright rather than left to the
-    order of extraction, which a coarse clock (Windows') stamps alike."""
-    from app.core import retro
-    from app.core.retro_store import ORACLE_NAME, samples_file
+    order of extraction, which a coarse clock (Windows') stamps alike.
+
+    `removing` (the console passes retro_prep._removing): a Replace
+    deletes the archived tree, so it is entered with the tree's path
+    before anything is extracted and held until the new tree is in place
+    (no finalize starts on the tree meanwhile). It yields a word ("results")
+    while a finalize still runs on the tree, or what is under way
+    ("already being deleted or replaced") while a delete holds it:
+    refused, nothing replaced.
+
+    Nothing in a protected folder (reclaim's roots) is deleted: a Replace
+    of a protected tree is refused, at the first look and again at the
+    second (a tree that appeared meanwhile), and a leftover temp tree the
+    sweep would remove that lies in a protected folder is left where it is
+    and the import refused, nothing imported."""
     path, retro_root = Path(path), Path(retro_root)
     name = name or path.name           # an upload's own name (inspect_bundle)
     m = inspect_bundle(path, name)
+    from app.core import retro
+    dst = retro.archive_dir(retro_root, m["season"], m["stamp"])
+    with _import_lock(dst):
+        mine = []
+        try:
+            r = _import_into(path, m, dst, replace, build, name, removing,
+                             mine)
+        except BundleError as e:
+            left = _asides_left_words(m["season"], m["stamp"],
+                                      _asides_left(dst, but=mine),
+                                      _whole_import(dst))
+            if left:
+                raise BundleError(f"{e} {left}") from None
+            raise
+        left = _asides_left_words(m["season"], m["stamp"],
+                                  _asides_left(dst, but=mine),
+                                  _whole_import(dst))
+        if left:
+            r.warnings.append(left[:1].lower() + left[1:].rstrip("."))
+        return r
+
+
+def _import_into(path: Path, m: dict, dst: Path, replace: bool, build: str,
+                 name: str, removing, mine: list) -> ImportResult:
+    """import_bundle's work, under the destination's lock. `mine` gets the
+    old run this call sets aside, which its own words name."""
+    from contextlib import nullcontext
+    from app.core import reclaim, retro
+    from app.core.retro_store import ORACLE_NAME, samples_file
     season, stamp = m["season"], m["stamp"]
-    dst = retro.archive_dir(retro_root, season, stamp)
     if dst.exists() or dst.is_symlink():
         if not replace:
-            raise BundleError(f"{season} from this bundle was already "
-                              f"imported as {stamp}.")
+            # refused, but what a killed import or Replace left beside the
+            # run (the old tree it set aside) is swept all the same; one
+            # in a protected folder stays where it is
+            _sweep_stale_temps(dst)
+            raise BundleError(_at_name_words(season, stamp, dst,
+                                             m["bundle_sha256"]))
         # replacing deletes it: never a protected folder (reclaim's roots:
-        # the sealed records, the hub clone, FLUBNF_PROTECT_ROOTS)
-        from app.core import reclaim
+        # the sealed records, the hub clone, FLUBNF_PROTECT_ROOTS, the
+        # barrier Storage's Delete also asks), checked before anything is
+        # built
         if reclaim.is_protected(dst):
+            raise BundleError(_protected_words(season, stamp))
+    # a Replace may delete the tree at its name (there now, or by the time
+    # the new one is ready): marked whether or not it is there yet
+    with (removing(dst) if replace and removing is not None
+          else nullcontext("")) as busy:
+        if busy == "results":
             raise BundleError(f"{season} from this bundle is imported as "
-                              f"{stamp} in a protected folder, which the "
-                              "console never deletes; nothing was "
-                              "replaced.")
-    tmp = dst.with_name(dst.name + ".importing")
-    if tmp.exists() or tmp.is_symlink():
-        retro.delete_tree(tmp)
-    files = m["files"]
-    # scores.json last, so it is newer than every sample it scores (the
-    # results page would otherwise rescore on the first visit)
-    order = sorted(files, key=lambda f: (f == "scores.json", f))
-    try:
-        with zipfile.ZipFile(path) as z:
-            for f in order:
-                _extract_member(z, f, tmp / f, files[f]["sha256"],
-                                files[f]["bytes"], name)
-        for f in files:
-            parts = f.split("/")
-            if not (len(parts) == 3 and parts[0] == "weeks"
-                    and parts[2] == retro.QUANTILES_NAME):
-                continue
-            if f"weeks/{parts[1]}/{ORACLE_NAME}" in files:
-                os.utime(tmp / f)
-                continue
-            # 2 s before the samples: older on every file system, FAT's
-            # 2 s steps included
-            sp = samples_file(tmp / "weeks" / parts[1])
-            if sp is not None:
-                t = sp.stat().st_mtime_ns - 2_000_000_000
-                os.utime(tmp / f, ns=(t, t))
-        marker = {"from": str(m.get("exported_by") or ""),
-                  "exported_at": str(m.get("exported_at") or ""),
-                  "imported_at": _utc_iso(), "imported_by": hostname(),
-                  "bundle_sha256": m["bundle_sha256"],
-                  "bundle_name": name, "source": m.get("source"),
-                  "exported_build": str(m.get("flubnf_build") or ""),
-                  "imported_build": build or ""}
-        (tmp / IMPORTED_MARK).write_text(json.dumps(marker, indent=1,
-                                                    sort_keys=True),
-                                         encoding="utf-8")
-        sf = tmp / "scores.json"
-        if sf.is_file():
-            os.utime(sf)
+                              f"{stamp}, and its {busy} are still being "
+                              "prepared; nothing was replaced. Try again "
+                              "in a minute.")
+        if busy:
+            # another delete of the tree is under way (Storage's, the
+            # archived run's): two removers of one tree cannot both succeed
+            raise BundleError(f"{season} from this bundle is imported as "
+                              f"{stamp}, and that run is {busy}; nothing "
+                              "was replaced. Import it again once the "
+                              "delete is done.")
+        # this call's own temp tree; another process's import of the same
+        # bundle has its own, and only leftovers are swept (a dead process's,
+        # or one nothing has written for an hour). A leftover in a protected
+        # folder is never deleted: it stays, and nothing is imported. An
+        # old run a stopped Replace left aside goes back under its name
+        # when nothing is there, and the import says so
+        held, restored = [], []
+        _sweep_stale_temps(dst, kept=held, restored=restored)
+        back = (_put_back_words(stamp, restored[0],
+                                _whole_import(dst, m["bundle_sha256"]))
+                if restored else "")
+        if held:
+            raise BundleError(" ".join(filter(None, (
+                f"An earlier import of {season} left {held[0].name} in a "
+                "protected folder, which the console never deletes; "
+                "nothing was imported.", back))))
         if dst.exists() or dst.is_symlink():
-            retro.delete_tree(dst)
-        os.rename(tmp, dst)
-    except BaseException:
-        shutil.rmtree(tmp, ignore_errors=True)
-        raise
+            # put back (by this sweep or another process's), or another
+            # import landed meanwhile
+            if not replace:
+                raise BundleError(" ".join(filter(None, (
+                    _at_name_words(season, stamp, dst, m["bundle_sha256"]),
+                    back))))
+            if reclaim.is_protected(dst):
+                raise BundleError(" ".join(filter(None, (
+                    _protected_words(season, stamp), back))))
+        tmp = _temp_tree(dst)
+        files = m["files"]
+        # scores.json last, so it is newer than every sample it scores (the
+        # results page would otherwise rescore on the first visit)
+        order = sorted(files, key=lambda f: (f == "scores.json", f))
+        aside = None
+        try:
+            try:
+                with zipfile.ZipFile(path) as z:
+                    for f in order:
+                        try:
+                            # asked again of the file opened here (it may
+                            # have changed since it was inspected)
+                            _check_method(z.getinfo(f), name)
+                            _check_offset(z.getinfo(f), name)
+                            _extract_member(z, f, tmp / f, files[f]["sha256"],
+                                            files[f]["bytes"], name)
+                        except _UNREADABLE + (KeyError,):
+                            # KeyError: a member gone from the file since
+                            # it was inspected (z.getinfo, z.open)
+                            raise BundleError(
+                                f"{name}: {f} could not be unpacked; the "
+                                "bundle is damaged or altered.") from None
+            except _UNREADABLE:
+                # the constructor's (the file changed since it was
+                # inspected); a member's is refused above
+                raise BundleError(f"{name} is not a readable zip "
+                                  "file.") from None
+            # every member still there at its size, before anything else
+            # touches the tree: a temp tree that lost files while it was
+            # written is refused in words (the times set below would
+            # otherwise meet a missing file first) and never goes into place
+            for f in order:
+                try:
+                    whole = (tmp / f).stat().st_size == files[f]["bytes"]
+                except OSError:
+                    whole = False
+                if not whole:
+                    raise BundleError(f"{season} from this bundle: {f} was "
+                                      "removed from the import's temporary "
+                                      "folder while it was imported; "
+                                      "nothing was imported. Import it "
+                                      "again.")
+            for f in files:
+                parts = f.split("/")
+                if not (len(parts) == 3 and parts[0] == "weeks"
+                        and parts[2] == retro.QUANTILES_NAME):
+                    continue
+                if f"weeks/{parts[1]}/{ORACLE_NAME}" in files:
+                    os.utime(tmp / f)
+                    continue
+                # 2 s before the samples: older on every file system, FAT's
+                # 2 s steps included
+                sp = samples_file(tmp / "weeks" / parts[1])
+                if sp is not None:
+                    t = sp.stat().st_mtime_ns - 2_000_000_000
+                    os.utime(tmp / f, ns=(t, t))
+            marker = {"from": str(m.get("exported_by") or ""),
+                      "exported_at": str(m.get("exported_at") or ""),
+                      "imported_at": _utc_iso(), "imported_by": hostname(),
+                      "bundle_sha256": m["bundle_sha256"],
+                      "bundle_name": name, "source": m.get("source"),
+                      "exported_build": str(m.get("flubnf_build") or ""),
+                      "imported_build": build or ""}
+            (tmp / IMPORTED_MARK).write_text(json.dumps(marker, indent=1,
+                                                        sort_keys=True),
+                                             encoding="utf-8")
+            sf = tmp / "scores.json"
+            if sf.is_file():
+                os.utime(sf)
+            # looked at again: a tree that appeared while this one was
+            # extracted (another process's import) is replaced only by a
+            # Replace, and never in a protected folder (#104's rule, asked
+            # again: the first look found nothing to protect). The old tree
+            # is renamed aside, the new one renamed in, and only then is
+            # the old one deleted: a process killed at any step leaves
+            # whole trees (the new run at its name, or no run there and
+            # the old one aside), never part of a run at its name; what it
+            # left aside a later import's sweep puts back or removes
+            if dst.exists() or dst.is_symlink():
+                if not replace:
+                    raise BundleError(_at_name_words(
+                        season, stamp, dst, m["bundle_sha256"]))
+                if reclaim.is_protected(dst):
+                    raise BundleError(_protected_words(season, stamp))
+                # named before the rename: a Ctrl-C at any point after it
+                # (inside _move_aside too) finds the old run to put back
+                aside = _aside_name(dst)
+                mine.append(aside)
+                if _move_aside(dst, aside) is None:
+                    aside = None
+            # a run the sweep put back is replaced from here on (or kept
+            # aside, in words of its own): "back under its name" no longer
+            # holds
+            back = ""
+            try:
+                os.rename(tmp, dst)
+            except OSError as e:
+                old, aside = aside, None
+                if not (dst.exists() or dst.is_symlink()):
+                    if old is not None and not _put_back(old, dst):
+                        raise BundleError(
+                            f"{season} from this bundle could not be put "
+                            f"in place ({type(e).__name__}: {e}), and the "
+                            "run it was to replace could not go back under "
+                            f"its name either; that run is kept in {old}, "
+                            "and nothing was imported.") from None
+                    raise
+                if not _whole_import(dst, m["bundle_sha256"]):
+                    # something else is at the name (not this bundle's
+                    # whole import): it is left as it is, and the old run
+                    # is never deleted for it
+                    if old is not None:
+                        raise BundleError(
+                            f"{_not_theirs(season, dst)}, so the run it was "
+                            "to replace could not go back under its name; "
+                            f"that run is kept in {old}.") from None
+                    raise BundleError(f"{_not_theirs(season, dst)}, and "
+                                      "it was left as it is.") from None
+                # another process's import of this bundle put its whole
+                # tree at the name between the look and the rename: it
+                # stands
+                if old is not None:
+                    _drop_aside(old, dst)
+                if not replace:
+                    raise BundleError(_already(season, stamp)) from None
+                raise BundleError(f"{season} from this bundle was imported "
+                                  f"as {stamp} by another import that "
+                                  "finished at the same moment; that one "
+                                  "stands.") from None
+            if aside is not None:
+                old, aside = aside, None
+                _drop_aside(old, dst)        # the old run, now replaced
+        except BaseException as e:
+            # stopped between the two renames (Ctrl-C): the old run goes
+            # back under its name, first, so a second Ctrl-C while the
+            # temp tree is removed finds it there (the temp tree a later
+            # sweep removes)
+            if aside is not None and not (dst.exists() or dst.is_symlink()):
+                _put_back(aside, dst)
+            shutil.rmtree(tmp, ignore_errors=True)
+            if back and isinstance(e, BundleError):
+                raise BundleError(f"{e} {back}") from None
+            raise
+    # read under the lock too: a Replace waiting for it would delete the
+    # scores read here
     warnings = []
     if "scores.json" not in files:
         warnings.append("the bundle carries no scores; the season page "

@@ -472,15 +472,27 @@ def test_the_methods_page_gives_the_same_fit_time():
 def test_the_sites_software_card_names_the_engine_before_the_switch():
     """A site built after the switch and before the first public round
     shows only rounds and seasons fitted by the private engine: the card
-    says so, as Methods does ("before it the lab's fork")."""
+    says so, as Methods does ("before that round the lab's fork"). Where
+    a sentence says from when forecasts were made on the public engine, it
+    names the round of 2026-11-14 (run 2026-11-11), the first on it, not
+    2026-11-09, the day the switch was decided (docs/MODEL-PROVENANCE.md,
+    section 9)."""
     card = _flat(_read("app/core/site_page.py"))
     card = card[card.index("We build our own stack"):]
     card = card[:card.index("</p>")]
     assert "fitted by the Liu-West filter in public PyBioNetFit" in card
-    assert ("Rounds and sealed seasons from before the engine switch of "
-            "2026-11-09 were fitted by the lab's PyBNF fork.") in card
+    assert ("Rounds before that of 2026-11-14 (the first on the public "
+            "engine) and sealed seasons from before the switch were fitted "
+            "by the lab's PyBNF fork.") in card
+    assert "2026-11-09" not in card
     methods = _flat(_read("app/ui/templates/methods.html"))
-    assert "from the engine switch of 2026-11-09; before it the lab's fork" in methods
+    assert ("from the round of 2026-11-14, the first after the engine switch "
+            "decided on 2026-11-09; before that round the lab's fork") in methods
+    assert "from the engine switch of 2026-11-09" not in methods
+    row = next(line for line in _read("docs/FLUSIGHT-2026-27.md").splitlines()
+               if line.startswith("| `NAU_PyBNF-OracleSIHRS` |"))
+    assert ("since the switch to the public engine (the round of 2026-11-14; "
+            "before it, in the lab's private PyBNF fork") in row
 
 
 @pytest.mark.parametrize("rel", ["app/core/sandbox_results.py",

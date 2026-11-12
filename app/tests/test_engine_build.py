@@ -733,7 +733,14 @@ def test_the_retro_route_refuses_a_resume_on_another_build(tmp_path,
     monkeypatch.setattr(EB, "engine_build", lambda path=None: dict(OTHER))
     form = {"season": SEASON, "engine": "pf", "mode": "resume",
             "locations": "panel6", "national": "0"}
-    RS._retro_status.pop(SEASON, None)
+    # the rest the route reads, set here (_isolated restores it): no notice
+    # queued, since _flash joins onto one an earlier test left (test_audit_
+    # fixes leaves "first thing  second thing"); no console run and no
+    # season replaying, either of which refuses before the build is read
+    for k in ("flash", "flash_kind", "flash_detail"):
+        S._status.pop(k, None)
+    S._status["running"] = None
+    RS._retro_status.clear()
     client.post("/retro/run", data=form, follow_redirects=False)
     assert launched == []
     flash = S._status.get("flash", "")

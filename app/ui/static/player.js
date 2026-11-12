@@ -669,7 +669,11 @@ function createPlayer(cfg){
     return !!cfg.noDataNote && noteOf(w) === String(cfg.noDataNote);
   }
   // the week's payload, or for a no-data week the placeholder built from
-  // the nearest stored week before it (after it at the season's start)
+  // the nearest stored week before it (after it at the season's start).
+  // A placeholder is kept only once built: a stored week that gave none
+  // (an answer to ask later, while the run is being deleted or moved)
+  // leaves nothing kept, and the next request asks again (the season
+  // page's getPayload keeps a failure that is final: no fetch for that)
   var NDP = {};
   function payloadFor(w){
     if(!isNoData(w)) return cfg.getPayload(w);
@@ -680,13 +684,14 @@ function createPlayer(cfg){
     for(j = i + 1; j < weeks.length && src === null; j++)
       if(!isNoData(weeks[j])) src = weeks[j];
     if(src === null) return Promise.resolve(null);
-    NDP[w] = cfg.getPayload(src).then(function(pl){
+    var p = NDP[w] = cfg.getPayload(src).then(function(pl){
       // the controls come from the stored week: the placeholder forecasts
       // nothing, and a visit that opens on it would offer no member
       if(pl) buildControls(pl);
+      else if(NDP[w] === p) delete NDP[w];      // none: asked again later
       return noDataPayload(pl, w);
     });
-    return NDP[w];
+    return p;
   }
   function plotHeight(){
     var h = typeof cfg.plotHeight === 'function' ? cfg.plotHeight()
