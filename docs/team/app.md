@@ -6,6 +6,40 @@ pages (TEAM.md, team/README.md, FLUSIGHT-2026-27.md). Works on `dev`.
 
 ## Now
 
+- 2026-11-12: the 2026-11-14 round's files are in
+  (cdcepi/FluSight-forecast-hub#4060, both members; the hub's validation
+  passed). Both members ran with the tail cap at 10x on the `larger`
+  level (Ely, 2026-11-11). The deadline was Thursday this round: the
+  hub's tasks.json (cdcepi d0357402) moved the window's end from -3 to
+  -2 for Veterans Day. The console reads the vendored tasks.json, so on
+  Thursday its "Window closed" and next-round date were wrong (display
+  only: the run and the files ignore the window).
+  - Merged into `dev` after the files: #2 (60638b5c), #3 (e3e3b095), #1
+    (b9b8151b) and #4 (ad46cdc2). `dev`'s tree is the trial stack's
+    (965c7621), whose full suite on macOS failed nothing that `dev`
+    alone did not.
+  - #1 was merged by hand. `dev` and app-ux have two merge bases
+    (435aa362 and 4fcfd1e8): git merges them cleanly, and GitHub's check
+    called it a conflict. The merged app/ui/pipeline.py is app-ux's plus
+    the tail level's lines, and both team notes are `dev`'s.
+  - CI: on 2026-11-11 GitHub moved ubuntu-latest to 26.04. It has a
+    broken /usr/bin/grub-ntldr-img link and no system Python 3.12; the
+    tests that assumed either were fixed in #6 (90a3a4e8).
+  - Next (App):
+    - FluBNF's population check uses the hub's own share. It reads
+      popn_frac from the hub clone's hub-config/validations.yml,
+      falling back to a vendored copy that the suite compares with a
+      hub clone, as tasks.json is handled. FluSight's is 0.001 since cdcepi e363d512
+      (2026-10-29), while FluBNF's bound is 30% (hubcheck.py,
+      PLAUSIBLE_POPN_SHARE).
+    - The check reports in the hub check, on the Output card and in
+      scripts/sense_check.py. It flags the location and keeps it, with
+      the removal Ely decided (below). It must not take _hub_gate's path
+      in submit.py, where a location that fails the 30% bound is dropped
+      from the file on its own.
+    - The round window comes from the hub clone's tasks.json, so a moved
+      deadline like this round's shows as it is.
+
 - 2026-11-11 (early): two more things are known, from pass 8's check of
   the import, recorded as they are (the reviewer's ruling, eighth pass).
   - **A Replace's refusals say "from this bundle" whatever is at the
@@ -1047,6 +1081,16 @@ pages (TEAM.md, team/README.md, FLUSIGHT-2026-27.md). Works on `dev`.
 
 ## Decided
 
+- 2026-11-11 (Ely):
+  - **Tail cap for the 2026-11-14 round:** 10x, at the `larger` level
+    for both members, mode shrink. The default level stays `mean`.
+  - **Plausibility:** FluBNF flags a location and keeps it. The user can
+    remove anything a plausibility check flags from the final output CSV,
+    per location and never automatically, and the file records what was
+    removed and why.
+  - Until FluBNF has the population check, the Submission lane's CSV
+    review checks the hub's population share on the files Ely hands it.
+
 - 2026-11-10 (Ely, taking the reviewer's answer):
   - **Engine fallback:** the private engine is retired after two clean
     public rounds, and only once the remade replays are in and seasons
@@ -1464,6 +1508,25 @@ pages (TEAM.md, team/README.md, FLUSIGHT-2026-27.md). Works on `dev`.
   engine.md and submission.md too; the en dash is out under the text rule.
 
 ## Open
+
+- For Ely (2026-11-11), not built yet, a nice-to-have: a "Check forecast
+  plausibility" button on the download tab, shown when a model's output
+  CSV is selected, before Download.
+  - It opens a side panel that runs the checks with the defaults
+    registered in the app, and lets the user change them for that check.
+  - It covers every forecast view (weekly, retro and replay, Sandbox),
+    and every public hub FluBNF supports, each with its own defaults.
+  - The checks to start with:
+    - growth: 30x, against the three-week mean (sense_check.py's gate)
+      and against the last week;
+    - population: above the population, above the hub's own share
+      (validations.yml), and the README's 30%;
+    - the hub's file checks.
+  - Results: a table by location and horizon, with near misses shown.
+    Changed thresholds are marked "modified" and saved with the result.
+  - Flagged locations can be removed as decided on 2026-11-11.
+  - Builds on sense_check.py, hubcheck.py and the Submission lane's
+    round checks (its open item: move them into scripts/).
 
 - For Ely (2026-11-10): the new public repository's history, either kept
   with the co-author lines removed or a single first commit. Either way,
