@@ -6,6 +6,12 @@ and CDC's rules. The season's facts are in
 
 ## Now
 
+- 2026-11-12 (16:56 UTC): ROUND 2026-11-14 SUBMITTED: cdcepi #4060's hub
+  validation passed, all green (Ely). It waits on the hub team's merge;
+  this lane's git watcher reports the merge. The 22:00 UTC comparison
+  with the other teams still runs and flags only what stands out. With
+  this round's files in, PRs #1-#4 on elyfmiller/flubnf can merge (Now,
+  2026-11-11); Ely decides.
 - 2026-11-12 (16:39 UTC): ROUND 2026-11-14'S HUB PULL REQUEST IS OPEN:
   https://github.com/cdcepi/FluSight-forecast-hub/pull/4060 (Ely). Head
   65250bf6, Ely's "Merge branch 'cdcepi:main' into FluBNF_submission"
