@@ -6,6 +6,55 @@ and CDC's rules. The season's facts are in
 
 ## Now
 
+- 2026-11-12 (15:40 UTC): ROUND 2026-11-14 (EW45) COMMITTED TO THE FORK.
+  FluBNF_submission on elyfmiller's fork: 67b0e5fe "NAU_PyBNF forecast
+  2026-11-14 (EW45): upper tail at 10x the larger of the 3-week mean and
+  the last week, both models (GroundHogCGR without Hawaii)", authored as
+  Ely, on top of cec8608 (in cdcepi main); merges cleanly into cdcepi
+  main a6c4a1c6 and adds only the two files. Oracle: Ely's upload
+  unchanged, 53 locations (sha256 ec45db1c...); Groundhog: Ely's upload
+  less Hawaii, 52 (d20c5bc4...; upload 6e9c0376...). Both on the fork
+  byte-identical to the checked files. Ely opens the hub pull request:
+  https://github.com/cdcepi/FluSight-forecast-hub/compare/main...elyfmiller:FluSight-forecast-hub:FluBNF_submission?expand=1
+  THE REVIEW (checklist, Decided 2026-11-11):
+  (1) Hub checks GREEN on both (17 checks; 212 monotone whole-number
+  blocks, horizons 0-3). (2) Population: the hub raised popn_frac from
+  0.001 to 0.005 today (2e59ad41, Annabella Hines, 09:52 ET); largest
+  ratio 0.229 Groundhog, 0.164 Oracle. At 0.001 the Groundhog's Puerto
+  Rico h3 q0.99 3,669 would have failed (1.145; Louisiana 0.912), the
+  Oracle 0.822. (3) Gate PASS: h3 97.5% over the 3-week mean typical
+  11.5x (Groundhog) and 11.4x (Oracle), max 17x Rhode Island.
+  (4) No red flag (widest South Dakota 15.7x of the last week). The
+  member table cannot run: of the other members only epymorph is in.
+  Flat or higher: the Oracle's Hawaii (60, 67, 77, 87; last week 67) and
+  Montana (16, 19, 21, 25; last week 17) dip at h0 only; both kept under
+  Ely's amended rule (Decided). (5) From the files: no location's 97.5%
+  above 10x the larger level; 40 Groundhog and 36 Oracle locations above
+  10x the mean (possible only on the larger level); US h3 97.5% 93,950 =
+  10 x 9,395 in both; q0.99 above q0.975 in every block (shrink, not
+  clip). The weekly report (app build, engine, weight, narrowing, seed
+  rule) was asked of Ely and not yet seen here. (6) State by state:
+  tools/state_table.py in this lane's scratchpad. The Oracle grows less
+  where the last week fell (h3 2.23x the last week) than where it rose
+  (3.17x); the Groundhog about the same everywhere (3.44x fell, 3.54x
+  flat, 3.22x rose). US h3 medians 27,233 (Oracle) and 30,739
+  (Groundhog). (7) Seed stages: FL and UT moved to the old to_date pin
+  this week (with AK, CA, HI, PR, WA); next LA 25%, NV 21%, TX 20%.
+  (8) The engine (first round on public PyBNF), Oracle 11-07 to 11-14:
+  medians moved with the data (h2/h3 shift over the surprise 0.97,
+  0.82-1.08; baseline 1.06), lower half 0.95 h0 / 0.97 h3 (baseline
+  0.93), growth 1.30 to 1.31; the 95% widths 1.07-1.08, the level change.
+  Nothing reads as the engine. (9) tasks.json: still Thursday (end -2),
+  11 PM ET. THE FIELD SO FAR: 8 other teams; 6 of them (docxology,
+  HallAI, Emory, GT_Influencers, influcast, ACCIDDA) committed Tuesday
+  or Wednesday, before the 11-07 week was posted, so where the newest
+  week fell (Illinois 152 to 110, Nebraska 21 to 11) their h0 medians
+  sit 2-3.5x above it, and the comparison mostly measures the data gap.
+  US h3 medians among them 6,524 to 29,155 (middle about 18,000); ours
+  with ACCIDDA and Emory at the top. The Groundhog's flat states agree
+  with the field at h0 (CA 1,633 against 1,572-1,864) and sit high at
+  h3 (CA 3,717 against 1,345-2,534; Hawaii 184 against 38-114). Rerun
+  around 22:00 UTC when more teams with this week's data are in.
 - 2026-11-12 (14:48 UTC): THE WEEK ENDING 2026-11-07 IS ON cdcepi main.
   Annabella Hines's merge e8e87a56 (#4055, 09:46 ET, 14:46 UTC);
   this lane's 5-minute watch caught it and the hourly check is deleted.
@@ -3282,6 +3331,15 @@ and CDC's rules. The season's facts are in
 
 ## Decided
 
+- 2026-11-12 (Ely): FLAT OR HIGHER, AMENDED. A dip at h0 alone is not a
+  failure: the Oracle's Hawaii (60, 67, 77, 87 against 67) and Montana
+  (16, 19, 21, 25 against 17) stay in, "not an unreasonable forecast",
+  their counts being noisy. The rule from round 2026-11-14 on, as this
+  lane words it (Ely may change the words): the medians never fall from
+  one horizon to the next, and the h3 median is at or above the last
+  reported week; the h0 median may sit below the last week. The
+  Groundhog leaves out Hawaii again (h3 median 184 against a field of
+  38-114 and a last week of 67).
 - 2026-11-11 (Ely, relayed by App): THE HUB'S POPULATION CHECK IS A
   STANDING PART OF THIS LANE'S REVIEW, a forecast-plausibility check, from
   round 2026-11-14 on. For both files: every location and horizon whose
@@ -4112,6 +4170,17 @@ and CDC's rules. The season's facts are in
 
 ## Open
 
+- 2026-11-12 (Submission, from Ely's question): THE REPORT'S h3 97.5%
+  FIGURE STILL DIVIDES BY THE 3-WEEK MEAN. app/core/report_grid.py
+  tail_ratios uses flubnf.tailcap.recent_level (the mean) whatever
+  output.tail_level is, so on the larger level a capped location reads
+  12-15x (Alabama 12.4x, Connecticut and Delaware 14.6x) where its 97.5%
+  is exactly 10x the last week. This lane added the level knob and left
+  the report on the mean. Fix after the round, on this branch for Ely's
+  merge: divide by the level the cap used for that member (the run
+  record's tail_cap levels), or show both, and say which in the key and
+  the title. Also: spencer_report.py's flat-or-higher check to the
+  amended rule (Decided, 2026-11-12).
 - 2026-11-10 (App lane's requests; Ely approves in the hub pull
   request): THE ORACLE SIHRS CARD FOR ROUND 2026-11-14, THREE SEPARATE
   CHANGES TO methods_long (model-metadata/NAU_PyBNF-OracleSIHRS.yml line
