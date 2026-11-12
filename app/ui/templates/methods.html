@@ -412,11 +412,14 @@
  influenza A among typed specimens), which also set the season-start A/B
  mix; both channels are vintage data.</p>
  {% endcall %}
- {% set verdict %}{{ status("ok", "stronger at turning points") }} {{ status("error", "worse than the blend it was tested in") }}{% endset %}
+ {# the August 2026 ensemble gate (docs/archive/RELEASE-1.0.md): 0.719 is
+    the ensemble in equal thirds with it, 0.704 the 50/50 blend without it;
+    no figure is the model alone. Worded as on the Models tab (MO-20) #}
+ {% set verdict %}{{ status("ok", "stronger at turning points") }} {{ status("error", "worse as a third member") }}{% endset %}
  {% call tips.fold("Why it does not ship", id="mt-2s-why", cls="mt-fold", after=verdict) %}
- <p>Stronger at turning points but worse than
- the blend it was tested in, in the August 2026 evaluation; it stays a
- research run.</p>
+ <p>Stronger at turning points, but adding it as a third equal member
+ scored worse in the August 2026 evaluation (relWIS 0.719 with it against
+ 0.704 without, lower is better); it stays a research run.</p>
  {% endcall %}
  </div>
 </div>
@@ -612,8 +615,9 @@
  {% call tips.fold("The particle-filter engine", id="mt-engine", cls="mt-fold") %}
  <p>The Liu-West filter (<code>job_type = lwf</code> in public
  <a href="https://github.com/lanl/PyBNF" target="_blank" rel="noopener">PyBNF</a>,
- lanl/PyBNF at 8410f794 with bngsim 0.15.1, from the engine switch of
- 2026-11-09; before it the lab's fork, <code>fit_type = pf</code>, which
+ lanl/PyBNF at 8410f794 with bngsim 0.15.1, from the round of 2026-11-14,
+ the first after the engine switch decided on 2026-11-09; before that
+ round the lab's fork, <code>fit_type = pf</code>, which
  stays installed as the fallback). BNG2.pl expands the BNGL model into a
  reaction network once per state when a run is prepared; the filter then
  integrates it in process with

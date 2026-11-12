@@ -16,9 +16,11 @@
     buttons work with storage blocked, and site.json never names a moved
     state folder's own path.
 """
+import os
 import re
 import shutil
 import sys
+import time
 from pathlib import Path
 
 import pytest
@@ -150,9 +152,14 @@ def test_replacing_a_protected_import_is_refused_and_deletes_nothing(
     assert (r.root / "notes.txt").read_text() == "kept"
     assert [d.name for d in other.iterdir()] == [r.root.name]
     # an earlier attempt's tree in a protected retro root is not deleted
+    # (an older build's shared name, untouched for over an hour: a
+    # leftover the sweep would remove, not another import's live tree)
     stale = r.root.with_name(r.root.name + ".importing")
     stale.mkdir()
     (stale / "half.json").write_text("{}")
+    when = time.time() - 2 * rb.STALE_TEMP_S
+    for q in (stale / "half.json", stale):
+        os.utime(q, (when, when))
     monkeypatch.setenv("FLUBNF_PROTECT_ROOTS", str(stale))
     with pytest.raises(rb.BundleError) as e:
         rb.import_bundle(p, other, replace=True)

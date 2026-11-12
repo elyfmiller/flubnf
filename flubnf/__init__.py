@@ -6,4 +6,4 @@ or the `flubnf` CLI itself (cli.py, and doctor.py behind `flubnf doctor`).
 
 # Lockstep with pyproject.toml, CITATION.cff and FluBNF.app's Info.plist
 # (CFBundleShortVersionString, CFBundleVersion).
-__version__ = "1.1.0"
+__version__ = "1.2.0"

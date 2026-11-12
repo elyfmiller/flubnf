@@ -8,6 +8,7 @@ _storage_inventory, _storage_target and _tree_size here.
 """
 from __future__ import annotations
 
+from contextlib import contextmanager
 from pathlib import Path
 
 from fastapi import APIRouter, Form, Request
@@ -474,6 +475,25 @@ def runs_clear(request: Request, confirm: str = Form("")):
     return _back(request, "/storage")
 
 
+def _replaying_why(kind: str, ident: str) -> str:
+    """Why a retrospective season, or an archived run of one (ident
+    <season>__archived_<stamp>), cannot be deleted while its season
+    replays, in _busy_why's words; "" otherwise and for every other kind.
+    Asked twice by a delete: with the other checks (_storage_target), then
+    again under _engine_lock once the tree is marked, the lock a Run
+    claims a season under, after refusing a marked tree: of a Resume and a
+    delete, one comes first and the other refuses."""
+    if kind == "retro-season":
+        st = _season_status(ident)
+        return _busy_why(kind, ident, st) if st in _RETRO_ACTIVE else ""
+    if kind == "retro-archive":
+        import re as _re
+        m = _re.match(r"(\d{4}-\d{2})", ident or "")
+        if m and _season_status(m.group(1)) in _RETRO_ACTIVE:
+            return _busy_why(kind, m.group(1))
+    return ""
+
+
 def _storage_target(kind: str, ident: str):
     """(path, busy_reason) for one storage delete request, after all
     validation EXCEPT the confirmation; (None, message) when refused."""
@@ -490,8 +510,9 @@ def _storage_target(kind: str, ident: str):
     elif kind == "retro-season":
         if not _valid_season(ident):
             return None, "Unrecognized season name."
-        if _season_status(ident) in _RETRO_ACTIVE:
-            return None, _busy_why(kind, ident, _season_status(ident))
+        why = _replaying_why(kind, ident)
+        if why:
+            return None, why
         p = retro_seasons.RETRO_ROOT / ident
         base = retro_seasons.RETRO_ROOT
     elif kind == "retro-archive":
@@ -499,9 +520,9 @@ def _storage_target(kind: str, ident: str):
         stamp = (retro.archive_stamp_of(ident, m.group(1)) if m else "")
         if not stamp:
             return None, "Unrecognized archived run identifier."
-        season = m.group(1)
-        if _season_status(season) in _RETRO_ACTIVE:
-            return None, _busy_why(kind, season)
+        why = _replaying_why(kind, ident)
+        if why:
+            return None, why
         p = retro_seasons.RETRO_ROOT / ident
         base = retro_seasons.RETRO_ROOT
     elif kind == "report-archive":
@@ -562,13 +583,43 @@ def storage_delete(request: Request, kind: str = Form(""),
     if confirm != ident:
         _flash("Not deleted: the deletion was not confirmed.", "warn")
         return _back(request, "/storage")
-    size_h = retro.human_bytes(retro.dir_size(p))
-    try:
-        retro.delete_tree(p)
-    except Exception as e:
-        _flash(f"Could not delete {ident}: {type(e).__name__}: "
-               f"{str(e)[:160]}.", "error", detail="Nothing else changed.")
-        return _back(request, "/storage")
+    # a season or archived run whose results are still being written
+    # after its replay or a results visit: a delete meanwhile could fail
+    # half way. Marked first, so no results page starts a finalize on it
+    # from here on (retro_prep._removing)
+    from contextlib import ExitStack
+    from app.ui import retro_prep
+    from app.ui.state import _engine_lock
+    with ExitStack() as held:
+        # marked under _engine_lock, and the season's status looked at
+        # again there: a Resume claimed since the first look is refused
+        # here, and one posted from now on finds the mark (routes/retro.py
+        # asks under the same lock). Released before the delete itself
+        with _engine_lock:
+            busy = held.enter_context(retro_prep._removing(p))
+            replaying = "" if busy else _replaying_why(kind, ident)
+        if busy == retro_prep._ALREADY_REMOVING:
+            # a second delete at once (a double click, another tab), or
+            # an import replacing the run: the first goes on and says so
+            _flash(f"Not deleted: {ident} is {busy}.", "warn",
+                   detail="Nothing else changed.")
+            return _back(request, "/storage")
+        if busy:
+            _flash(f"Not deleted: the {busy} of {ident} are still being "
+                   "prepared.", "warn", detail="Try again in a minute.")
+            return _back(request, "/storage")
+        if replaying:
+            _flash(f"Not deleted: {replaying[:1].lower()}{replaying[1:]}",
+                   "warn")
+            return _back(request, "/storage")
+        size_h = retro.human_bytes(retro.dir_size(p))
+        try:
+            retro.delete_tree(p)
+        except Exception as e:
+            _flash(f"Could not delete {ident}: {type(e).__name__}: "
+                   f"{str(e)[:160]}.", "error",
+                   detail="Nothing else changed.")
+            return _back(request, "/storage")
     _invalidate_scans()
     noun = {"workroot": "workroot", "retro-season": "retrospective season",
             "retro-archive": "archived retrospective run",
@@ -628,13 +679,35 @@ def storage_clear_workroots(request: Request, confirm: str = Form("")):
 
 def _reclaim_skips() -> tuple:
     """(season entry names, workroot names) the reclaim must not touch right
-    now: seasons replaying or mid-finalize, and the active run's workroot."""
+    now: seasons replaying or mid-finalize, trees a delete, a move or an
+    import's Replace holds (retro_prep._removing's mark), and the active
+    run's workroot. The survey and the perform step take the same rule,
+    so their counts agree while nothing changes."""
+    from app.ui import retro_prep
     skip_seasons = {s for s in retro_seasons._known_seasons()
                     if _season_status(s) in _RETRO_ACTIVE}
     for key, job in list(_results_jobs.items()):
         if job and not job["done"].is_set():
             skip_seasons.add(Path(key).name)
+    with retro_prep._results_lock:
+        marked = list(retro_prep._REMOVING)
+    skip_seasons.update(Path(k).name for k in marked)
     return skip_seasons, set(_live_workroot_ids())
+
+
+@contextmanager
+def _reclaim_hold(tree: Path):
+    """Around reclaim's work on one season tree (one week's prune, one
+    file's compress: reclaim.execute's `hold`): held under the lock a
+    delete's, a move's or a Replace's mark is taken under
+    (retro_prep._results_lock), it yields False while such a mark holds
+    the tree, and True otherwise. So the mark never comes between this
+    look and the work: a delete or a Replace that arrives during one
+    file's compress waits for that file, then marks the tree, and reclaim
+    leaves the rest of it alone."""
+    from app.ui import retro_prep
+    with retro_prep._results_lock:
+        yield not retro_prep._being_removed(tree)
 
 
 def _reclaim_survey() -> dict:
@@ -706,7 +779,8 @@ def storage_reclaim(request: Request, confirm: str = Form("")):
     skip_seasons, skip_workroots = _reclaim_skips()
     out = reclaim.execute(retro_seasons.RETRO_ROOT, APP_STATE / "workroots",
                           skip_seasons=skip_seasons,
-                          skip_workroots=skip_workroots)
+                          skip_workroots=skip_workroots,
+                          hold=_reclaim_hold)
     _invalidate_scans()
     hb = retro.human_bytes
     bits = []

@@ -1016,6 +1016,11 @@ if ($bng.Code -eq 0) {
 $HubDirs = @("auxiliary-data", "target-data",
              "model-output/FluSight-baseline",
              "model-output/FluSight-ensemble")
+# What must be there after it, inside them too: doctor fails a clone without
+# the vintages' archive (flubnf/doctor.py HUB_DIRS), so a cone that holds
+# auxiliary-data but not its archive is widened as well. The check only: git
+# is given $HubDirs, and `add auxiliary-data` brings in the whole folder.
+$HubNeeds = @($HubDirs) + @("auxiliary-data/target-data-archive")
 
 function Get-MissingHubDirs {
     param([string]$Hub, [string[]]$Dirs)
@@ -1027,20 +1032,20 @@ function Get-MissingHubDirs {
 }
 
 function Repair-HubCone {
-    <# Widen an existing sparse clone's cone to $Dirs. A by-hand
-       `clone --sparse` holds only the root, and reapply cannot add what the
-       cone never held; `add` does, idempotently. ADD, NEVER SET: on a full
-       clone `set` deletes every unnamed dir, while `add` fails harmlessly
-       (exit 128). Measured on git 2.39.5. #>
-    param([string]$Hub, [string[]]$Dirs)
-    $absent = @(Get-MissingHubDirs $Hub $Dirs)
+    <# Widen an existing sparse clone's cone to $Dirs when any of $Needs is
+       absent. A by-hand `clone --sparse` holds only the root, and reapply
+       cannot add what the cone never held; `add` does, idempotently.
+       ADD, NEVER SET: on a full clone `set` deletes every unnamed dir,
+       while `add` fails harmlessly (exit 128). Measured on git 2.39.5. #>
+    param([string]$Hub, [string[]]$Dirs, [string[]]$Needs)
+    $absent = @(Get-MissingHubDirs $Hub $Needs)
     if ($absent.Count -eq 0) { return }
     Warn "this clone does not contain $($absent -join ', ')."
     Info "A clone made with --sparse checks out the top level and nothing"
     Info "else, so the data directories have to be asked for. Widening the"
     Info "sparse checkout now; this is where the download happens..."
     $add = Invoke-Captured "git" (@("-C", $Hub, "sparse-checkout", "add") + $Dirs)
-    $still = @(Get-MissingHubDirs $Hub $Dirs)
+    $still = @(Get-MissingHubDirs $Hub $Needs)
     if ($add.Code -eq 0 -and $still.Count -eq 0) {
         Ok "sparse checkout widened: the data directories are present now"
     } else {
@@ -1068,10 +1073,12 @@ if ($env:FLUBNF_NO_DATA -eq "1") {
     if (-not $GitPresent) {
         Warn "git is not on PATH, so the hub was left exactly as it is on disk"
         # @(): PowerShell unrolls 0/1-element results; .Count needs the wrapper.
-        if ((@(Get-MissingHubDirs $Hub $HubDirs)).Count -gt 0) {
-            Warn "and it holds none of the data directories the app reads, so"
-            Warn "the console will open on 'Latest vintage: none'. Install Git"
-            Warn "from https://git-scm.com/download/win, open a NEW window, and"
+        $absent = @(Get-MissingHubDirs $Hub $HubNeeds)
+        if ($absent.Count -gt 0) {
+            Warn "and it does not contain $($absent -join ', '),"
+            Warn "which the app reads, so the console can open on 'Latest"
+            Warn "vintage: none'. Install Git from"
+            Warn "https://git-scm.com/download/win, open a NEW window, and"
             Warn "re-run this script; it will widen the checkout for you."
         }
     } else {
@@ -1093,7 +1100,7 @@ if ($env:FLUBNF_NO_DATA -eq "1") {
         $IsSparse = ($cfg.Code -eq 0 -and
                      ((@($cfg.Output) -join "").Trim() -eq "true"))
         if ($IsSparse) {
-            Repair-HubCone $Hub $HubDirs
+            Repair-HubCone $Hub $HubDirs $HubNeeds
             # A sparse cone changed by a newer release only takes effect on
             # reapply; a no-op when nothing changed.
             $re = Invoke-Captured "git" @("-C", $Hub, "sparse-checkout", "reapply")
@@ -1104,7 +1111,7 @@ if ($env:FLUBNF_NO_DATA -eq "1") {
         } else {
             # Full clone: reapply would fail (exit 128), so skip it.
             Info "full (non-sparse) clone: nothing to widen"
-            $absent = @(Get-MissingHubDirs $Hub $HubDirs)
+            $absent = @(Get-MissingHubDirs $Hub $HubNeeds)
             if ($absent.Count -gt 0) {
                 Warn "but it does not contain $($absent -join ', '), which the app reads"
             }

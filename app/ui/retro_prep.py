@@ -14,6 +14,7 @@ import os as _os
 import threading
 import time
 from collections import OrderedDict
+from contextlib import contextmanager
 from pathlib import Path
 
 from app.core import horizons as _hzmod
@@ -147,6 +148,75 @@ def _week_map_cards(root: Path, wk: str) -> dict:
     return dict(by_model[order[0]]) if order else {}
 
 
+#: the trees a delete or a move is removing right now, by path as named
+#: and resolved (key -> holders; under _results_lock): no finalize job
+#: starts on one (_ensure_results_job refuses), so a results page opened
+#: during a delete cannot score into the half removed tree
+_REMOVING: dict = {}
+
+#: the refusals' words: a results page flashes them, a job carries them
+_REMOVING_WHY = "the run is being deleted or moved; its results are not " \
+                "prepared"
+_GONE_WHY = "the run is no longer on disk; its results are not prepared"
+
+#: what _removing yields while another delete, move or Replace import
+#: already holds the tree: the caller refuses in these words, nothing
+#: removed (two removers of one tree cannot both succeed; the loser's
+#: delete failed on the tree the winner had taken). A Run form's discard
+#: or archive, whose tree is the live season, says its own sentence
+_ALREADY_REMOVING = "already being deleted or replaced"
+
+
+def _tree_keys(root: Path) -> set:
+    """The tree's path as named and as resolved."""
+    root = Path(root)
+    keys = {str(root)}
+    try:
+        keys.add(str(root.resolve()))
+    except OSError:
+        pass
+    return keys
+
+
+def _being_removed(root: Path) -> bool:
+    """Whether a delete or a move of the tree at `root` is under way (no
+    file system call while none is)."""
+    return bool(_REMOVING) and not _tree_keys(root).isdisjoint(_REMOVING)
+
+
+@contextmanager
+def _removing(root: Path):
+    """Around a season tree's delete or move (Start's discard and archive,
+    an archived run's delete, Storage's delete, an import's Replace). The
+    tree is marked first, so from here on no finalize job starts on it,
+    then yields _ALREADY_REMOVING ("already being deleted or replaced")
+    while another such block holds it, under its name or the same folder
+    named another way (two deletes at once: the caller refuses, nothing
+    removed);
+    "results" while a finalize still runs on it (it would go on writing
+    into the half removed tree: the caller refuses, nothing removed); or
+    "" when the caller may remove or move it. The mark is lifted when the
+    block ends."""
+    keys = _tree_keys(root)
+    with _results_lock:
+        held = not keys.isdisjoint(_REMOVING)
+        for k in keys:
+            _REMOVING[k] = _REMOVING.get(k, 0) + 1
+        finalizing = any(job and job.get("done") is not None
+                         and not job["done"].is_set()
+                         and not _tree_keys(k).isdisjoint(keys)
+                         for k, job in list(_results_jobs.items()))
+    try:
+        yield (_ALREADY_REMOVING if held
+               else "results" if finalizing else "")
+    finally:
+        with _results_lock:
+            for k in keys:
+                n = _REMOVING.pop(k, 0) - 1
+                if n > 0:
+                    _REMOVING[k] = n
+
+
 def _ensure_results_job(root: Path, season: str,
                         force: bool = False) -> dict:
     """Start or join THE finalize job for this root (one per root; racing
@@ -157,6 +227,17 @@ def _ensure_results_job(root: Path, season: str,
     with _results_lock:
         job = _results_jobs.get(key)
         if job and not job["done"].is_set():
+            return job
+        why = (_REMOVING_WHY if _being_removed(root)
+               else "" if Path(root).is_dir() else _GONE_WHY)
+        if why:
+            # not recorded: once the delete ends, or the tree is replayed
+            # again, the next caller starts a job as before
+            job = {"phase": "refused", "t0": time.time(),
+                   "done": threading.Event(), "seconds": None,
+                   "season": season, "inputs": None, "error": why,
+                   "refused": True}
+            job["done"].set()
             return job
         if _is_sealed_root(root):
             # the sealed record is read only: nothing is scored into it
