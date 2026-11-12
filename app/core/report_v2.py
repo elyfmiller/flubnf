@@ -218,9 +218,11 @@ FAN_BANDS = ((0.025, 0.975, "95"), (0.25, 0.75, "50"))
 #: each literal for its --rp-band-<model>-<level> token (page_style sets
 #: one alpha for light cards, a stronger one for dark cards)
 _BAND_ALPHA = {"95": 0.17, "50": 0.36}
-#: the light-card Groundhog colour (3:1 or more on every light card; the
-#: player's yellow stays for dark cards)
-ANALOGUE_ON_LIGHT = "#A87300"
+#: the light-card Groundhog colour, the console's own (nau.css's light
+#: themes' --model-analogue): 3:1 or more on every light card, and apart
+#: from the Liu-West filter's #C77100 under the colour-blind simulation;
+#: the player's yellow stays for dark cards
+ANALOGUE_ON_LIGHT = "#806000"
 
 
 def _member_hex(model: str) -> str:
@@ -902,6 +904,13 @@ def page_style() -> str:
   background:color-mix(in srgb,var(--btn-ink) 11%,transparent)}}
  header.brandrow .rp-btn{{border-color:var(--field-line);color:var(--nav-ink)}}
  button:focus-visible,a:focus-visible{{
+  outline:var(--focus-w,2px) solid var(--gold);outline-offset:2px}}
+ /* the charts' toolbar too: the chart library's own rule draws a 1px
+    black ring, lost on a dark card (the console's nau.css rule, restated:
+    the report is self-contained). Named through the toolbar's groups,
+    one class more specific than the library's rule, and without its
+    outer class, which legacy_theme_carry reads as "this page has charts" */
+ .plotly .modebar .modebar-group .modebar-btn:focus-visible{{
   outline:var(--focus-w,2px) solid var(--gold);outline-offset:2px}}
  .uk-seg > button{{cursor:pointer}}
  /* run-settings block: the console's compact two-column grid (see
