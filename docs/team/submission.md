@@ -6,6 +6,22 @@ and CDC's rules. The season's facts are in
 
 ## Now
 
+- 2026-11-12 (16:29 UTC): ROUND 2026-11-14'S RUN RECORD CONFIRMED (Ely's
+  weekly report, -modified, sha256 ab26f5d2...): reference date
+  2026-11-14, data through Nov 7 (live target data); replicates 3,
+  particles 10,000; Groundhog donors flusurv@06eff6a7, own-state 0.50;
+  Oracle step on, weight 0.25; model settings "Seed denominator expected
+  total (early season), Oracle blend weight 0.25 (default 0.5), Spread
+  narrowing 0.7 (default 1), Upper-tail cap 10 (default 0), Upper-tail
+  form shrink, Upper-tail level larger"; app build dcef8bee; pybnf 1.8.1,
+  PyBNF build 8410f794 (lanl/PyBNF, bngsim 0.15.1): the public engine
+  (round 11-07: pybnf 1.3.0, 2fdadee0 feature/particle-filter, app
+  9d4520d). Run time 14 min 38 s. The report carries the same US numbers
+  as the uploaded files (93,950; 27,233; 30,739; 11,844; 11,571). The
+  report's run settings name the level but not the per-member levels or
+  the capped cell counts; the files show both members on the larger
+  level (40 Groundhog and 36 Oracle locations above 10x the mean).
+  Checklist items 1-9 done; the pair waits on Ely's pull request.
 - 2026-11-12 (16:26 UTC): THE GROUNDHOG ALSO WITHOUT ALASKA AND WASHINGTON
   (Ely, after an independent review); RECOMMITTED. 40de18cc on
   FluBNF_submission, authored as Ely; Groundhog 49 locations (Ely's
