@@ -189,6 +189,25 @@ def test_a_slow_request_is_logged_with_the_load(log, monkeypatch):
     assert "server" in line and "GET /api/busy" in line and "load " in line
 
 
+def test_the_suite_logs_no_slow_request_into_a_tests_state_folder(
+        tmp_path, monkeypatch):
+    """However slow the runner, the suite logs no request as slow
+    (conftest), so a test that points APP_STATE at a folder and compares
+    it (test_reclaim's snapshots) sees only what its request did."""
+    import itertools
+    import time
+    import app.core.runs as runs_mod
+    monkeypatch.setattr(runs_mod, "APP_STATE", tmp_path)
+    clock = itertools.count(0.0, 5.0)    # each reading 5 s after the last
+    monkeypatch.setattr(time, "perf_counter", lambda: next(clock))
+    client.get("/api/busy")
+    assert not (tmp_path / "logs").exists()
+    # the server's own threshold logs that request there
+    monkeypatch.setattr(perflog, "SLOW_MS", 300.0)
+    client.get("/api/busy")
+    assert (tmp_path / "logs" / "slow_requests.log").is_file()
+
+
 def test_a_slow_page_report_is_logged_and_junk_is_dropped(log):
     r = client.post("/api/perf", json={"path": "/retro", "total": 1500,
                                        "server": 40, "scripts": 900})
