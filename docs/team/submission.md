@@ -6,6 +6,36 @@ and CDC's rules. The season's facts are in
 
 ## Now
 
+- 2026-11-12 (16:26 UTC): THE GROUNDHOG ALSO WITHOUT ALASKA AND WASHINGTON
+  (Ely, after an independent review); RECOMMITTED. 40de18cc on
+  FluBNF_submission, authored as Ely; Groundhog 49 locations (Ely's
+  upload less HI, MT, AK, WA; sha256 4178cfd5...), Oracle 53 unchanged
+  (ec45db1c...); both byte-identical on the fork, GREEN, population and
+  gate pass, merges cleanly into cdcepi main 4b7e3251. THE INDEPENDENT
+  REVIEW (a Fable model, given the files and facts but not this lane's
+  decisions; scratchpad round-2026-11-14/fable/review.md): Oracle
+  plausible, drop none (about 75%); Groundhog usable, drop Hawaii (85%),
+  Washington (70%; too high in 12 of 14 scored targets) and Alaska (60%;
+  10 of 14, actual a typical 0.60 of its median); it would have kept
+  Montana (10 of 14, 0.82). Artifacts for the Model lane, none holding
+  the round: the Groundhog's US h0 2.5% (4,296) is below the sum of its
+  states' 2.5% (4,980; the US row equals the sum of the 52 others, 9,395
+  against 9,393); the Groundhog's median growth alternates by horizon
+  (1.24, 1.43, 1.27, 1.46, median over locations); at h3 the 97.5% sits
+  on the 10x cap in 53 of 53 Groundhog and 47 of 53 Oracle locations
+  (the review would fit 5-6x to the coverage record); the Oracle's US h3
+  97.5% (93,950) is above the sum of its states' (82,653), from the
+  per-location cap. NAU TEAMS: of the others only NAU-epymorph is in for
+  this round (ABERT, FourCAT, vulPES not yet). Settled weeks 10-17 to
+  11-07, states, the 504 cells all six NAU models share, WIS over
+  FluSight-baseline's on the same cells: ABERT 0.58, vulPES 0.62,
+  FourCAT 0.69, epymorph 0.69, Groundhog 0.76, Oracle 0.80; by round
+  (10-17 / 10-24 / 10-31 / 11-07): Groundhog 0.78 / 0.77 / 0.67 / 0.93,
+  Oracle 0.98 / 0.64 / 0.65 / 0.88, ABERT 0.56 / 0.47 / 0.56 / 1.57,
+  vulPES 0.62 / 0.56 / 0.60 / 1.09. US for 11-28: Oracle 20,532,
+  Groundhog 21,647 today; ABERT 20,948, vulPES 20,948, FourCAT 18,418
+  in their 11-07 rounds (data through 10-31); epymorph today 12,666 (a
+  plateau: 11,960 to 12,438 by 12-05).
 - 2026-11-12 (15:47 UTC): THE GROUNDHOG ALSO WITHOUT MONTANA; RECOMMITTED.
   4c32f25d on FluBNF_submission ("GroundHogCGR also without Montana"),
   authored as Ely, on 67b0e5fe; the Groundhog file is Ely's upload less
@@ -3348,6 +3378,10 @@ and CDC's rules. The season's facts are in
 
 ## Decided
 
+- 2026-11-12 (Ely): round 2026-11-14's Groundhog also leaves out Alaska
+  and Washington (an independent review's picks, with this lane's
+  recommendation; their records: too high in 10 and 12 of 14 scored
+  targets). The Groundhog goes in with 49 locations, the Oracle with 53.
 - 2026-11-12 (Ely, this lane recommending): round 2026-11-14's
   Groundhog leaves out Montana as well as Hawaii (its forecasts of
   Montana too high in six of eight, the counts flat; Now). The Oracle
