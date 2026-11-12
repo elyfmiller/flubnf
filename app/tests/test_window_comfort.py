@@ -5,8 +5,6 @@ import json
 import shutil
 import subprocess
 import sys
-import time
-import types
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[2]))
@@ -184,23 +182,23 @@ def test_the_shell_fills_wide_windows_and_the_map_keeps_to_the_screen():
 
 # ------------------------------------------------------ slow-request log
 
-def _clock(monkeypatch, *ticks):
-    """perflog's clock reads `ticks` in turn, then stays on the last: a
-    request then measures exactly what the test says, however slow the
-    runner (a 300 ms stall on Windows CI would otherwise be logged)."""
+def _ticks(monkeypatch, *ticks):
+    """The request clock (perflog._request_clock) reads `ticks` in turn,
+    then stays on the last: a request then measures exactly what the test
+    says, however slow the runner (a 300 ms stall on Windows CI would
+    otherwise be logged)."""
     seq = list(ticks)
 
-    def perf_counter():
+    def clock():
         return seq.pop(0) if len(seq) > 1 else seq[0]
-    monkeypatch.setattr(perflog, "time", types.SimpleNamespace(
-        perf_counter=perf_counter, strftime=time.strftime))
+    monkeypatch.setattr(perflog, "_request_clock", clock)
 
 
 def test_fast_requests_are_not_logged_but_carry_server_timing(log,
                                                               monkeypatch):
     # the shipped threshold, against a clock the test sets
     monkeypatch.setattr(perflog, "SLOW_MS", SHIPPED_SLOW_MS)
-    _clock(monkeypatch, 0.0, (SHIPPED_SLOW_MS - 1) / 1000)
+    _ticks(monkeypatch, 0.0, (SHIPPED_SLOW_MS - 1) / 1000)
     r = client.get("/api/busy")
     assert r.headers["Server-Timing"] == f"app;dur={SHIPPED_SLOW_MS - 1:.0f}"
     assert not log.exists()
@@ -209,7 +207,7 @@ def test_fast_requests_are_not_logged_but_carry_server_timing(log,
 def test_a_request_just_past_the_shipped_threshold_is_logged(log,
                                                              monkeypatch):
     monkeypatch.setattr(perflog, "SLOW_MS", SHIPPED_SLOW_MS)
-    _clock(monkeypatch, 0.0, (SHIPPED_SLOW_MS + 1) / 1000)
+    _ticks(monkeypatch, 0.0, (SHIPPED_SLOW_MS + 1) / 1000)
     client.get("/api/busy")
     assert f"{SHIPPED_SLOW_MS + 1:7.0f} ms  GET /api/busy" in log.read_text()
 
