@@ -6,6 +6,22 @@ and CDC's rules. The season's facts are in
 
 ## Now
 
+- 2026-11-12 (14:48 UTC): THE WEEK ENDING 2026-11-07 IS ON cdcepi main.
+  Annabella Hines's merge e8e87a56 (#4055, 09:46 ET, 14:46 UTC);
+  this lane's 5-minute watch caught it and the hourly check is deleted.
+  Round 2026-11-14 can run; the deadline is still Thursday (tasks.json
+  submissions_due end -2 on the same commit), 11 PM ET by the README,
+  23:59:59 ET for the automated check. 53 locations for 11-07, none NA.
+  US 9,395 (2.76 per 100k), up 9% on 10-31; 10-31 was revised up from
+  8,245 to 8,583 (136 revised cells in all, mostly 10-31 and 10-24, as
+  usual backfill). The population check's estimate on this data (q0.99
+  about 1.3 x 10x the larger level, over 0.1% of population): Puerto Rico
+  1.07 (weeks 236, 294, 262; larger level 264; limit 3,203), Louisiana
+  0.85 (171, 246, 300), Florida 0.71, Hawaii 0.60. So Puerto Rico is
+  still the likely RED; Louisiana is now the one to watch. No location
+  has 0 in both earlier weeks, so the gate's floating-point edge (fixed
+  in 935fd08, not on main) cannot arise this round. Cutoff suggested to
+  Ely: files to this lane by 9 PM ET, the pull request by 10 PM ET.
 - 2026-11-11 (20:19 UTC): THE LEVEL SETTING IS ON main (App; checked here).
   Ely merged #5 (dev into main) as dcef8bee; main and dev (90a3a4e8, with
   #6's test-only fix for GitHub's ubuntu-26.04) have the same tree, and
