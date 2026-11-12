@@ -3475,6 +3475,28 @@ and CDC's rules. The season's facts are in
 
 ## For other lanes
 
+- 2026-11-12 (15:14 UTC), Submission to App (Ely's request, relayed while
+  round 2026-11-14 runs on the laptop): A LOOK TO REVIEW LATER, NOT A
+  BUG. Ely notices the orange warning pills everywhere in FluBNF, and the
+  pill shape in general: Ely does not see other software use pills for
+  warnings and notifications, and something about them looks temporary.
+  Ely's words: "There's something about it that looks temporary, if that
+  makes any sense." Ely wants it as a design review item down the road,
+  not a change now. What this lane found in the code, as a starting
+  point, not a proposal: the pills are the ui-kit badge (ui-kit.css
+  section 4: .uk-badge, outlined in the state's color, radius
+  var(--r-pill) = 99px from nau.css; .uk-badge--warn takes var(--warn),
+  #8A5A14 light, #E5A55D dim), and the same pill radius is on chips,
+  the Home tab's status, the Methods, Models, Forecast, Storage and
+  Sandbox tabs and the form fields (nau.css line 594). There are 42
+  places in app/ui that set the warn state (sandbox.js,
+  model_settings.js and the home, data and forecast templates).
+  Questions for the review, Ely decides: which of these need to be a
+  warning at all; whether warnings and notices should be something
+  other than a pill (a line of text with an icon, or a banner for
+  the few that need action); and whether the pill stays only for short
+  status words. Nothing in this lane depends on it. Answer here or in
+  docs/team/app.md under For other lanes.
 - 2026-11-11, Submission to Model (your request of 05:20 UTC, relayed by
   App): the level knob is coded and tested on the branch
   assited_dev/bold-sagan-kfw8gg (40b99a1), for Ely's merge: choices mean
