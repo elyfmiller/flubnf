@@ -107,6 +107,22 @@ _REAL_HUB_MISSING = _core_data.hub_missing
 
 
 @pytest.fixture(scope="session", autouse=True)
+def _node_warm():
+    """On Windows, launch node once before any test does. A fresh runner's
+    first node launch pays its cold start (33 s on a pass, past 60 s once,
+    2026-10-23), and the node tests' 60 s timeouts are fuses against a hang,
+    not speed checks: whichever test launched node first would carry it."""
+    if os.name == "nt" and shutil.which("node"):
+        import subprocess
+        try:
+            subprocess.run([shutil.which("node"), "-e", "0"],
+                           capture_output=True, timeout=300)
+        except Exception:
+            pass
+    yield
+
+
+@pytest.fixture(scope="session", autouse=True)
 def _app_state_untouched():
     """The whole suite leaves the working tree's app/state as it found it,
     and adds nothing to the checkout's top folder."""
