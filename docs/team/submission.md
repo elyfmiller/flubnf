@@ -6,6 +6,16 @@ and CDC's rules. The season's facts are in
 
 ## Now
 
+- 2026-11-18 (20:25 UTC): ROUND 2026-11-21'S HUB PULL REQUEST IS OPEN:
+  https://github.com/cdcepi/FluSight-forecast-hub/pull/4132 (Ely). Head
+  04659561; checked by git: the merge ref 6af4ea65 (main 6563e621 + head)
+  exists, so GitHub sees no conflict; against main it adds only the two
+  files, byte-identical to the checked ones (Oracle 833200f2..., 53;
+  Groundhog 457bfb57..., 51); the hub config on the merge ref has
+  submissions_due end -3 (tonight) and popn_frac 0.005. The hub's
+  validation check is Ely's to read (no GitHub API access to cdcepi
+  here). A git watcher (tools/watch_pr.sh) reports a merge, a head
+  change or a lost merge ref, for two hours.
 - 2026-11-18 (20:22 UTC): ROUND 2026-11-21 (EW46) COMMITTED TO THE FORK
   (Ely: "go, drop Hawaii and Puerto Rico from the groundhog"). Branch
   FluBNF_submission fast-forwarded to cdcepi main 6563e621, then
