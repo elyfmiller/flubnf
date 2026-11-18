@@ -6,6 +6,15 @@ and CDC's rules. The season's facts are in
 
 ## Now
 
+- 2026-11-18 (21:26 UTC): ROUND 2026-11-21 MERGED ON THE HUB:
+  https://github.com/cdcepi/FluSight-forecast-hub/pull/4132 merged at
+  21:26 UTC (16:26 ET; merge commit 47cd5e0b). Checked by git on cdcepi
+  main 540011f2: both files are there, byte-identical to the checked
+  ones (Oracle 833200f2..., 53 locations; Groundhog 457bfb57..., 51,
+  without Hawaii and Puerto Rico). The watcher has stopped. Next: the
+  round 2026-11-28 run when data through 11-21 lands; the Model lane's
+  two-sided recalibration screen (For other lanes, 2026-11-18) is still
+  open.
 - 2026-11-18 (20:25 UTC): ROUND 2026-11-21'S HUB PULL REQUEST IS OPEN:
   https://github.com/cdcepi/FluSight-forecast-hub/pull/4132 (Ely). Head
   04659561; checked by git: the merge ref 6af4ea65 (main 6563e621 + head)
