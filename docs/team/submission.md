@@ -6,6 +6,18 @@ and CDC's rules. The season's facts are in
 
 ## Now
 
+- 2026-11-18 (19:26 UTC): THE SHRINK IS STILL ABOVE THE MEDIAN ONLY
+  (Ely asked, while round 2026-11-21 runs). flubnf/tailcap.py on main
+  and dev has the modes clip and shrink; no lower-half mode was built.
+  The Model lane's screen (docs/team/model-cap-both-halves-2026-11)
+  found no lower-half rule worth it (mirror, log balance, LN, and
+  Amendment 1's gentle balance in admissions: no WIS gain, some
+  coverage lost), and that the level evens the band in the rise. The
+  submitted files agree: the 95% band wider below the median than
+  above, in state cells h0-h3, Oracle 16% (10-31) and 28% (11-07) on
+  the mean, 1% (11-14) on the larger level; Groundhog 4%, 15%, 1%.
+  Part 2 of the screen (the Oracle on C0's 84 stored weeks) is still to
+  run.
 - 2026-11-18 (19:23 UTC): ROUND 2026-11-21 CAN RUN, WITH THE SAME
   OPTIONS (Ely asked). The week ending 2026-11-14 is on cdcepi main
   (5fe13b25, 16:41 UTC; 53 locations; US 11,513, and 11-07 revised from
