@@ -112,7 +112,9 @@ Model lanes on Ely's Windows PC push their own notes with Ely's login.
   None of Ely's GitHub credentials goes on the students' Mac Studio, in
   any account: no `gh` login, token, SSH key or browser sign-in, and no
   login carried in by `ssh -A` or an editor's remote session. Its engine
-  is installed from an archive. The students' shared cloud account is
+  is the public one, the default, which downloads with no account. The
+  private engine, the fallback, goes on it only from the lab's archive
+  file, never through a login. The students' shared cloud account is
   never connected to Ely's GitHub. The lab runner is `flubnf runner` from
   `~/GitHub/flubnf` on main; students' clones go in `~/Students/<name>`,
   installed with `FLUBNF_DIR`.
