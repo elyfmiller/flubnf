@@ -239,9 +239,7 @@ details[data-scope] > summary{scroll-margin-top:.75rem}
   color:var(--accent-ink);font-weight:700}
 /* a preset's count: in its button's own color with no fill, set in
    parentheses as the other presets write theirs ("States only (52)") */
-.fc-chip-n{margin-left:.2rem;font-variant-numeric:tabular-nums}
-.fc-chip-n::before{content:"("}
-.fc-chip-n::after{content:")"}
+.fc-chip-n{font-variant-numeric:tabular-nums}
 /* the filter over the list, as wide as it */
 .fc-locfilter{width:100%;margin:0 0 .3rem}
 .checklist .ck[hidden]{display:none}

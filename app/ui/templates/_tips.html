@@ -33,7 +33,7 @@
      icon, icon_tip         the inline icon set; an icon whose tooltip explains
      heading                a section title and its "?"
      toggletip              a click-to-open explainer that may hold links and lists
-     badge                  a status pill: icon and word (ok, warn, error, info,
+     badge                  a status: icon and word, no box (ok, warn, error, info,
                             neutral, pending)
      alert                  a line the user must act on now
      empty                  an empty state: icon, short title, one action
@@ -261,7 +261,7 @@
 {%- endmacro %}
 
 {# a tag: a kind or a unit in a word ("Mechanistic", "relWIS",
-   "population"), outlined and muted, with no icon: it states no status
+   "population"), plain and muted, with no icon: it states no status
    (a status is a badge) #}
 {% macro tag(text, cls="") -%}
 <span class="uk-tag{% if cls %} {{ cls }}{% endif %}">{{ text }}</span>

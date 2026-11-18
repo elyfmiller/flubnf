@@ -78,8 +78,9 @@ only something that can be pressed has an outline.
 Each macro whose explainer can be rich text (links, bold, line breaks) takes it as a call block, as `tip` always has:
 
 ```jinja
-{% call tips.badge("warn", "not archived", id="live-newer") %}Real-time runs for
-<span class="wk">{{ live_week }}</span> read target-data.{% endcall %}
+{% call tips.badge("warn", "incomplete", id=id) %}The run that wrote this file
+did not finish complete: it did not finish ok, or it dropped a location from
+this file or recorded an error for it.{% endcall %}
 ```
 
 A plain string argument is escaped; markup built in the template (`{% set t %}...{% endset %}`) or passed from Python as `Markup` is not. Ids belong to the caller and must be unique on the page: a tip's box is `tip-<id>`, a toggletip's panel `tt-<id>`.
@@ -128,8 +129,8 @@ An "i" button that opens a panel on click (Enter or Space from the keyboard) and
 A status, set in the line like text with no outline, fill or pill. `state` is `ok`, `warn`, `error`, `info`, `neutral` or `pending`. A state that asks something of the reader (`warn`, `error`) or is under way (`pending`) is its icon and its word in the state's color, never color alone: each has its own icon shape (triangle, octagon, clock), so the three differ in the color-vision mode and in grayscale too. A state that asks nothing (`ok`, `info`, `neutral`) is the word alone, muted, with no icon: a confirmation, a count, a kind. The markup is the same for every state (the icon is in it and `ui-kit.css` hides it for the quiet three), so a script can turn one state into another; `icon_name` picks another icon for a state that shows one. With a tip, the "?" follows the badge, the two held together in one `uk-badge-pair` so a wrapping line never leaves the "?" on its own. Two marks side by side stand apart as the facts of a row do. A badge inside a link has its word underlined, since no outline says it can be pressed. A badge brings no ground of its own: on a filled surface (an alert, a tooltip, the chosen side of a switch, the open Model settings button) it takes that surface's text color, and a new filled surface that holds one states the same beside its own rule. It replaces status sentences ("the hub clone is up to date") and `.pill` spans that carry a state. A page script updates one in place with `FluBNFUI.setBadge(el, state, text)`.
 
 ```jinja
-{{ tips.badge("ok", "all reported") }}
-{{ tips.badge("warn", r.unreported | length ~ " not reported", id="nw-badge") }}
+{{ tips.badge("neutral", runs | length ~ " runs") }}
+{{ tips.badge("warn", "modified settings", id="rs-knobs") }}
 ```
 
 ### Alert: `tips.alert(kind, text, title="", tiptext="", id="", action="", live=none, hidden=False, tip_label="", cls="")`
@@ -155,7 +156,7 @@ Labelled values. A sentence that strings facts together ("212 vintages, newest w
 
 ```jinja
 {% call tips.stats("uk-stats--kv") %}
- {{ tips.stat("Data through", live_week, after=tips.badge("warn", "not archived")) }}
+ {{ tips.stat("Data through", live_week, after=tips.badge("neutral", "not archived")) }}
  {{ tips.stat("Vintages", n_vintages, "weeks", "Each archived week's snapshot.", id="dt-nv") }}
 {% endcall %}
 ```
@@ -221,7 +222,7 @@ A row of facts, each an icon and a value, instead of a "run 2026-09-20 · on dat
 A kind or a unit in a word ("Mechanistic", "relWIS", "population"): plain muted text with no outline and no icon, because it states no status. A status is a badge; a count beside a heading is a neutral badge ("3 entries"), which reads the same.
 
 ```jinja
-{{ tips.heading("Measured performance", "home-perf", tip, after=tips.tag("relWIS")) }}
+{{ tips.heading("Export files", "run-ds-exports", after=tips.tag("hubverse CSV, not submitted")) }}
 ```
 
 ### Name chip: `tips.namechip(text, id, tiptext="", tip_label="")`

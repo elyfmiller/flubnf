@@ -1598,7 +1598,6 @@ header.nav .navtabs.more-l.more-r{
 p.newest-check{margin:.2rem 0 .4rem}
 p.newest-check[hidden]{display:none}
 .ncmark{display:inline-block;min-width:1em;font-weight:800;text-align:center}
-.ncmark.ok{color:var(--ok)}
 .ncmark.warn{color:var(--warn)}
 .tipbox .ncline{display:block}
 .tipbox .ncline + .ncline{margin-top:.3rem}

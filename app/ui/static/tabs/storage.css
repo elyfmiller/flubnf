@@ -85,6 +85,10 @@
 /* a long badge or fact wraps inside its cell rather than widen the table */
 .st-ledger .uk-badge-pair,.st-ledger .uk-badge{white-space:normal}
 .st-nw{white-space:nowrap}
+/* a run's link takes its own line, so the quiet facts after it (research,
+   modified settings) start under it on every row; in the table it does
+   not wrap, so every row is the same two lines */
+.st-ledger td.st-run > a{display:block;white-space:nowrap}
 /* a relWIS figure's verdict icon */
 .st-verdict{margin-left:.25em;vertical-align:-.1em}
 .st-facts{display:flex;flex-wrap:wrap;align-items:center;gap:.15rem 1.1rem}
@@ -115,6 +119,7 @@
   .st-ledger tr[data-st][hidden]{display:none}
   .st-ledger tr[data-st] > td{display:block;padding:0;border:0;text-align:left}
   .st-ledger td.st-run{grid-column:1}
+  .st-ledger td.st-run > a{white-space:normal}
   .st-ledger td.st-stat{grid-column:2;grid-row:1;justify-self:end}
   .st-ledger td[data-l]::before,.st-ledger td.elapsed::before{
     content:attr(data-l) " ";color:var(--mut);

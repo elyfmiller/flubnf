@@ -98,7 +98,7 @@
        Saturday is its own anchor); the badge stays either way #}
     <span class="fc-anchor-ok"{% if not aw %} hidden{% endif %}><span class="fc-anchor-kv" id="fc-anchor-kv"{% if kv_off %} hidden{% endif %}>{{ tips.icon("calendar", cls="uk-c-muted") }}<span class="fc-anchor-k">Anchor week</span>
      <b id="fc-anchor-wk">{{ aw }}</b></span>
-     <span id="fc-anchor-live"{% if live_off %} hidden{% endif %}>{{ tips.badge("warn", "not archived · target-data", id="fc-live") }}</span></span>
+     <span id="fc-anchor-live"{% if live_off %} hidden{% endif %}>{{ tips.badge("neutral", "not archived · target-data", id="fc-live") }}</span></span>
     <span class="fc-anchor-none"{% if aw %} hidden{% endif %}>{{ tips.icon("warning") }}<span id="fc-anchor-none">{{ an if not aw else "" }}</span></span>
    </div>
    {# the round the date answers: its reference date (the anchor week + 7)
@@ -270,7 +270,7 @@
       setMode(initial, false);
     })();
    </script>
-   {# the pick's count rides in the label as a chip (the script below) #}
+   {# the pick's count rides in the label, in quiet words (the script below) #}
    <div class="lblrow"><label id="fc-locs-lbl">{{ "Groups" if dataset else "Locations" }} <span id="lcount" class="fc-count"></span></label></div>
    {% if locations_error %}{{ tips.alert("warn", locations_error, id="fc-locs-error") }}{% endif %}
    {# presets and a filter over the list: buttons and a search box with no
@@ -281,7 +281,7 @@
     <button type="button" class="quiet fc-chip" data-preset="states">States only (52)</button>
     <button type="button" class="quiet fc-chip" data-preset="us">US only</button>
     {% if pre.last %}<button type="button" class="quiet fc-chip" data-preset="last" data-locs="{{ pre.last | tojson | forceescape }}">Last pick</button>{% endif %}
-    {% if pre.failed %}<button type="button" class="quiet fc-chip" data-preset="failed" data-locs="{{ pre.failed | tojson | forceescape }}">Failed last run <span class="fc-chip-n">{{ pre.failed | length }}</span></button>{% endif %}
+    {% if pre.failed %}<button type="button" class="quiet fc-chip" data-preset="failed" data-locs="{{ pre.failed | tojson | forceescape }}">Failed last run (<span class="fc-chip-n">{{ pre.failed | length }}</span>)</button>{% endif %}
    </div>
    {% endif %}
    {# the filter and the list in a fold: closed while the pick is one the
