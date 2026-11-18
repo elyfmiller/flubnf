@@ -637,8 +637,8 @@
     // ---- an experiment's page while it replays or is scored: the weeks
     // bar and the line are set from its JSON every 5 s, and the page reloads
     // once it is neither (or is gone: the 404's {error}), or once its status
-    // is not the one the page was drawn with (starting, running, stopping:
-    // the badge says it)
+    // is not the one the page was drawn with (starting, running, stopping,
+    // paused: the card and the title's mark are drawn from it)
     var sbx = $('sbx');
     if (sbx && sbx.getAttribute('data-poll') === '1') {
       var xtimer = setInterval(function () {

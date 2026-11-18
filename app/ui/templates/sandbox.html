@@ -205,7 +205,7 @@
   {% set modified = shipped and shipped.shipped and not shipped.intact %}
   <div class="sb-title">
    <h1>{{ name }}</h1>
-   {%- if modified %}{{ tips.badge("warn", "modified · " ~ ("all three files" if shipped.changed | length == 3 else shipped.changed | join(", ")), id="sb-modified") }}{% endif %}
+   {%- if modified %}{{ tips.badge("neutral", "modified · " ~ ("all three files" if shipped.changed | length == 3 else shipped.changed | join(", ")), id="sb-modified") }}{% endif %}
   </div>
   {% set ons = namespace(o=origin) %}{% for e in (templates or []) + (examples or []) %}{% if ons.o == "example " ~ e %}{% set ons.o = exname(e) %}{% endif %}{% endfor %}
   {% if modified and ons.o.endswith(", modified") %}{% set ons.o = ons.o[:-10] %}{% endif %}
@@ -467,7 +467,7 @@
    </tbody></table>{% endif %}
    {% set same = diff.files | selectattr("same") | list %}
    {% if same %}<ul class="sb-files" aria-label="Unchanged files">{% for f in same %}<li><code>{{ f.name }}</code> {{ tips.badge("neutral", "unchanged") }}</li>{% endfor %}</ul>{% endif %}
-   {% for f in diff.files if not f.same %}{% call tips.fold(f.name, open=True, cls="sb-filediff", after=tips.badge("warn", "changed")) %}<pre class="sbdiffpre">{{ f.diff }}</pre>{% endcall %}{% endfor %}
+   {% for f in diff.files if not f.same %}{% call tips.fold(f.name, open=True, cls="sb-filediff") %}<pre class="sbdiffpre">{{ f.diff }}</pre>{% endcall %}{% endfor %}
   </div>
   {% endif %}
   {# a dataset start never takes the step (it reads the hub's donor bank) #}

@@ -51,7 +51,13 @@
 {%- endmacro %}
 <div id="sbx" data-id="{{ id }}" data-poll="{{ 1 if live or scoring.pending else 0 }}" data-status="{{ st.status }}">
 <nav class="sb-crumb" aria-label="Breadcrumb"><a href="/sandbox">Sandbox</a> /</nav>
-{{ tips.heading("Experiment " ~ id, "sbx-title", level=1, cls="sb-pagehead", after=tips.badge(badge[0], badge[1])) }}
+{#- the title carries the state's mark only where nothing under it says
+   the same: the Queued or Running card says a state under way (its
+   heading and its line), a state alert says its own. A complete "done"
+   has neither, and a warning while the card shows (the runner not
+   running, paused) is drawn as one only here -#}
+{%- set said_below = (badge[0] == "pending") if live else (refused or not st.status or st.status in ("stopped", "interrupted", "error") or (st.status == "done" and not st.complete)) %}
+{{ tips.heading("Experiment " ~ id, "sbx-title", level=1, cls="sb-pagehead", after=("" if said_below else tips.badge(badge[0], badge[1]))) }}
 {% if record %}
 {{ tips.meta([s.model ~ " · " ~ record.short, s.season,
               s.size ~ ": " ~ record.locations ~ " locations, " ~ record.weeks ~ (" week, " if record.weeks == 1 else " weeks, ") ~ record.replicates ~ (" replicate" if record.replicates == 1 else " replicates"),

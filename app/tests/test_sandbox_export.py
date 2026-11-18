@@ -99,14 +99,21 @@ def test_compare_page_renders_both_runs_and_the_diff(two_runs):
     assert "tip-sb-diff" not in html
     assert f'<option value="{a}" selected>' in html
     assert "this run: median (5 to 95%)" in html and "<th>compared run</th>" in html
-    # an unchanged file is marked so; the edited one folds open with its diff
+    # an unchanged file is marked so; the edited one folds open with its
+    # diff under the heading "What changed", which says it: no mark of its
+    # own in the fold's summary
     assert "seed" in html
     assert ('<li><code>model.bngl</code> <span class="uk-badge uk-badge--neutral"'
             in html)
     same = html[html.index('<ul class="sb-files"'):]
     same = same[:same.index("</ul>")]
     assert "model.bngl" in same and "unchanged" in same and "priors.conf" not in same
-    assert '<span class="uk-fold-sum">priors.conf</span>' in html
+    assert ('<details class="uk-fold sb-filediff" open><summary>'
+            '<span class="uk-fold-sum">priors.conf</span></summary>') in html
+    fold = html.split('<details class="uk-fold sb-filediff" open>', 1)[1]
+    fold = fold[:fold.index("</details>")]
+    assert "uk-badge" not in fold and '<pre class="sbdiffpre">' in fold
+    assert f"-{two_runs['line']}" in fold and f"+{two_runs['edited']}" in fold
     cmp = json.loads(html.split("window.SANDBOX_CMP = ", 1)[1].split(";</script>")[0])
     assert cmp["run_id"] == a and cmp["traj"]["q50"][0] == 1.0
     # without ?compare= no diff; another model's run is refused

@@ -186,9 +186,14 @@ def test_step_refused_for_an_edited_model_with_the_reason_in_a_tip(finished):
     html = client.get(f"/sandbox?model=ohio&run={run}").text
     assert 'disabled aria-describedby="tip-sb-oracle-why"' in html
     assert "edited after it was created (priors.conf)" in html
-    # the badge names the edited file; the origin under it leaves the
-    # word "modified" to the badge
+    # the title names the edited file in quiet words (editing is what the
+    # page is for: no warning); the origin under it leaves the word
+    # "modified" to them
+    assert ('<span class="uk-badge uk-badge--neutral" id="sb-modified" '
+            'data-state="neutral">') in html
     assert '<span class="uk-badge-t">modified · priors.conf</span>' in html
+    assert "uk-badge--warn" not in html.split('<div class="sb-title">', 1)[
+        1].split("</div>", 1)[0]
     meta = html.split('<div class="sb-headmeta">', 1)[1].split("</div>", 1)[0]
     assert "the Oracle SIHRS start (Ohio, " in meta and "modified" not in meta
     assert not (finished["dir"] / sb.ORACLE_FILE).exists()
@@ -200,7 +205,7 @@ def test_step_refused_for_an_edited_model_with_the_reason_in_a_tip(finished):
     assert sb.oracle_gate(w2.name)["reason"] == (
         "This run's priors.conf differs from the Oracle SIHRS start as created.")
     assert sb.oracle_gate(run)["ok"]                    # restored: allowed again
-    # every file edited: the badge says so in three words, short enough
+    # every file edited: the title says so in three words, short enough
     # for a phone
     m = sb.read_model("ohio")
     sb.save_model("ohio", {f: m[f] + "\n# edited\n" for f in sb.REQUIRED})
