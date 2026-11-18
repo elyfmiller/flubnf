@@ -381,6 +381,15 @@ def test_latest_run_card_offers_rerun_for_stopped_and_failed_only():
            "spec": "{}", "elapsed_s": None}
     html = _render_forecast(row)
     assert f'action="/runs/{row["run_id"]}/rerun"' in html
+    # a stop is the reader's own: its status in quiet words, as on Storage
+    # and the run page
+    assert ('<span class="uk-badge uk-badge--neutral" id="fc-latest-status" '
+            'data-state="neutral">') in html
+    assert '<span class="uk-badge-t">stopped</span>' in html
+    # an interrupted run (the app closed mid-run) still warns
+    gone = _render_forecast(dict(row, status="interrupted"))
+    assert ('<span class="uk-badge uk-badge--warn" id="fc-latest-status" '
+            'data-state="warn">') in gone
     # the honest wording, in the button itself: a fresh run, never a resume
     assert 'data-guard="console-run">Run again from the start</button>' in html
     assert "resume" not in html.split('/rerun"')[1].split("</form>")[0].lower()

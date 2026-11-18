@@ -127,6 +127,31 @@ def test_compare_page_renders_both_runs_and_the_diff(two_runs):
     assert "What changed</h2>" not in html and "another model" in html
 
 
+def test_a_file_with_no_diff_lines_says_it_changed(two_runs):
+    """A file that differs only in its line endings (its final newline)
+    has no diff lines to show, so its fold says "changed" in quiet words;
+    a fold that shows its diff carries no mark."""
+    a, b = two_runs["a"], two_runs["b"]
+    meta = json.loads((sb.RUNS / b / "meta.json").read_text())
+    exp = sb.RUNS / b / f"{meta['model']}_r0" / f"{meta.get('suffix', '')}.exp"
+    text = exp.read_text()
+    exp.write_text(text[:-1] if text.endswith("\n") else text + "\n")
+    by = {f["name"]: f for f in sb.diff_runs(a, b)["files"]}
+    assert not by["data.exp"]["same"] and by["data.exp"]["diff"] == ""
+    html = client.get(f"/sandbox?model=kinetics_example&run={b}&compare={a}").text
+    folds = {}
+    for f in html.split('<details class="uk-fold sb-filediff" open>')[1:]:
+        name = f.split('<span class="uk-fold-sum">', 1)[1].split("</span>", 1)[0]
+        folds[name] = f[:f.index("</details>")]
+    assert sorted(folds) == ["data.exp", "priors.conf"]
+    empty = folds["data.exp"]
+    assert ('<span class="uk-fold-sum">data.exp</span> <span class="uk-badge '
+            'uk-badge--neutral" data-state="neutral">') in empty
+    assert '<span class="uk-badge-t">changed</span></span></summary>' in empty
+    assert '<pre class="sbdiffpre"></pre>' in empty
+    assert "uk-badge" not in folds["priors.conf"]
+
+
 def test_model_zip_holds_the_three_files_and_the_sidecars(sandbox_root):
     sb.add_example("kinetics_example")
     z = zipfile.ZipFile(io.BytesIO(sb.model_zip("kinetics_example")))

@@ -215,6 +215,11 @@ def test_show_in_folder_goes_back_and_warns_when_nothing_opened(root,
 
 # -------------------------------------------------------------- run page
 
+def _title(page):
+    """The run page's title row: the heading, its marks and its action."""
+    return page.split('<div class="fc-runhead">', 1)[1].split("</div>", 1)[0]
+
+
 def test_a_failed_run_names_the_run_output_shows(root):
     failed = _run(root, "2098-01-03", [], status="failed",
                   outcome={"error": "boom"})
@@ -234,6 +239,39 @@ def test_a_running_run_shows_one_progress_card(root):
     assert 'id="run-progress"' in page and "fitting 3 of 53" in page
     assert 'href="/forecast"' in page.split('id="run-progress"', 1)[1]
     assert "Submission files" not in page and 'id="run-noresults"' not in page
+    # the card headed "In progress" says it is running: the title does not
+    assert ">In progress</h2>" in page
+    assert "uk-badge" not in _title(page) and "running" not in _title(page)
+
+
+def test_the_title_carries_the_status_only_where_nothing_under_it_does(root):
+    """A recorded error is said by the "Run failed." alert under the
+    title, so the title draws no status; every other ended state, and an
+    error with no recorded message, is drawn at the title as the ledger
+    draws it (a stop in quiet words)."""
+    failed = _run(root, "2098-01-03", [], status="error",
+                  outcome={"error": "boom"})
+    page = client.get(f"/runs/{failed}").text
+    assert 'id="run-error-msg"' in page and "Run failed." in page
+    assert "uk-badge" not in _title(page) and "error" not in _title(page)
+    # no recorded message, no alert: the title says it failed
+    bare = client.get(f"/runs/{_run(root, '2098-01-03', [], status='error')}").text
+    assert 'id="run-error-msg"' not in bare
+    assert ('<span class="uk-badge uk-badge--error" data-state="error">'
+            in _title(bare)
+            and '<span class="uk-badge-t">error</span>' in _title(bare))
+    for status, state in (("stopped", "neutral"), ("partial", "warn"),
+                          ("ok", "ok")):
+        head = _title(client.get(
+            f"/runs/{_run(root, '2098-01-03', [], status=status)}").text)
+        assert (f'<span class="uk-badge uk-badge--{state}" '
+                f'data-state="{state}">') in head, status
+        assert f'<span class="uk-badge-t">{status}</span>' in head, status
+    # a "running" row with no live worker: the app closed mid-run, a warning
+    gone = _run(root, "2098-01-03", [], status="running")
+    head = _title(client.get(f"/runs/{gone}").text)
+    assert ('<span class="uk-badge uk-badge--warn" data-state="warn">'
+            in head and '<span class="uk-badge-t">interrupted</span>' in head)
 
 
 def test_the_run_page_lists_files_as_output_does(root):
@@ -263,6 +301,27 @@ def test_a_modified_run_is_marked_once_on_its_page_and_quietly_in_storage(
         .split("</div>", 1)[0]
     assert '<span class="uk-badge-t">modified settings</span>' in row
     assert "uk-badge--warn" not in row
+
+
+def test_a_modified_file_says_so_where_the_title_cannot(root):
+    """A run with no ledger row (Storage cleared its rows and kept its
+    files) has no settings record, so its title carries no "modified
+    settings": the -modified file's own row says it."""
+    rid = "20980103T120000-0aacd0"
+    w = root / "workroots" / rid
+    d = w / "submission" / (GH + "-modified")
+    d.mkdir(parents=True)
+    (d / f"{O._reference_date('2098-01-03')}-{GH}-modified.csv").write_text("x")
+    (w / "results.json").write_text(json.dumps(
+        {"forecast_date": "2098-01-03", "spec": "", "models": {}}))
+    ui_shared._invalidate_scans()
+    page = client.get(f"/runs/{rid}").text
+    head, subs = page.split('class="card fc-subs"', 1)
+    assert "modified settings" not in head and 'id="modified-note"' not in head
+    assert f"<b>{GH}-modified</b>" in subs
+    assert ('<span class="out-bt"><span class="uk-badge uk-badge--warn" '
+            'id="run-sub-mod-1" data-state="warn">') in subs
+    assert subs.count('<span class="uk-badge-t">modified settings</span>') == 1
 
 
 def test_the_medians_are_one_table_by_hub_horizon(root):

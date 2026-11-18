@@ -365,15 +365,16 @@ def test_forecast_running_card_holds_the_results_place():
     wait = card.split('id="fc-wait"')[1]
     assert 'id="quip"' in wait
     assert "renderLocs(d.locations)" in html
-    # the heading says the run is running: no badge repeats it, and the
-    # one beside it waits, hidden, for the poll to see the run stopping
+    # the heading says the run is running: no badge repeats it, and none
+    # waits beside it for the run to stop, since the progress readout
+    # under the heading says that (the poll's stopping branch)
     head = card.split('<h2 id="h-fc-running">Running</h2>', 1)[1]
     head = head.split("</div>", 1)[0]
     assert ">running<" not in card
-    assert ('<span id="fc-run-slot" hidden><span class="uk-badge uk-badge--warn"'
-            ' id="fc-run-state" data-state="warn">') in head
-    assert '<span class="uk-badge-t">stopping</span>' in head
-    assert "getElementById('fc-run-slot')" in card and "st.hidden=false" in card
+    assert "uk-badge" not in head and "stopping" not in head
+    assert "fc-run-slot" not in html and "fc-run-state" not in html
+    stopping = html.split("if(STOPPING){", 1)[1].split("else if(", 1)[0]
+    assert "progText('Stopping; finishing the current fit…');" in stopping
     # where the results will be, in quiet words (the bar shows the work)
     assert ('<span class="uk-badge uk-badge--neutral" id="fc-skel-badge"'
             ' data-state="neutral">') in wait

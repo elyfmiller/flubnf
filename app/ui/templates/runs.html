@@ -29,9 +29,10 @@
 {%- endmacro %}
 
 {# a run status in a badge: the ledger's statuses by kind (shared by the
-   ledger table and the workroot rows) #}
+   ledger table and the workroot rows); a stop is the reader's own, said
+   in quiet words #}
 {% set ST = {"ok": "ok", "running": "pending", "interrupted": "warn",
-             "stopped": "warn", "partial": "warn"} %}
+             "stopped": "neutral", "partial": "warn"} %}
 
 <div class="card st-card">
 {% if ledger %}

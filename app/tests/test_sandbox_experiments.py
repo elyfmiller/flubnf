@@ -18,9 +18,11 @@ no BNG2.pl, no hub clone. Every thread a start begins is joined.
 
 golden/experiment_pages.json holds the gallery and three experiment
 pages as a console off the runner renders them, from fixed fixtures. It
-was captured from origin/dev 24ac926, before the runner's branches came
-to the routes and templates; regenerate only for a deliberate change to
-those pages, and review its diff:
+was first captured from origin/dev 24ac926, before the runner's branches
+came to the routes and templates, and regenerated when the title mark
+was dropped where the card or alert under it says the state, and when a
+stopped experiment's status became quiet words. Regenerate only for a
+deliberate change to those pages, and review its diff:
 
     python app/tests/test_sandbox_experiments.py --write-golden
 """
@@ -50,8 +52,8 @@ if __name__ == "__main__":
         sys.exit(__doc__)
     with tempfile.TemporaryDirectory(prefix="flubnf-golden-") as _d:
         pytest.main(["-q", "-p", "no:cacheprovider", f"--basetemp={_d}/t",
-                     f"{__file__}::test_the_default_role_pages_are_as_on_"
-                     "24ac926"])
+                     f"{__file__}::test_the_default_role_pages_match_the_"
+                     "golden"])
     _pages = getattr(sys.modules.get("test_sandbox_experiments"), "PAGES",
                      None)
     if not _pages:
@@ -60,8 +62,11 @@ if __name__ == "__main__":
     GOLDEN.write_text(json.dumps({
         "_about": ("the gallery and three experiment pages (<main> only) "
                    "as a console off the runner renders them from "
-                   "test_sandbox_experiments.py's fixed fixtures; captured "
-                   "at origin/dev 24ac926, before the runner's branches. "
+                   "test_sandbox_experiments.py's fixed fixtures; first "
+                   "captured at origin/dev 24ac926, before the runner's "
+                   "branches; regenerated when the title mark was dropped "
+                   "where the card or alert says the state, and when a "
+                   "stopped experiment's status became quiet words. "
                    "Regenerate only for a deliberate change: python "
                    "app/tests/test_sandbox_experiments.py --write-golden"),
         "pages": _pages}, indent=1, sort_keys=True) + "\n",
@@ -1342,8 +1347,8 @@ def test_the_running_line_and_the_badge_of_each_state():
             (running, True, ("pending", "running")),
             (_st("stopping"), False, ("pending", "stopping")),
             (_st("paused"), False, ("warn", "paused")),
-            (_st("stopped"), False, ("warn", "stopped · 2 of 5 weeks")),
-            (_st("stopped", **whole), False, ("warn", "stopped")),
+            (_st("stopped"), False, ("neutral", "stopped · 2 of 5 weeks")),
+            (_st("stopped", **whole), False, ("neutral", "stopped")),
             (_st("interrupted"), False, ("warn", "interrupted · 2 of 5 weeks")),
             (_st("done", **whole), False, ("ok", "done")),
             (_st("done"), False, ("warn", "done · 2 of 5 weeks")),
@@ -1483,7 +1488,7 @@ def test_one_question_mark_on_the_page(world, truth, monkeypatch):
     assert marks(html.split('<div id="sbx"', 1)[1]) == ["tip-sbx-scores"]
 
 
-# ------------------------------------- the default role, as on 24ac926
+# ------------------------- the default role, against the golden pages
 
 #: the pages the golden test rendered (read by its --write-golden)
 PAGES: dict = {}
@@ -1563,8 +1568,8 @@ def _main(html: str) -> str:
     return re.search(r'<main id="main".*?</main>', html, re.S).group(0)
 
 
-def test_the_default_role_pages_are_as_on_24ac926(world, truth, tmp_path,
-                                                  monkeypatch):
+def test_the_default_role_pages_match_the_golden(world, truth, tmp_path,
+                                                 monkeypatch):
     urls = _golden_world(monkeypatch)
     pages = {}
     for name, url in urls.items():
@@ -1585,6 +1590,10 @@ def test_the_default_role_pages_are_as_on_24ac926(world, truth, tmp_path,
     assert "Stopped after 1 of 2 weeks." in pages["stopped"]
     assert 'data-guard="sandbox-run">Resume</button>' in pages["stopped"]
     assert "Not started yet." in pages["not_started"]
+    # the gallery's row says the stop in quiet words
+    row = pages["gallery"].split(f'<a href="{PAGE}">', 1)[1].split("</tr>", 1)[0]
+    assert ('<span class="uk-badge uk-badge--neutral" data-state="neutral">'
+            in row and "stopped · 1 of 2 weeks</span>" in row)
 
 
 # ---------------------------- in a student's folder on the runner computer
@@ -1835,7 +1844,7 @@ def test_the_queue_line_and_badge():
         assert badge(_st(state), False, None, LINKED) == (
             "warn", "refused by the runner")
     assert badge(_st("stopped"), False, None, "") == (
-        "warn", "stopped · 2 of 5 weeks")
+        "neutral", "stopped · 2 of 5 weeks")
 
 
 def test_in_a_runner_folder_the_page_reads_the_runner(alice, students,

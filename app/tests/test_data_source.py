@@ -447,6 +447,9 @@ def test_update_data_moves_the_forecast_date_to_the_new_week(tmp_path, monkeypat
     live = line[line.index('id="fc-anchor-live"'):]
     assert not live.startswith('id="fc-anchor-live" hidden')
     assert '<span class="uk-badge-t">not archived · target-data</span>' in live
+    # in quiet words, as the Data tab says it below: nothing here acts on it
+    assert ('<span class="uk-badge uk-badge--neutral" id="fc-live" '
+            'data-state="neutral">') in live
     assert 'tip-fc-live' not in live
     # the line shows: the typed day is its own anchor, but the badge has
     # something to say

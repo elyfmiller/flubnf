@@ -199,6 +199,25 @@ def test_workroot_rows_read_as_human_labels_with_the_id_secondary(state):
     assert "run 01-18 09:30:00" in row            # parsed from the id
 
 
+def test_a_stopped_run_says_so_in_quiet_words(state):
+    """A stop is the reader's own: the ledger's status column and the run
+    workroot row say "stopped" in quiet words; a failed run still says it
+    as an error."""
+    html = client.get("/runs").text
+    quiet = '<span class="uk-badge uk-badge--neutral" data-state="neutral">'
+    for status, look in (("stopped", quiet),
+                         ("error", '<span class="uk-badge uk-badge--error" '
+                                   'data-state="error">')):
+        rid = state["rids"][status]
+        led = html.split(f'<tr data-st="{status}"', 1)[1].split("</tr>", 1)[0]
+        assert f'href="/runs/{rid}"' in led
+        stat = led.split('<td class="st-stat">', 1)[1].split("</td>", 1)[0]
+        assert look in stat and f'<span class="uk-badge-t">{status}</span>' in stat
+        row = html.split(f'data-wid="{rid}"', 1)[1].split("</div>", 1)[0]
+        assert look in row and f'<span class="uk-badge-t">{status}</span>' in row
+        assert "uk-badge--warn" not in stat + row
+
+
 def test_protected_trees_render_no_delete_controls(state):
     html = client.get("/runs").text
     protected = html.split('id="st-protected"', 1)[1].split("</section>", 1)[0]

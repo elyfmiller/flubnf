@@ -1529,7 +1529,7 @@ def badge(st: dict, claimed=False, queue: dict | None = None,
     if state == "paused":
         return ("warn", "paused")
     if state in ("stopped", "interrupted"):
-        return ("warn", state + part)
+        return ("neutral" if state == "stopped" else "warn", state + part)
     if state == "done":
         return ("ok", "done") if st["complete"] else ("warn", "done" + part)
     if state == "error":

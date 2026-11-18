@@ -19,9 +19,10 @@
  {{ dsup.box("forecast") }}
 </div>
 {% else %}
-{# a status word in a badge: the ledger's run statuses by kind #}
+{# a status word in a badge: the ledger's run statuses by kind; a stop is
+   the reader's own, said in quiet words #}
 {% set RUN_STATE = {"ok": "ok", "done": "ok", "running": "pending",
-                    "stopped": "warn", "interrupted": "warn", "partial": "warn"} %}
+                    "stopped": "neutral", "interrupted": "warn", "partial": "warn"} %}
 {# the live run, read once by the route (live_running) so the Running card
    and the Latest run card's status agree; a dataset page reads it here #}
 {% set running = live_running if live_running is defined else status.running %}
@@ -348,7 +349,7 @@
     {# no engine: Both runs the Groundhog alone, said before the run in the
        words the dataset form uses; a broken install fails Both at run
        time, so it is named instead #}
-    <p class="fc-under">{% if pf_state == "absent" %}{{ tips.badge("neutral", "Groundhog only: the particle-filter engine is not installed on this machine", id="fc-pf-off", icon_name="lock") }}{% else %}{{ tips.badge("warn", "Oracle SIHRS engine install incomplete", id="fc-pf-off", icon_name="lock") }}{% endif %}</p>
+    <p class="fc-under">{% if pf_state == "absent" %}{{ tips.badge("neutral", "Groundhog only: the particle-filter engine is not installed on this machine", id="fc-pf-off", icon_name="lock") }}{% else %}{{ tips.badge("warn", "Oracle SIHRS engine install incomplete", id="fc-pf-off") }}{% endif %}</p>
     {% else %}
     {% call tips.stats("uk-stats--kv fc-kv") %}
      {{- tips.stat("Engine", "Particle filter", id="fc-engine", after=(eb_after | trim if eb_beside else "")) -}}
@@ -594,10 +595,9 @@
   <div class="card fc-running">
    {% set stop %}<form method="post" action="/run/stop"
      onsubmit="this.querySelector('button').disabled=true"><button class="quiet">Stop run</button></form>{% endset %}
-   {# the heading says the run is running; the badge beside it shows only
-      while the run stops (the poll below) #}
-   {% set run_state %}<span id="fc-run-slot" hidden>{{ tips.badge("warn", "stopping", id="fc-run-state") }}</span>{% endset %}
-   {{ tips.heading("Running", "fc-running", after=run_state, aside=stop) }}
+   {# the heading says the run is running; while it stops, the progress
+      readout under it says so (the poll below), so no mark beside it #}
+   {{ tips.heading("Running", "fc-running", aside=stop) }}
    <p id="runlabel" class="runlabel">{{ status.run_label or "" }}</p>
    {{ tips.progress("Progress", none, text=status.phase or "starting", id="fc-prog") }}
    {# elapsed ticks client-side from the server's elapsed_s, re-anchored
@@ -767,8 +767,6 @@
            setStat('fc-fits', d.done+' of '+d.total);
            PS.disp=Math.max(PS.disp,3,100*d.done/d.total); progPct(PS.disp);
          }
-         const st=document.getElementById('fc-run-slot');
-         if(st) st.hidden=false;
          setStat('fc-left','--');
        }
        else if(!d.total) progText(d.phase||'starting');
