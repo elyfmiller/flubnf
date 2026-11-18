@@ -1,6 +1,6 @@
 # UI kit: explaining the console without paragraphs
 
-A page of the console should read as headings, labels, values, controls and badges. The explanations still matter, so they move into the interface: a "?" beside the thing it explains, a badge that states a status in a word, a unit beside a number, an empty state with one action. This page is the kit that does it, the rules for choosing a component, and the conventions for a tab's own styles.
+A page of the console should read as headings, labels, values and controls, with a mark only where something needs the reader's eye: a warning, a failure, work under way. Everything else is said in quiet words. The explanations still matter, so they move into the interface: a "?" beside the thing it explains, a status in a word, a unit beside a number, an empty state with one action. This page is the kit that does it, the rules for choosing a component, and the conventions for a tab's own styles.
 
 The kit is three files, shared by every tab:
 
@@ -19,9 +19,9 @@ Every loose explanatory sentence (a `p.hint` under a heading, a `.sub` line, a s
 | Decision | When | With |
 |---|---|---|
 | **MOVE** | the text explains something the reader may want to know | a "?" beside the thing: `tips.tip`, `tips.label`, `tips.heading`; a `tips.toggletip` when it holds links, a list or several lines |
-| **REPLACE** | a UI element can say it without prose | `tips.badge` for a status, `tips.stat` for a number and its unit, `tips.legend` for colors, `tips.empty` for "nothing here yet", `tips.reason_button` for "why is this off", `tips.stepper` for a sequence, `tips.meta` for a line of facts, a placeholder or a unit affix for a field |
+| **REPLACE** | a UI element can say it without prose | `tips.badge` for a status (a mark where it asks something of the reader, quiet words where it does not: "Before adding a mark"), `tips.stat` for a number and its unit, `tips.legend` for colors, `tips.empty` for "nothing here yet", `tips.reason_button` for "why is this off", `tips.stepper` for a sequence, `tips.meta` for a line of facts, a placeholder or a unit affix for a field |
 | **KEEP** | the user must act on it now: an error, a warning, a blocking problem, a due date | `tips.alert`, one short line, the details in its tip |
-| **DELETE** | it repeats what the page already shows | nothing |
+| **DELETE** | it repeats what the page already shows, in a sentence or in a mark | nothing |
 
 The target is at most one short visible line of prose per card, and usually none.
 
@@ -47,6 +47,31 @@ everything is hard to steer, so every new choice has to earn its place.
 - **Count what a change adds.** Every change lists the controls, fields,
   tabs and options it adds, with the reason for each, and looks for one
   to take away.
+
+## Before adding a mark
+
+A mark is a badge, a tag or a name chip. A page with a mark on every
+line has none that stands out, so a mark has to earn its place as a
+control does. Ask these of each one, in this order:
+
+- **Never repeat the neighbor.** If the heading, alert, progress bar,
+  value, option or sentence right beside it already says the same thing,
+  leave the mark out: "running" beside a card headed "Running", the same
+  mark on every row under a heading that carries it. The reader must
+  lose no fact, and a mark that is the only text naming a state stays.
+- **A normal state is said quietly.** A state that asks nothing of the
+  reader (ok, done, a count, a kind) is `ok`, `info` or `neutral`: the
+  word alone, muted. A warning that asks nothing where it stands
+  ("modified settings" in a list that only catalogues runs) is passed as
+  `neutral`, with the same words.
+- **One mark per fact.** A real warning, a failure or work under way
+  (`warn`, `error`, `pending`) is the one thing to notice on its heading,
+  row or line, and it is said once, where the reader acts on it. A status
+  slot that a page script updates keeps its element and its id in every
+  state.
+
+A mark is set in the line like text, with no outline, fill or pill:
+only something that can be pressed has an outline.
 
 ## Components
 
@@ -100,7 +125,7 @@ An "i" button that opens a panel on click (Enter or Space from the keyboard) and
 
 ### Badge: `tips.badge(state, text, tiptext="", id="", icon_name="")`
 
-A status in an icon and a word, never in color alone. `state` is `ok`, `warn`, `error`, `info`, `neutral` or `pending`; each has its own icon shape (check, triangle, octagon, circle, dot, clock), so the states differ in the color-vision mode and in grayscale too. With a tip, the "?" follows the badge, the two held together in one `uk-badge-pair` so a wrapping line never leaves the "?" on its own. It replaces status sentences ("the hub clone is up to date") and `.pill` spans that carry a state. A page script updates one in place with `FluBNFUI.setBadge(el, state, text)`.
+A status, set in the line like text with no outline, fill or pill. `state` is `ok`, `warn`, `error`, `info`, `neutral` or `pending`. A state that asks something of the reader (`warn`, `error`) or is under way (`pending`) is its icon and its word in the state's color, never color alone: each has its own icon shape (triangle, octagon, clock), so the three differ in the color-vision mode and in grayscale too. A state that asks nothing (`ok`, `info`, `neutral`) is the word alone, muted, with no icon: a confirmation, a count, a kind. The markup is the same for every state (the icon is in it and `ui-kit.css` hides it for the quiet three), so a script can turn one state into another; `icon_name` picks another icon for a state that shows one. With a tip, the "?" follows the badge, the two held together in one `uk-badge-pair` so a wrapping line never leaves the "?" on its own. Two marks side by side stand apart as the facts of a row do. A badge inside a link has its word underlined, since no outline says it can be pressed. A badge brings no ground of its own: on a filled surface (an alert, a tooltip, the chosen side of a switch, the open Model settings button) it takes that surface's text color, and a new filled surface that holds one states the same beside its own rule. It replaces status sentences ("the hub clone is up to date") and `.pill` spans that carry a state. A page script updates one in place with `FluBNFUI.setBadge(el, state, text)`.
 
 ```jinja
 {{ tips.badge("ok", "all reported") }}
@@ -126,7 +151,7 @@ What a card shows before it has content: an icon, one short title, and at most o
 
 ### Stats: `tips.stats(cls="", label="")` and `tips.stat(label, value, unit="", tiptext="", id="", state="", after="", tip_label="")`
 
-Labelled values. A sentence that strings facts together ("212 vintages, newest week 2026-09-20, 1,234 rows") becomes one stat per fact, each with its label, its unit and, where needed, its tip. `stats` is the definition list and takes the stats in a call block. `cls` picks the layout: tiles that wrap (default), `uk-stats--kv` (labels left, values right, one row per fact) or `uk-stats--row` (one compact line). `state` colors the value (`ok`, `warn`, `error`); say the state in a word too, with a badge in `after`. `id` lands on the value, for a script that updates it. The "?" is named from the label in lower case; `tip_label` names it where that would read wrong ("relWIS").
+Labelled values. A sentence that strings facts together ("212 vintages, newest week 2026-09-20, 1,234 rows") becomes one stat per fact, each with its label, its unit and, where needed, its tip. `stats` is the definition list and takes the stats in a call block. `cls` picks the layout: tiles that wrap (default), `uk-stats--kv` (labels left, values right, one row per fact) or `uk-stats--row` (one compact line). `state` colors the value (`ok`, `warn`, `error`); say the state in a word too, with a badge in `after`. A value that is itself a badge reads as a value: in the ink when its state is quiet, behind its icon in the state's color when it is not. `id` lands on the value, for a script that updates it. The "?" is named from the label in lower case; `tip_label` names it where that would read wrong ("relWIS").
 
 ```jinja
 {% call tips.stats("uk-stats--kv") %}
@@ -193,7 +218,7 @@ A row of facts, each an icon and a value, instead of a "run 2026-09-20 · on dat
 
 ### Tag: `tips.tag(text, cls="")`
 
-A kind or a unit in a word ("Mechanistic", "relWIS", "population"): an outlined, muted pill with no icon, because it states no status. A status is a badge; a count beside a heading is a neutral badge ("3 entries").
+A kind or a unit in a word ("Mechanistic", "relWIS", "population"): plain muted text with no outline and no icon, because it states no status. A status is a badge; a count beside a heading is a neutral badge ("3 entries"), which reads the same.
 
 ```jinja
 {{ tips.heading("Measured performance", "home-perf", tip, after=tips.tag("relWIS")) }}
@@ -201,7 +226,7 @@ A kind or a unit in a word ("Mechanistic", "relWIS", "population"): an outlined,
 
 ### Name chip: `tips.namechip(text, id, tiptext="", tip_label="")`
 
-The short name of the formula or figure beside it: an equation's caption becomes a named chip. Put the formula and its chip in a `<p class="uk-figline">`, a centered line under a figure (it also centers a badge about the figure, such as the caption badge that carries a figure's illustrative values). The equation's note sits in plain sight on the line under it, a `<p class="eqnote md-eqnote">`, not behind a "?" (`diagrams.html`'s `_eq`). A chip with no `tiptext` has no "?"; give it one only for a reading that has no line of its own.
+The short name of the formula or figure beside it: an equation's caption, as plain muted words with no outline (the macro keeps the name "chip"). Put the formula and its chip in a `<p class="uk-figline">`, a centered line under a figure (it also centers a badge about the figure, such as the caption badge that carries a figure's illustrative values). The equation's note sits in plain sight on the line under it, a `<p class="eqnote md-eqnote">`, not behind a "?" (`diagrams.html`'s `_eq`). A chip with no `tiptext` has no "?"; give it one only for a reading that has no line of its own.
 
 ```jinja
 <p class="uk-figline"><span class="math">...</span>
@@ -257,19 +282,20 @@ Each tab's own rules live in `app/ui/static/tabs/<tab>.css` (`home`, `data`, `fo
 {% block head %}<link rel="stylesheet" href="/static/tabs/data.css">{% endblock %}
 ```
 
-A partial that renders on another tab's page (the upload box is on Data, Forecast and Retrospective) links its owner's sheet itself; a `<link>` in the body is valid and the browser loads the file once. So every rule in a tab sheet is scoped by the tab's class prefix (`hm-`, `dt-`, `fc-`, `out-`, `rt-`, `st-`, `md-`, `mt-`, `sb-`) and never styles a bare element or a kit class. A sheet a tab does not need is deleted. `nau.css` keeps the tokens, the themes and the shared layout; a tab edits it only to delete rules that only it used.
+A partial that renders on another tab's page (the upload box is on Data, Forecast and Retrospective) links its owner's sheet itself; a `<link>` in the body is valid and the browser loads the file once. So every rule in a tab sheet is scoped by the tab's class prefix (`hm-`, `dt-`, `fc-`, `out-`, `rt-`, `st-`, `md-`, `mt-`, `sb-`) and never styles a bare element or a kit class. A sheet a tab does not need is deleted. `nau.css` keeps the tokens, the themes and the shared layout; a tab edits it only to delete rules that only it used. A tab's own count or kind that is not a control (Forecast's locations count, a changed setting's words, the ledger's facts) takes the look of a quiet mark: plain words with no outline, fill or pill.
 
 Colors come only from the `nau.css` tokens (`var(--ink)`, `var(--ok)`, a `color-mix()` of two tokens; the table of tokens is under "Display settings" in [app/ui/README.md](../app/ui/README.md)), never a literal, so a rule works in every theme, in high contrast and in the color-vision mode; `app/tests/test_ui_kit.py` holds the tab sheets and the kit to that. Sizes are in `rem`, `em` and the type tokens (`--fs-label`, `--fs-hint`), so they follow the text size, which runs from 80% to 160% of the root.
 
 ## Accessibility contract
 
 - Every tip, toggletip and reason is reachable by keyboard and named for a screen reader; Escape closes what is open.
-- Status is never color alone: a badge has an icon shape and a word, a stepper speaks each step's state, a legend names each swatch.
+- Status is never color alone: a mark that wears a state's color (a warning, a failure, work under way) is an icon shape and a word in that color, a quiet word uses no state color, a stepper speaks each step's state, a legend names each swatch.
+- Only what can be pressed has an outline: a button, a switch, a "?" or an "i". A badge, a tag and a name chip have none, and a status that is a link is underlined.
 - Hit targets: the "?" and "i" buttons are drawn at 1.1rem, and their clickable ring reaches 24px at the standard text size.
-- Measured in `app/tests/test_ui_kit.py` in every theme, with and without high contrast and the color-vision mode: a badge's word on the card, an alert's text on its tint, and the current step's number hold 4.5:1; an alert's icon holds 3:1.
+- Measured in `app/tests/test_ui_kit.py` in every theme, with and without high contrast and the color-vision mode: a mark's word (each state color and the muted color) on the card and on the page ground, the text a mark takes on a filled surface, an alert's text on its tint, and the current step's number hold 4.5:1; an alert's icon holds 3:1.
 
 ## Where the kit does not reach
 
 - The weekly report (`app/core/report_v2.py`) is a standalone file that carries the kit inside it: `app/core/html_page.py` inlines nau.css's tip rules and `ui-kit.css` (`kit_css`), `tips.js` (`kit_js`), the DM Sans faces and the theme marks, and renders the `_tips.html` macros from Python (`kit_macros`). A change to any of those files makes stored reports stale, so they are rebuilt from their inputs bundle when next served.
-- The season report is the season page itself (`retro_season.html` and `base.html` rendered with `export`, `app/ui/season_export.py`): every stylesheet and script the page loads, the kit included, is written into the file by `inline_static`, with fonts and marks as data URIs. Kit markup there works as on the page. The public site is a standalone page that loads neither `ui-kit.css` nor `tips.js`, so markup `app/core/runs.py`'s settings renderer writes must read without the kit.
+- The season report is the season page itself (`retro_season.html` and `base.html` rendered with `export`, `app/ui/season_export.py`): every stylesheet and script the page loads, the kit included, is written into the file by `inline_static`, with fonts and marks as data URIs. Kit markup there works as on the page. The public site is a standalone page that loads neither `ui-kit.css` nor `tips.js`, so markup `app/core/runs.py`'s settings renderer writes must read without the kit. A quiet badge's icon is hidden by `ui-kit.css`, not left out of the markup, so a page without the sheet would draw it: Methods prints a status as plain "(text)" there (its `status` macro), and `app/core/site_page.py` draws a tag as muted text.
 - The public site renders `methods.html`'s content block through the console's Jinja env with only `diagrams.html` imported (`app/core/site_build.py` `harvest_methods`), and reads the first `class="perf"` table of `home.html` (`harvest_placement`). Import `_tips.html` inside Methods' content block, keep that table's markup, and run `app/tests/test_site_build.py` after changing either page.

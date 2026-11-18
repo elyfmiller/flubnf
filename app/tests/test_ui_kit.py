@@ -836,6 +836,27 @@ def test_the_doc_covers_every_macro_and_is_indexed():
         assert m in MACROS, f"{m} is not in the test's list"
 
 
+def test_the_doc_says_when_a_mark_earns_its_place():
+    # beside "Before adding a control": the questions asked of every mark
+    a = DOC.index("## Before adding a control")
+    b = DOC.index("## Before adding a mark")
+    c = DOC.index("## Components")
+    assert a < b < c
+    section = DOC[b:c]
+    for rule in ("Never repeat the neighbor", "A normal state is said quietly",
+                 "One mark per fact"):
+        assert f"**{rule}.**" in section, rule
+    for state in STATES:
+        assert f"`{state}`" in section, state
+    # and the page describes the look the sheet draws
+    contract = DOC.split("## Accessibility contract", 1)[1].split("\n## ", 1)[0]
+    assert "Only what can be pressed has an outline" in contract
+    assert "on the card and on the page ground" in contract
+    for gone in ("outlined, muted pill", "a badge's word on the card,",
+                 "becomes a named chip"):
+        assert gone not in DOC, gone
+
+
 def test_tab_stylesheets_use_tokens_only():
     for css in sorted((UI / "static" / "tabs").glob("*.css")):
         body = re.sub(r"/\*.*?\*/", "", css.read_text(), flags=re.S)
