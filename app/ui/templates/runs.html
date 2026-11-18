@@ -72,8 +72,10 @@
  <tr data-st="{{ r.status }}"{% if r.research %} data-research{% endif %}{% if r.modified %} data-modified{% endif %} data-find="{{ r.asof }} {{ r.run_id[:8] }} {{ r.run_id[:4] }}-{{ r.run_id[4:6] }}-{{ r.run_id[6:8] }} {{ r.label }}"><td class="st-run"><a href="/runs/{{ r.run_id }}">{% for part in r.parts %}<span class="st-nw">{{ part }}{{ " ·" if not loop.last }}</span>{{ " " if not loop.last }}{% endfor %}</a>
  {# research badge (the spec asked for the third member) #}
  {%- if r.research %} {{ tips.badge("info", "research") }}{% endif %}
- {# model settings off the default ones (a knobs record in the spec) #}
- {%- if r.modified or kf %} {{ tips.badge("warn", "modified · hub names" if hub_names else "modified settings") }}{% endif %}</td>
+ {# model settings off the default ones (a knobs record in the spec),
+    in quiet words: the ledger lists the runs, and a run's own page
+    carries the warning #}
+ {%- if r.modified or kf %} {{ tips.badge("neutral", "modified · hub names" if hub_names else "modified settings") }}{% endif %}</td>
  <td class="st-stat">{% if r.status == "interrupted" %}{{ tips.badge("warn", r.status, "The app was closed mid-run.", id="st-int-" ~ ri) }}{% else %}{{ tips.badge(ST.get(r.status, "error"), r.status) }}{% endif %}</td>
  {% set elapsed = r.elapsed_s | hms %}
  <td class="elapsed">{% if elapsed == "--" %}<span title="{{ NO_ELAPSED.get(r.status, "recorded before timing existed") }}">--</span>{% else %}{{ elapsed }}{% endif %}</td>
@@ -297,7 +299,7 @@
  <div class="st-row" data-wid="{{ w.id }}">
   <span class="st-title"><strong><a href="/runs/{{ w.id }}">{{ w.label }}</a></strong>
    {%- if w.research %} {{ tips.badge("info", "research") }}{% endif %}
-   {%- if w.modified %} {{ tips.badge("warn", "modified settings") }}{% endif %}
+   {%- if w.modified %} {{ tips.badge("neutral", "modified settings") }}{% endif %}
    {%- if w.busy %} {{ tips.badge("pending", "running now") }}
    {%- elif w.status and w.status != "ok" %} {{ tips.badge(ST.get(w.status, "error"), w.status) }}{% endif %}</span>
   {% set items = [] %}
@@ -397,11 +399,11 @@
  {# listed, never counted in the total: the tag says so where it applies #}
  {{ tips.heading("Protected", "st-protected", level=3, after=count(storage.protected | length) ~ " " ~ tips.tag("not in the total"), cls="st-h", tip_label="protected trees") }}
  {% for p in storage.protected %}
- {# never deletable here; the server refuses crafted requests too #}
+ {# never deletable here; the server refuses crafted requests too. The
+    heading says protected, so no row says it again #}
  <div class="st-row">
   <span class="st-title"><strong>{{ p.label }}</strong></span>
   <span class="st-size">{{ p.size_h }}</span>
-  <span class="st-act">{{ tips.badge("neutral", "protected", icon_name="lock") }}</span>
  </div>
  {% endfor %}
  </section>
@@ -426,7 +428,7 @@
   {{ tips.meta(ec_meta) }}
   <span class="st-size">{{ ec.size_h }}</span>
   {% if ec.protected %}<span class="st-act">{{ tips.badge("neutral", "protected", icon_name="lock") }}</span>
-  {% elif ec.linked %}<span class="st-act">{{ tips.badge("neutral", "linked", icon_name="external") }}</span>
+  {% elif ec.linked %}{# no Delete, and no word here: the fact line above says it is a link #}
   {% elif ec.busy %}{{ busy_act("st-ec-1", ec.why, "the engine cache") }}
   {% else %}{{ del_form("/storage/delete", "engine-cache", ec.id, "the engine cache", ec.size_h, "The engine compiles each model again on its next fit, which takes a little longer once. No forecast, score or report changes.") }}{% endif %}
  </div>
@@ -451,8 +453,9 @@
     total; Delete is Ely's way to take a queued one out of the queue.
     Elsewhere this block writes not a byte #}
  <section class="st-sec" aria-labelledby="h-st-stu">
- {{ tips.heading("Student experiments", "st-stu", level=3, after=count(su.rows | length) ~ " " ~ tips.tag("not in the total"), cls="st-h") }}
- {# the section's note in plain sight, not a "?" #}
+ {{ tips.heading("Student experiments", "st-stu", level=3, after=count(su.rows | length), cls="st-h") }}
+ {# the section's note in plain sight, not a "?"; it ends with what the
+    other sections' tag says, not in the total #}
  <p class="hint" id="st-stu-hint">Each student's experiments, by folder (~/Students/&lt;name&gt;/sandbox); the runner replays them one at a time. A week's forecasting samples are dropped once its quantiles are checked. Delete removes an experiment's folder and takes it out of the queue; its model stays in the student's library. Not in the total: the folders belong to the students' clones.</p>
  {% if su.down %}{{ tips.alert("warn", su.why, title="The runner is not running.", id="st-stu-down") }}{% else %}{{ tips.meta(su.runner) }}{% endif %}
  {% for e in su.rows %}

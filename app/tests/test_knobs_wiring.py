@@ -573,10 +573,22 @@ def test_old_ledger_rows_are_never_marked_modified(tmp_path, monkeypatch):
     orow = html.split(f'href="/runs/{oid}"', 1)[1].split("</tr>", 1)[0]
     nrow = html.split(f'href="/runs/{nid}"', 1)[1].split("</tr>", 1)[0]
     assert "modified settings" not in orow
-    assert ('uk-badge--warn' in nrow
+    # quiet words in the ledger, which only lists the runs (the run's own
+    # page carries the warning)
+    assert ('<span class="uk-badge uk-badge--neutral" data-state="neutral">'
+            in nrow and 'uk-badge--warn' not in nrow
             and '<span class="uk-badge-t">modified settings</span>' in nrow)
     page = client.get(f"/runs/{nid}").text
-    assert 'id="modified-note"' in page and "non-hub name" in page
+    assert 'id="modified-note"' in page
+    # the title carries the one warning; the card's value names the files,
+    # with no "non-hub name" mark after it
+    head = page.split('<div class="fc-runhead">', 1)[1].split("</div>", 1)[0]
+    assert ('uk-badge--warn' in head
+            and '<span class="uk-badge-t">modified settings</span>' in head)
+    note = page.split('id="modified-note"', 1)[1].split("</dl>", 1)[0]
+    assert ('<span class="uk-stat-v" id="run-mod-name"><code>&lt;hub id&gt;'
+            '-modified</code></span>') in note
+    assert "non-hub name</span>" not in page
     assert 'id="modified-note"' not in client.get(f"/runs/{oid}").text
 
 

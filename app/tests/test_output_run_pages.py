@@ -246,6 +246,25 @@ def test_the_run_page_lists_files_as_output_does(root):
     assert 'href="/static/tabs/output.css"' in page
 
 
+def test_a_modified_run_is_marked_once_on_its_page_and_quietly_in_storage(
+        root):
+    from app.core import knobs as K
+    rid = _run(root, "2098-01-03", [GH + "-modified"],
+               extra=K.write_extra({"pf.particles": 2000}, {}))
+    page = client.get(f"/runs/{rid}").text
+    head, subs = page.split('class="card fc-subs"', 1)
+    # the title carries the warning; the file under it is named -modified
+    # and says it no second time
+    assert head.count('<span class="uk-badge-t">modified settings</span>') == 1
+    assert f"<b>{GH}-modified</b>" in subs
+    assert "modified settings</span>" not in subs
+    # Storage's row for the run says it in quiet words
+    row = client.get("/storage").text.split(f'data-wid="{rid}"', 1)[1] \
+        .split("</div>", 1)[0]
+    assert '<span class="uk-badge-t">modified settings</span>' in row
+    assert "uk-badge--warn" not in row
+
+
 def test_the_medians_are_one_table_by_hub_horizon(root):
     rid = _run(root, "2098-01-03", [GH])
     page = client.get(f"/runs/{rid}").text

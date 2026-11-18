@@ -205,9 +205,11 @@ def test_protected_trees_render_no_delete_controls(state):
     assert ">Protected</h3>" in protected
     assert "<form" not in protected
     assert "data-del-storage" not in protected
-    # each tree says so with a badge (lock icon and word), not a button
-    assert protected.count('<span class="uk-badge-t">protected</span>') \
-        == protected.count('class="st-row"') == 2      # seal and hub
+    # the heading says protected for both trees: no row repeats it, and
+    # none has a button or an action slot
+    assert protected.count('class="st-row"') == 2      # seal and hub
+    assert '<span class="uk-badge-t">protected</span>' not in protected
+    assert 'class="st-act"' not in protected
     # the section's count is the kit's neutral badge, as on other tabs
     assert '<span class="uk-badge-t">2 entries</span>' in protected
 
@@ -632,7 +634,11 @@ def test_the_runner_computer_lists_student_experiments_by_folder(state,
     stu = _stu(fold)
     assert ">Student experiments</h3>" in stu
     assert '<span class="uk-badge-t">3 entries</span>' in stu
-    assert '<span class="uk-tag">not in the total</span>' in stu
+    # outside the total: the note under the heading says so, and no tag
+    # on the heading says it a second time
+    assert ("Not in the total: the folders belong to the students' "
+            "clones.</p>") in stu
+    assert '<span class="uk-tag">not in the total</span>' not in stu
     assert ('<ul class="uk-meta"><li>The runner: idle</li><li>412.0 GB free '
             '· FluBNF keeps 20.0 GB free</li></ul>') in stu
     assert 'id="st-stu-down"' not in stu

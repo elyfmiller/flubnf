@@ -58,7 +58,7 @@
   {{ tips.stat("Files named", "hub names, by override", id="run-mod-name") }}
   {{ tips.stat("Reason", ("<q>" | safe) ~ override ~ ("</q>" | safe), id="run-mod-why") }}
  {% else %}
-  {{ tips.stat("Files named", "<code>&lt;hub id&gt;-modified</code>" | safe, id="run-mod-name", after=tips.badge("warn", "non-hub name")) }}
+  {{ tips.stat("Files named", "<code>&lt;hub id&gt;-modified</code>" | safe, id="run-mod-name") }}
  {% endif %}
  {% if modified_digest %}{{ tips.stat("Digest", ("<code>" | safe) ~ modified_digest ~ ("</code>" | safe), id="run-mod-digest") }}{% endif %}
  {% endcall %}
@@ -138,16 +138,16 @@
 {% if not dataset and not live %}
 {# each file as Output shows it (_filerow.html): the hub checks, the
    coverage, Download, Show in folder and the copy buttons; the Oracle
-   SIHRS first, as there #}
+   SIHRS first, as there. A -modified file is named so and the title
+   carries "modified settings", so no row says it again #}
 <div class="card fc-subs">{{ tips.heading("Submission files", "run-subs") }}
 {% set archived = subs | selectattr("archived") | list %}
 {% set current = subs | rejectattr("archived") | list %}
 {% for s in current %}
  {% if s.submittable or s.modified %}{% set fi = loop.index %}
- {% set tag %}{% if s.modified and not s.submittable %}<span class="out-bt">{{ tips.badge("warn", "modified settings", id="run-sub-mod-" ~ fi) }}</span>{% endif %}{% endset %}
  {% set status %}{% if s.check_head %}{{ fr.checks(s.check_ok, s.check_head, s.problems, "run-chk-" ~ fi) }}{% endif %}
  {% if s.cov %}<div class="out-cov">{{ covm.line(s.cov) }}</div>{% endif %}{% endset %}
- {{ fr.filerow(s.model, s.name, s.path, tag=tag, status=status, validate=(validator_command(s.path) if s.submittable else "")) }}
+ {{ fr.filerow(s.model, s.name, s.path, status=status, validate=(validator_command(s.path) if s.submittable else "")) }}
  {% endif %}
 {% endfor %}
 {% if not current and not archived %}{{ tips.empty("No submission files", "folder", id="run-nosubs", compact=True) }}{% endif %}
@@ -161,7 +161,7 @@
 {% if archived %}
 {% call tips.fold("Archived files (" ~ archived | length ~ ")", id="run-archived", cls="fc-archived", after=tips.tag("retired hub names")) %}
  <ul class="fc-filelist">
- {% for s in archived %}<li>{{ s.model }} {{ tips.badge("neutral", "archived") }}<br><code>{{ s.name }}</code></li>{% endfor %}
+ {% for s in archived %}<li>{{ s.model }}<br><code>{{ s.name }}</code></li>{% endfor %}
  </ul>
 {% endcall %}
 {% endif %}

@@ -267,12 +267,15 @@ def test_a_modified_runs_badge_says_whether_it_took_the_hub_names():
                     "submissions": ["a.csv"]})
     row = over.split('href="/runs/r1"', 1)[1].split("</tr>", 1)[0]
     assert '<span class="uk-badge-t">modified · hub names</span>' in row
+    # quiet words: the ledger lists the runs, it warns of none
+    assert "uk-badge--warn" not in row
     summary = row.split('class="st-sumcell"', 1)[1]
     assert "modified" not in summary and "tipbtn" not in row
     plain = _ledger({"knobs": {}, "submissions": ["a.csv"]})
     row = plain.split('href="/runs/r1"', 1)[1].split("</tr>", 1)[0]
     assert '<span class="uk-badge-t">modified settings</span>' in row
     assert row.count("modified settings") == 1
+    assert "uk-badge--warn" not in row
 
 
 def test_a_ledger_dash_says_why_in_its_title():

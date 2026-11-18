@@ -185,8 +185,9 @@ def test_an_old_folder_is_named_by_its_model_and_archived(
     try:
         html = client.get(f"/runs/{RID}").text
         rest, block = _archived_block(html)
-        # the record wears an "archived" badge (a word, not color alone)
-        assert label in block and '<span class="uk-badge-t">archived</span>' in block
+        # the fold's summary says archived, in words; no row repeats it
+        assert label in block and "Archived files (1)" in block
+        assert '<span class="uk-badge-t">archived</span>' not in block
         assert f.name in block                         # the record, readable
         assert old not in rest                         # never as a model
         assert _download_targets(html) == []
