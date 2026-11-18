@@ -6,6 +6,42 @@ and CDC's rules. The season's facts are in
 
 ## Now
 
+- 2026-11-18 (20:05 UTC): ROUND 2026-11-21 REVIEWED (Ely's two files,
+  -modified; Oracle 833200f2..., Groundhog 1885af7e...; 53 locations and
+  4,876 rows each). Run record (Ely's second report, -modified,
+  0e97eab0...; the first upload was a 2025-11-22 replay's report):
+  reference date 2026-11-21, data through Nov 14; replicates 3,
+  particles 10,000; Groundhog donors flusurv@06eff6a7, own-state 0.50,
+  size-matched (new words in the report, not a new setting: the kernel
+  is at dcef8bee too); Oracle step on, weight 0.25; narrowing 0.7; cap
+  10, shrink, larger; app build 2a540a34; pybnf 1.8.1, PyBNF 8410f794.
+  Run time 35 min 55 s (14 min 38 s last round).
+  - Checks 1-5 (tools/check_pair.sh): hub check GREEN for both;
+    population check 0 over and 0 near misses (largest 0.219 and 0.154
+    of the limit, popn_frac 0.005); gate PASS (h3 typical 11.0x and
+    10.9x the three-week mean, max 15x); no red flag; flat or higher in
+    all 53 for both (the Oracle's Hawaii a note: 73, 85, 98, 120 against
+    76); every h3 97.5% at or under 10x the larger level (US 115,130 for
+    both). Seed stages: LA and NV newly on the old pin.
+  - The medians run ahead of the data. US weeks 8,711, 10,112, 11,513
+    (1.21 a week over three weeks, 1.14 last week); implied weekly
+    growth from last week to h3: Oracle 1.32, Groundhog 1.39 (US h3
+    35,415 and 43,467). States: observed 1.24 (three weeks) and 1.11
+    (last week); implied Oracle 1.28, Groundhog 1.40, the Groundhog
+    about 1.4 in the 17 states that fell last week too (Idaho 51, 51, 17
+    to an h3 of 77; Illinois 219, 140 to 550). The two models' h3
+    medians more than 1.5x apart in 22 states, the Groundhog higher in
+    all.
+  - The field so far (11 teams, all after the data): US h3 field median
+    22,062; Oracle 1.61x, Groundhog 1.97x (above every team). By state at
+    h3, typical Oracle 1.23x (16 above 1.5x, 5 below 1/1.5, all of them
+    states that fell), Groundhog 1.59x (29 above, none below). At h0 both
+    in line (0.94x, 1.02x).
+  - The lower half evened (scripts/even_lower.py, per horizon) would put
+    the h3 2.5% quantile above last week's count in 39 of 52 states for
+    the Groundhog (Illinois 178 against 140, Maine 85 against 36) and
+    11 for the Oracle. This week the lower half is what carries a
+    plateau; this lane recommends no evening this round.
 - 2026-11-18 (19:26 UTC): THE SHRINK IS STILL ABOVE THE MEDIAN ONLY
   (Ely asked, while round 2026-11-21 runs). flubnf/tailcap.py on main
   and dev has the modes clip and shrink; no lower-half mode was built.
