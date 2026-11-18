@@ -94,7 +94,8 @@
     {% elif r.status == 'running' %}{{ tips.badge("pending", "running") }}
     {% elif r.status in ('error', 'interrupted') %}{{ tips.badge("error", r.status) }}
     {% else %}{{ tips.badge("neutral", r.status) }}{% endif %}
-    {% if r.modified %}{{ tips.badge("warn", "modified settings") }}{% endif %}
+    {# a row in a list of replays: said in quiet words, not as a warning #}
+    {% if r.modified %}{{ tips.badge("neutral", "modified settings") }}{% endif %}
     {% set fx = namespace(items=[("", r.kind), ("", r.done ~ "/" ~ r.total ~ " weeks")]) %}
     {% for m, v in r.rels.items() %}{% set t %}{{ dr.names.get(m, m) }} relWIS <span class="{{ 'ok' if v < 1 else 'bad' }}">{{ "%.3f"|format(v) }}</span>{{ tips.icon("check" if v < 1 else "warning", "beats the baseline" if v < 1 else "does not beat the baseline", cls="rt-verdict " ~ ("uk-c-ok" if v < 1 else "uk-c-error")) }}{% endset %}{% set fx.items = fx.items + [("", t)] %}{% endfor %}
     <div class="rt-meta">{{ tips.meta(fx.items, label="Replay facts") }}</div></div>

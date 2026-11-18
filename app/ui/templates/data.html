@@ -26,8 +26,9 @@
    {% if live_week %}
    {# the data's age beside it (routes/data.py _data_age): a badge, warn
       once a round's data is overdue; a week the archive has not caught
-      up with says where real-time runs read it #}
-   {% set newer %}{% if live_age %}{{ tips.badge(live_age.state, live_age.text if live_age.text == "today" else live_age.text ~ " old", id="live-age") }}{% endif %}{% if live_newer %}{{ tips.badge("warn", "not archived · target-data", id="live-newer") }}{% endif %}{% endset %}
+      up with says where real-time runs read it, in quiet words (nothing
+      on this card acts on it) #}
+   {% set newer %}{% if live_age %}{{ tips.badge(live_age.state, live_age.text if live_age.text == "today" else live_age.text ~ " old", id="live-age") }}{% endif %}{% if live_newer %}{{ tips.badge("neutral", "not archived · target-data", id="live-newer") }}{% endif %}{% endset %}
    {{ tips.stat("Data through", nw(live_week), id="live-week", after=newer) }}
    {% elif n_vintages %}
    {# no target-data file yet, but the archive holds weeks: the row says
@@ -127,13 +128,14 @@
 {% if ds or vintages or view_note %}
 <div class="card" id="browser">
  {% if ds %}
- {# one of your datasets in the browser's place: its kind as a badge, the
-    pages that use it at the right #}
- {% set dsb %}{% if ds.vintage_true %}{{ tips.badge("ok", "vintage-true", id="ds-kind") }}{% else %}{{ tips.badge("warn", "final data", id="ds-kind") }}{% endif %}{% endset %}
+ {# one of your datasets in the browser's place: its kind in quiet words
+    (nothing is forecast or scored here; the replay form and a run's page
+    carry the final-data mark), the pages that use it at the right #}
+ {% set dsb %}{% if ds.vintage_true %}{{ tips.badge("ok", "vintage-true", id="ds-kind") }}{% else %}{{ tips.badge("neutral", "final data", id="ds-kind") }}{% endif %}{% endset %}
  {% set dsa %}<a class="btn quiet dt-act" href="/forecast?source={{ ds.id }}">Forecast it</a><a class="btn quiet dt-act" href="/retro?dataset={{ ds.id }}">Replay it</a><a class="dt-back" href="/data">Back to the FluSight hub</a>{% endset %}
  {{ tips.heading(ds.name, "ds-browse", "Each group's series as stored. " ~ ("Pick a snapshot to see the data as it stood on that as_of." if ds.vintage_true else "The upload had no as_of column, so this is the final data; forecasts and replays on it are not vintage-true."), after=dsb, aside=dsa, tip_label="this view") }}
  {% else %}
- {{ tips.heading("Vintage browser", "vb", after=tips.badge("neutral", "read-only", icon_name="lock")) }}
+ {{ tips.heading("Vintage browser", "vb") }}
  {% endif %}
  {% if view_note %}{{ tips.alert("warn", view_note, id="vb-note", live="") }}{% endif %}
  {# plain GET form (shareable URL), no auto-submit: a scripted submit

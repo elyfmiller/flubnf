@@ -451,10 +451,12 @@ def test_update_data_moves_the_forecast_date_to_the_new_week(tmp_path, monkeypat
     # the line shows: the typed day is its own anchor, but the badge has
     # something to say
     assert 'id="anchor-line" aria-live="polite">' in page
+    # the Data tab says the same of the week in quiet words, not as a
+    # warning: nothing on the hub card acts on it
     dpage = client.get("/data").text
     assert (f'<span class="uk-stat-v" id="live-week"><span class="dt-nw">{W3}'
             '</span></span> <span class="uk-badge '
-            'uk-badge--warn" id="live-newer" data-state="warn">') in dpage
+            'uk-badge--neutral" id="live-newer" data-state="neutral">') in dpage
     assert dpage.split('id="live-newer"')[1].split("</span></span>")[0] \
         .endswith('<span class="uk-badge-t">not archived · target-data')
     assert 'id="tip-live-newer"' not in dpage

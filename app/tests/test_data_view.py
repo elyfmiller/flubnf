@@ -211,6 +211,10 @@ def test_data_page_stays_read_only(archive):
     assert 'action="/freshness"' in html and 'action="/data/pull"' in html
     assert 'action="/data/datasets#datasets"' in html
     assert 'method="get" action="/data"' in html
+    # the browser's heading is its name alone: "browser" and the GET form
+    # say it, with no "read-only" mark after the title
+    assert '<h2 id="h-vb">Vintage browser</h2></div>' in html
+    assert '<span class="uk-badge-t">read-only</span>' not in html
 
 
 def test_vintage_scans_are_ttl_cached():
