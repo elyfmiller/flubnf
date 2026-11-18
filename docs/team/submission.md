@@ -6,6 +6,15 @@ and CDC's rules. The season's facts are in
 
 ## Now
 
+- 2026-11-18 (20:22 UTC): ROUND 2026-11-21 (EW46) COMMITTED TO THE FORK
+  (Ely: "go, drop Hawaii and Puerto Rico from the groundhog"). Branch
+  FluBNF_submission fast-forwarded to cdcepi main 6563e621, then
+  04659561 (pushed; 65250bf6..04659561): the Oracle as uploaded, 53
+  locations, 4,876 rows (833200f2...); the Groundhog without Hawaii (15)
+  and Puerto Rico (72), 51 locations, 4,692 rows. No evening of the
+  lower half this round. Checks on the committed pair: hub check GREEN,
+  population check 0 over, gate PASS, no red flag, flat or higher. Ely
+  opens the hub pull request; due 23:00 ET tonight.
 - 2026-11-18 (20:20 UTC): ROUND 2026-11-21'S INDEPENDENT REVIEW (Ely's
   request; a separate agent given the files and the data, not this
   lane's reading; scratchpad round-2026-11-21/review2/review.md).
