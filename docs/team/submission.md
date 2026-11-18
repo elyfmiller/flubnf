@@ -4387,6 +4387,39 @@ and CDC's rules. The season's facts are in
 
 ## Open
 
+- 2026-11-18 (19:29 UTC, Ely): THE WIDTHS ARE CALIBRATED IN PART, AFTER
+  THE FACT. Ely: still uneven bands are "an obvious indication that we're
+  only partly calibrating our forecast widths after the fact." What the
+  submitted files show (rounds 10-17 to 11-14, state cells, truth
+  through 11-14):
+  - On the log scale the 95% band is even without the cap (Oracle
+    below/above the median 0.97-1.08 on 10-17 and 10-24) and uneven with
+    it, the bottom wider: 1.6-1.7 (10-31), 2.0-2.2 (11-07), 1.4-1.6
+    (11-14, the larger level). The Groundhog: 0.7-1.0 uncapped, 1.3-1.8
+    on 11-14. The level ended the inversion in admissions, not the
+    unevenness on the log scale.
+  - Each side's calibration (share of the truth outside each quantile;
+    ideal 2.5, 10, 25 | 25, 10, 2.5): Oracle, 705 cells, 0.7, 2.1, 8.1 |
+    23.5, 7.1, 2.1; capped rounds only (293): 1.4, 4.1, 14.7 | 28.0,
+    10.9, 3.8. Groundhog, 722: 0.3, 1.1, 10.7 | 22.4, 5.8, 1.4; capped
+    (306): 0.7, 2.0, 14.1 | 24.2, 8.5, 2.3. The lower half is too wide;
+    the upper half is about right, a little narrow since the cap. The
+    narrowing (0.7, both halves alike on the log scale) and the cap
+    (top only) do not aim at that.
+  - Caveats: five rounds, all in the rise; cells within a week move
+    together, so far fewer than 705 independent draws; a falling phase
+    tests the lower half and may want it.
+  - Proposed, for Ely: one recalibration in place of narrowing plus cap:
+    per horizon, a log-scale scale for each half (and perhaps a shift
+    of the median), fitted to where the truth fell on the replays, and
+    perhaps by phase (rising or falling); the cap kept only as the
+    plausibility guard. Screened by the Model lane on its three seasons
+    (17,116 state cells), pre-registered, before any change to a
+    submitted file. Not for round 2026-11-21: no knob narrows one half,
+    and nothing changes on the deadline day without a screen. The
+    lasting fix is in the forecasting sample itself (the Liu-West
+    filter's spread, the Oracle step), the students' mechanistic work
+    among it.
 - 2026-11-12 (Submission, from Ely's question): THE REPORT'S h3 97.5%
   FIGURE STILL DIVIDES BY THE 3-WEEK MEAN. app/core/report_grid.py
   tail_ratios uses flubnf.tailcap.recent_level (the mean) whatever
