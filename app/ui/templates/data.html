@@ -135,7 +135,7 @@
  {% set dsa %}<a class="btn quiet dt-act" href="/forecast?source={{ ds.id }}">Forecast it</a><a class="btn quiet dt-act" href="/retro?dataset={{ ds.id }}">Replay it</a><a class="dt-back" href="/data">Back to the FluSight hub</a>{% endset %}
  {{ tips.heading(ds.name, "ds-browse", "Each group's series as stored. " ~ ("Pick a snapshot to see the data as it stood on that as_of." if ds.vintage_true else "The upload had no as_of column, so this is the final data; forecasts and replays on it are not vintage-true."), after=dsb, aside=dsa, tip_label="this view") }}
  {% else %}
- {{ tips.heading("Vintage browser", "vb") }}
+ {{ tips.heading("Vintage browser", "vb", after=tips.badge("neutral", "read-only")) }}
  {% endif %}
  {% if view_note %}{{ tips.alert("warn", view_note, id="vb-note", live="") }}{% endif %}
  {# plain GET form (shareable URL), no auto-submit: a scripted submit

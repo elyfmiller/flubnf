@@ -186,7 +186,7 @@
     {% if s.status == 'running' %}{{ tips.badge("pending", "running") }}
     {% elif s.status == 'stopping' %}{{ tips.badge("pending", "stopping") }}
     {% elif s.status == 'paused' %}{{ tips.badge("warn", "paused") }}
-    {% elif s.status == 'interrupted' %}{{ tips.badge("error", "interrupted") }}
+    {% elif s.status == 'interrupted' %}{{ tips.badge("warn", "interrupted") }}
     {% elif s.status == 'stopped' %}{{ tips.badge("neutral", "stopped") }}
     {% elif s.status == 'done' %}{{ tips.badge("ok", "complete") }}
     {% elif s.status and s.status.startswith('error') %}{{ tips.badge("error", "error", s.status, id="rt-st-" ~ sid) }}

@@ -92,7 +92,8 @@
    <div class="grow"><strong>{{ r.first }} to {{ r.last }}</strong>
     {% if r.status == 'done' %}{{ tips.badge("ok", "done") }}
     {% elif r.status == 'running' %}{{ tips.badge("pending", "running") }}
-    {% elif r.status in ('error', 'interrupted') %}{{ tips.badge("error", r.status) }}
+    {% elif r.status == 'error' %}{{ tips.badge("error", r.status) }}
+    {% elif r.status == 'interrupted' %}{{ tips.badge("warn", r.status) }}
     {% else %}{{ tips.badge("neutral", r.status) }}{% endif %}
     {# a row in a list of replays: said in quiet words, not as a warning #}
     {% if r.modified %}{{ tips.badge("neutral", "modified settings") }}{% endif %}

@@ -203,11 +203,18 @@ def test_a_replay_page_says_its_status_once():
     _ds, _out, bare = _replay_page(status="error")
     assert 'id="rd-error"' not in bare
     assert _status_marks(bare) == [("error", "error")]
-    # the app closed mid-replay: nothing else says so
-    _ds, _out, gone = _replay_page(status="interrupted", weeks_completed=1,
-                                   total_weeks=2)
+    # the app closed mid-replay: nothing else says so. It can be resumed,
+    # so it is a warning, as on every page, and so is its row in the
+    # dataset's list of replays
+    ds, out, gone = _replay_page(status="interrupted", weeks_completed=1,
+                                 total_weeks=2)
     assert _status_marks(gone) == [
-        ("error", "interrupted after 1 of 2 weeks")]
+        ("warn", "interrupted after 1 of 2 weeks")]
+    listing = " ".join(client.get(f"/retro?dataset={ds.id}").text.split())
+    (row,) = [r for r in listing.split('<div class="archrow">')[1:]
+              if f'href="/retro/dataset/{ds.id}/{out.name}"' in r]
+    assert re.findall(r'data-state="(\w+)">.*?<span class="uk-badge-t">'
+                      r'([^<]*)</span>', row)[0] == ("warn", "interrupted")
     # a replay that forecast nothing is still a warning
     _ds, _out, none = _replay_page(status="no forecast")
     assert _status_marks(none) == [("warn", "no forecast")]

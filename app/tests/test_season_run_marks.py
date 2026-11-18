@@ -158,6 +158,15 @@ def test_the_badges_and_lines_say_what_their_tips_did():
     assert '<span class="uk-badge-t">stopped before the last week</span>' in stopped
     gone = _page(prog=_prog(status="interrupted", done=12))
     assert '<span class="uk-badge-t">interrupted: the app closed</span>' in gone
+    # the app closed mid-replay: a warning (it can be resumed), as on every
+    # page, here and in the report; the user's own Stop is a fact in quiet
+    # words
+    for html in (gone, _page(export=True,
+                             prog=_prog(status="interrupted", done=12))):
+        assert ('<span class="uk-badge uk-badge--warn" id="rs-state" '
+                'data-state="warn">') in html
+    assert ('<span class="uk-badge uk-badge--neutral" id="rs-state" '
+            'data-state="neutral">') in stopped
     two = _page(prog=_prog(added=["2098-12-05", "2098-12-12"], added_n=2))
     assert ('<span class="uk-badge-t">2 weeks added: 2098-12-05, '
             '2098-12-12</span>') in two

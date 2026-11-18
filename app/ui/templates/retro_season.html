@@ -270,7 +270,7 @@
   {% set ns_ex.items = ns_ex.items + [("external", proj, "Project")] %}
   {{ tips.meta(ns_ex.items, label="Report facts") }}
   {% if prog and prog.status == 'stopped' %}{{ tips.badge("neutral", "stopped before the last week", id="rs-state") }}
-  {% elif prog and prog.status == 'interrupted' %}{{ tips.badge("error", "interrupted: the app closed", id="rs-state") }}{% endif %}
+  {% elif prog and prog.status == 'interrupted' %}{{ tips.badge("warn", "interrupted: the app closed", id="rs-state") }}{% endif %}
  </div>
  {% elif p_facts %}
  <div class="rs-facts rt-bandfacts">
@@ -286,7 +286,7 @@
   {% endcall %}
   {% endif %}
   {% if prog.status == 'stopped' %}{{ tips.badge("neutral", "stopped before the last week", id="rs-state") }}
-  {% elif prog.status == 'interrupted' %}{{ tips.badge("error", "interrupted: the app closed", id="rs-state") }}{% endif %}
+  {% elif prog.status == 'interrupted' %}{{ tips.badge("warn", "interrupted: the app closed", id="rs-state") }}{% endif %}
   {% if prog.added_n and not prog.active and not export %}
   {# the season's week list grew after this replay finished (the hub archive
      or the shipped snapshots, data/vintages/): a badge naming the weeks,

@@ -480,7 +480,7 @@ def test_no_ok_bad_surface_relies_on_hue_alone():
     # the word, tips.badge)
     assert 'tips.badge(RUN_STATE.get(r.status, "error"), r.status,' in FORECAST_T
     for phrase in ('tips.badge("ok", "complete")',
-                   'tips.badge("error", "interrupted"'):
+                   'tips.badge("warn", "interrupted"'):
         assert phrase in retro_t, phrase
 
 
