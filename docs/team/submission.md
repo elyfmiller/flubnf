@@ -6,6 +6,31 @@ and CDC's rules. The season's facts are in
 
 ## Now
 
+- 2026-11-18 (20:20 UTC): ROUND 2026-11-21'S INDEPENDENT REVIEW (Ely's
+  request; a separate agent given the files and the data, not this
+  lane's reading; scratchpad round-2026-11-21/review2/review.md).
+  Verdicts: the Oracle as is, 53 locations (about 80% confident; DC
+  optional); the Groundhog without Hawaii and Puerto Rico (about 75%).
+  Checked here against the data and the 11 other teams in:
+  - Groundhog Hawaii: h3 median 236 (path 92, 129, 164, 236) against the
+    state's all-time high of 125 (2025-01-04), six flat weeks 58-86, the
+    field's h3 median 83 (max 228). Left out of the Groundhog in rounds
+    11-07 and 11-14 too.
+  - Groundhog Puerto Rico: h3 median 760 (325 to 760) against weeks 294,
+    264, 256 (40% of hospitals reporting the last), the field's h3
+    median 285 (max 505).
+  - Optional, Oracle DC: h3 median 15 against the field's 29 (max 47);
+    the last count 9 at 45% of hospitals reporting; the interval covers.
+  - Its other concerns: the h3 97.5% sits at the 10x cap in 43 Oracle and
+    52 Groundhog locations; both files' US 97.5% is 115,130, twice the
+    all-time high (55,541, 2025-02-08) and above every other team (the
+    next 90,259): for the Model lane's screen (the cap as a plausibility
+    guard). The Groundhog is the field's highest at h1-h3 nationally;
+    the latest week is an incomplete first report.
+  - Staged as recommended (Oracle 53 locations, 4,876 rows, as
+    uploaded; Groundhog without 15 and 72, 51 locations, 4,692 rows):
+    hub check GREEN for both, population check 0 over, gate PASS, no red
+    flag, flat or higher everywhere. Waits on Ely's leave-out decision.
 - 2026-11-18 (20:11 UTC): CORRECTION: THE SLOWDOWN IS MOSTLY REPORTING;
   NO GROUNDHOG LEAVE-OUT ON IT (Ely: "who is to say that the 6 states
   that fell in counts are simply not an artifact of reporting noise?").
