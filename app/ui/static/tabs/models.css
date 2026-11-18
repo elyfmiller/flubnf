@@ -6,7 +6,7 @@
    as they are, never restyled here.
 
    CONTENTS
-     1. the model switcher's research tag
+     1. the model switcher's research word
      2. the header card: name, kind and status, one line, the fold
      3. the record: relWIS bars against the baseline
      4. parameter chips (diagrams.html eq_*(kit=true); the equations are
@@ -14,11 +14,13 @@
      5. the BNGL source summary
      6. run forms (quick run, research run) and the forecasts card */
 
-/* ---- 1. the switcher: "research" as a tag, readable pressed or not ---- */
-.md-tag{display:inline-block;margin-left:.4rem;padding:0 .45em;
-  border:1px solid currentColor;border-radius:var(--r-pill);
-  font-size:var(--fs-micro);font-weight:650;line-height:1.45;
-  vertical-align:.06em}
+/* ---- 1. the switcher: "research" as a quiet word after the model's
+   name, with no box (the link is the control, not the word). On the
+   page being read it takes the choice's ink: muted text is under 4.5:1
+   on that tint in the dim and nord themes ---- */
+.md-tag{margin-left:.4rem;color:var(--mut);font-size:var(--fs-label);
+  font-weight:500}
+.md-switch > [aria-current] > .md-tag{color:inherit}
 
 /* the switcher between the three model pages (the kit's quiet uk-seg) */
 .md-switch{margin:0 0 .9rem}

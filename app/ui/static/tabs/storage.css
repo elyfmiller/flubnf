@@ -76,7 +76,7 @@
   .st-size{text-align:left}
 }
 
-/* ---- 5. run ledger: badges and fact chips instead of a sentence ---- */
+/* ---- 5. run ledger: marks and plain facts instead of a sentence ---- */
 /* the table scrolls sideways inside its own box when it must, never the
    card; headers and the run's label wrap first (the date and the time
    each hold together) */

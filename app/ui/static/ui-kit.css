@@ -5,9 +5,10 @@
    RULES
      - colors only through the nau.css tokens (every theme, data-contrast
        ="high", data-vision="cvd"); tints are color-mix() of two tokens.
-       Measured in app/tests/test_ui_kit.py: badge words (a token on the
-       card) and alert text (ink on a 6% tint) hold 4.5:1 in every theme
-       and mode, an alert's icon 3:1
+       Measured in app/tests/test_ui_kit.py: a mark's word (a state token
+       or the muted token, on the card and on the page ground) and alert
+       text (ink on a 6% tint) hold 4.5:1 in every theme and mode, an
+       alert's icon 3:1
      - sizes in rem/em and the nau.css type and spacing tokens, so every
        component follows the text size (80% to 160% of the root) and wraps
        rather than overflows
@@ -149,6 +150,28 @@ html:not(.uk-js) .uk-tt:focus-within > .uk-tt-pop{position:static;
   max-width:100%;vertical-align:middle;white-space:nowrap}
 .uk-badge-pair > .uk-badge{min-width:0}
 .uk-badge-pair > .tip,.uk-badge-pair > .uk-tt{flex:none;margin-left:0}
+/* marks side by side: with no box to part them, a mark followed by
+   another stands apart from it as the facts of a row do, on top of the
+   row's own gap (the room trails the first, so a mark that wraps starts
+   its line flush) */
+:is(.uk-badge,.uk-badge-pair,.uk-tag):has(+ :is(.uk-badge,.uk-badge-pair,.uk-tag)){
+  margin-right:.45rem}
+/* a status that is also a link: its word is underlined, since no
+   outline says it can be pressed; the line thickens under the pointer */
+a > .uk-badge > .uk-badge-t{text-decoration:underline;
+  text-underline-offset:.15em}
+a:hover > .uk-badge > .uk-badge-t{text-decoration-thickness:2px}
+/* a mark brings no fill of its own, so on a filled surface it takes that
+   surface's text color and its state rests on its icon and its word: an
+   alert's tint (the dim theme's red is under 4.5:1 there), a tooltip (the
+   inverted surface), the chosen side of a segmented switch. A filled
+   surface outside the kit states the same beside its own rule (nau.css,
+   the open Model settings button) */
+.uk-alert .uk-badge,.uk-alert .uk-tag,.uk-alert .uk-name,
+.tipbox .uk-badge,.tipbox .uk-tag,.tipbox .uk-name,
+.uk-seg > [aria-pressed="true"] .uk-badge,.uk-seg > [aria-current] .uk-badge,
+.uk-seg > [aria-pressed="true"] .uk-tag,.uk-seg > [aria-current] .uk-tag{
+  color:inherit}
 
 /* ---- 5. alert: one line to act on now, a 6% tint of its kind ---- */
 .uk-alert{--uk-c:var(--accent-ink);display:flex;align-items:center;
@@ -363,10 +386,11 @@ details.uk-fold[open] > summary::before{transform:rotate(45deg)}
 .uk-tag{color:var(--mut);font-size:var(--fs-label);font-weight:500;
   line-height:1.4;text-transform:none;letter-spacing:normal}
 /* a name chip: the name of the formula or figure beside it, as a plain
-   caption; its "?" follows the word */
+   caption; its "?" follows the word, as close as a badge's */
 .uk-name{display:inline-flex;align-items:center;gap:.15rem;
   color:var(--mut);font-size:var(--fs-label);font-weight:600;
   white-space:nowrap}
+.uk-name > .tip{margin-left:0}
 /* a centered line under a figure: a formula beside its name chip, or a
    badge about the figure */
 .uk-figline{display:flex;flex-wrap:wrap;align-items:center;

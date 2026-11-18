@@ -1182,6 +1182,11 @@ details.adv[open]>summary::before{content:"\25BE"}
    (white on raw cyan was 2.1:1) */
 .adv[open] > summary.advbtn{background:var(--accent-ink);
  border-color:var(--accent-ink);color:var(--card)}
+/* its "default" or "modified" mark (a kit badge) brings no fill of its
+   own: on the filled button it takes the button's color, and its state
+   rests on its icon and its word (the muted and the warning colors are
+   under 2:1 on this fill) */
+.adv[open] > summary.advbtn .uk-badge{color:inherit}
 /* the Model settings panel (templates/_model_settings.html): one fold
    per stage, its fields in a bare fieldset (its badges and fixed list:
    static/tabs/forecast.css) */
@@ -1646,7 +1651,7 @@ p.newest-check[hidden]{display:none}
 .sfcols #sf-table.pscov,.sfcols table.sfpart{width:100%;min-width:0}
 .sfcols td,.sfcols th{padding:.22rem .5rem}
 .sfcols table tr + tr th{text-transform:none;letter-spacing:.02em}
-/* the retro index: one band per season (name, status pill, facts, the
+/* the retro index: one band per season (name, status, facts, the
    Results button), the run settings folded under it */
 .sband{display:flex;flex-wrap:wrap;align-items:center;gap:.3rem .7rem}
 .sband h2{margin:0}

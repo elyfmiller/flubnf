@@ -41,9 +41,10 @@
 /* Your models: the name, its note's "i" and an incomplete badge on a line */
 .sb-name{display:inline-flex;align-items:center;flex-wrap:wrap;gap:.15rem .35rem;
   min-width:0;overflow-wrap:anywhere}
-/* the last run: its status badge is the link */
-a.sb-runlink{display:inline-block;border-radius:99px;text-decoration:none}
-a.sb-runlink:hover{text-decoration:none;opacity:.8}
+/* the last run: its status is the link. The kit underlines the word of
+   a status inside a link (ui-kit.css), so no pill has to mark it as
+   pressable; the box keeps the focus ring around the whole status */
+a.sb-runlink{display:inline-block}
 
 /* ---- the editor card ---- */
 /* the toolbar: the card's title with the page's "i" (the three files),

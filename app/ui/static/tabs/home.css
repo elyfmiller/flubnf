@@ -5,7 +5,7 @@
    "hm-"; kit classes (uk-*) are used as they are, never restyled here.
 
    CONTENTS
-     1. hero: the lead's facts as chips
+     1. hero: the lead's facts in a row
      2. outlook: the map bar (model, coverage, report link), the stage and
         its empty or preparing card
      3. measured performance: its row on a first run
@@ -13,14 +13,11 @@
      5. component cards: role and links
      6. setup: missing components */
 
-/* ---- 1. hero: facts as chips on the LANL Blue tile (white ink) ---- */
-.hm-facts{list-style:none;display:flex;flex-wrap:wrap;gap:.45rem .55rem;
+/* ---- 1. hero: the facts as a row of plain words on the LANL Blue tile
+   (white ink), with no box around each ---- */
+.hm-facts{list-style:none;display:flex;flex-wrap:wrap;gap:.2rem 1.6rem;
   margin:.9rem 0 0;padding:0}
-.hm-facts li{display:inline-flex;align-items:baseline;gap:.45em;
-  padding:.18rem .8rem;border-radius:var(--r-pill);
-  border:1px solid color-mix(in srgb,currentColor 30%,transparent);
-  background:color-mix(in srgb,currentColor 8%,transparent);
-  color:color-mix(in srgb,currentColor 84%,transparent);
+.hm-facts li{color:color-mix(in srgb,currentColor 84%,transparent);
   font-size:var(--fs-label);line-height:1.5}
 /* small bold text: its own ink where a theme's accent is under 4.5:1 on
    --navy (Nord, Dracula); the accent word above is large text */

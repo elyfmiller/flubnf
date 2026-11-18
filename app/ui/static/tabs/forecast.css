@@ -35,13 +35,10 @@
 .fc-anchor-ok b{color:var(--ink);font-weight:700;
   font-variant-numeric:tabular-nums}
 .fc-anchor-none{color:var(--warn);font-weight:600}
-/* the pick's live count ("12 of 53"): a small chip inside the Locations
-   label, written by the page script */
-.fc-count{display:inline-block;margin-left:.3rem;padding:0 .5em;
-  border:1px solid var(--line);border-radius:var(--r-pill);
-  background:var(--bg);color:var(--ink);font-size:var(--fs-micro);
-  font-weight:650;font-variant-numeric:tabular-nums;line-height:1.5;
-  vertical-align:.05em}
+/* the pick's live count ("12 of 53"): quiet words inside the Locations
+   label, written by the page script (no box: only a control has one) */
+.fc-count{margin-left:.3rem;color:var(--mut);font-size:var(--fs-label);
+  font-weight:500;font-variant-numeric:tabular-nums}
 .fc-count:empty{display:none}
 /* a badge on its own line under a field (the particle filter off, the
    engine build); a long one wraps inside the column instead of running
@@ -178,10 +175,10 @@
 details[data-scope] > summary{scroll-margin-top:.75rem}
 /* a refusal's reason under the head */
 .fc-ms-refused{margin:.4rem 0 .2rem}
-/* a group's count of changed rows, worded as a changed row's mark */
-.ms-n{margin-left:auto;padding:0 .4em;border:1px solid var(--warn);
-  border-radius:var(--r-pill);color:var(--warn);font-size:var(--fs-micro);
-  font-weight:650;white-space:nowrap}
+/* a group's count of changed rows: quiet words at the summary's right,
+   worded as a changed row's mark (the rows wear the bar) */
+.ms-n{margin-left:auto;color:var(--mut);font-size:var(--fs-label);
+  font-weight:500;white-space:nowrap}
 .ms-n[hidden]{display:none}
 /* a changed group's other rows, folded under its changed ones */
 .ms-more{margin-top:.55rem}
@@ -240,8 +237,11 @@ details[data-scope] > summary{scroll-margin-top:.75rem}
   border-radius:var(--r-pill)}
 .fc-presets .fc-chip[aria-pressed="true"]{border-color:var(--accent-ink);
   color:var(--accent-ink);font-weight:700}
-.fc-chip-n{margin-left:.2rem;padding:0 .35em;border-radius:var(--r-pill);
-  background:var(--bg);font-variant-numeric:tabular-nums}
+/* a preset's count: in its button's own color with no fill, set in
+   parentheses as the other presets write theirs ("States only (52)") */
+.fc-chip-n{margin-left:.2rem;font-variant-numeric:tabular-nums}
+.fc-chip-n::before{content:"("}
+.fc-chip-n::after{content:")"}
 /* the filter over the list, as wide as it */
 .fc-locfilter{width:100%;margin:0 0 .3rem}
 .checklist .ck[hidden]{display:none}
@@ -267,13 +267,14 @@ details[data-scope] > summary{scroll-margin-top:.75rem}
   background:var(--card);border-top:1px solid var(--line);
   border-radius:0 0 10px 10px}
 /* a field off its default: a bar at its row's edge (in the group's
-   padding, so the field keeps its place and width) and a word by its
-   label naming the default (--ms-mark, set on the row) */
+   padding, so the field keeps its place and width) and quiet words by
+   its label naming the default (--ms-mark, set on the row). The bar
+   carries the warning color; the words say it, so it is never color
+   alone */
 .ms-row.ms-changed{box-shadow:inset 3px 0 0 var(--warn);padding-left:.5rem;
   margin-left:-.5rem}
 .ms-row.ms-changed > .lblrow > label::after{content:var(--ms-mark,"changed");
-  display:inline-block;margin-left:.4rem;padding:0 .4em;border:1px solid var(--warn);
-  border-radius:var(--r-pill);color:var(--warn);font-size:var(--fs-micro);
-  font-weight:650;white-space:nowrap}
+  display:inline-block;margin-left:.5rem;color:var(--mut);
+  font-size:var(--fs-label);font-weight:500;white-space:nowrap}
 /* the fan chart takes focus for its arrow keys */
 #fanplot:focus-visible{outline:2px solid var(--accent-ink);outline-offset:2px}
