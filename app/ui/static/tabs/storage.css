@@ -87,11 +87,10 @@
 .st-nw{white-space:nowrap}
 /* a relWIS figure's verdict icon */
 .st-verdict{margin-left:.25em;vertical-align:-.1em}
-.st-facts{display:flex;flex-wrap:wrap;align-items:center;gap:.3rem .35rem}
+.st-facts{display:flex;flex-wrap:wrap;align-items:center;gap:.15rem 1.1rem}
 /* one fact and its "?" never part */
 .st-fi{display:inline-flex;align-items:center;max-width:100%}
-.st-fact{display:inline-block;padding:.05em .5em;border-radius:var(--r-sm);
-  background:var(--bg);color:var(--ink);font-size:var(--fs-label)}
+.st-fact{color:var(--mut);font-size:var(--fs-label)}
 .st-foot{margin:.7rem 0 0}
 
 /* ---- 6. run ledger: the filter row and, on a phone, rows as cards ---- */
