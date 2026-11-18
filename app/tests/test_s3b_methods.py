@@ -15,7 +15,9 @@
   * ME-05: a chip clicked for one of the last sections stays marked at the
     page's end while its section is in view, until the reader scrolls;
   * FC-31: the model page's fan keeps its toolbar off on a phone;
-  * WI-04: the site build reads the state folder the console writes.
+  * WI-04: the site build reads the state folder the console writes;
+  * fewer marks: a version still resolving is quiet words in its cell, not
+    a pending mark on every row, and the shell's poll still finds it.
 
 The page scripts run under node: Methods' head script on the stand-in
 page of test_methods_polish, the model page's draw() with the stand-ins of
@@ -100,6 +102,14 @@ def test_the_two_strain_verdict_is_worded_as_on_its_own_page():
     why = methods.split('id="mt-2s-why"', 1)[1].split("</details>", 1)[0]
     summary = why.split("</summary>", 1)[0]
     assert re.search(r">\s*worse as a third member\s*<", summary), summary
+    # a settled result asks nothing of the reader: both halves of the
+    # verdict are quiet words in the fold's title line, neither a warning
+    # nor a problem mark
+    assert re.search(r'data-state="neutral">.*?>\s*worse as a third member\s*<',
+                     summary, re.S), summary
+    assert re.search(r">\s*stronger at turning points\s*<", summary), summary
+    for loud in ("uk-badge--error", "uk-badge--warn", "uk-badge--pending"):
+        assert loud not in summary, loud
     assert ("<p>Stronger at turning points, but adding it " + said
             + " in the August 2026 evaluation (relWIS 0.719 with it against"
             " 0.704 without, lower is better); it stays a research run.</p>"
@@ -368,3 +378,32 @@ def test_the_site_build_reads_the_state_folder_the_console_writes(tmp_path):
     assert [Path(p) for p in got["roots"]] == [state / "retro",
                                                 state / "retro_seal"]
     assert got["rid"] == run.name
+
+
+# ------------------------- fewer marks: a resolving version is quiet words
+
+def test_a_resolving_version_is_quiet_words_the_poll_still_finds(monkeypatch):
+    """On a first launch every version cell reads "resolving…" until the
+    probe lands. That asks nothing of the reader, so each cell says it in
+    quiet words (the neutral state), with no pending mark on every row; it
+    stays a badge inside the data-vkey span, which is how base.html's poll
+    knows to draw a "not installed" that lands the same way."""
+    from app.ui import versions as V
+    keys = ("pybnf", "bngsim", "bionetgen", "perl", "fastapi", "jinja2",
+            "plotly", "pandas", "numpy")
+    for k in keys:
+        monkeypatch.setitem(V.VERSIONS, k, V.VERSION_PENDING)
+    t = client.get("/methods").text
+    stack = t.split('id="stack"', 1)[1].split('id="policies"', 1)[0]
+    word = f'<span class="uk-badge-t">{V.VERSION_PENDING}</span>'
+    for k in keys:
+        cell = stack.split(f'<span data-vkey="{k}">', 1)[1]
+        cell = cell.split("</span></span></span>", 1)[0]
+        assert cell.startswith('<span class="uk-badge uk-badge--neutral" '
+                               'data-state="neutral">'), k
+        assert cell.endswith(word[:-len("</span>")]), k
+    assert stack.count(word) == len(keys)
+    assert "uk-badge--pending" not in stack
+    # the poll's hook: a span that holds a badge
+    base = (TEMPLATES / "base.html").read_text(encoding="utf-8")
+    assert "s.querySelector('.uk-badge')" in base

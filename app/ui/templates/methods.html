@@ -197,10 +197,12 @@
 {%- endmacro %}
 {# a version, or a status where the engine is absent. The data-vkey span is
    the hook base.html's poll fills while a version is still resolving (a
-   first launch): it holds a pending badge until the version text lands #}
+   first launch): it holds the pending word as quiet words (a badge, so
+   the poll finds it; nothing is asked of the reader) until the version
+   text lands #}
 {% macro version(key, v) -%}
 {% if v == "not installed" %}{{ status("neutral", "not installed") }}
-{%- elif "resolving" in v %}<span data-vkey="{{ key }}">{{ status("pending", v) }}</span>
+{%- elif "resolving" in v %}<span data-vkey="{{ key }}">{{ status("neutral", v) }}</span>
 {%- else %}<span data-vkey="{{ key }}">{{ v }}</span>{% endif %}
 {%- endmacro %}
 <h1>Methods</h1>
@@ -421,8 +423,11 @@
 </div>
 
 <div class="card" id="two-strain">
+ {#- the console's title says Research and the fold below is titled "Why
+     it does not ship", so no mark beside the title repeats it there; the
+     public site keeps the words after its title #}
  <div class="uk-heading"><h2>Research: the two-strain variant</h2>
- {{- status("neutral", "not a shipped model") }}
+ {%- if active is not defined %}{{ status("neutral", "not a shipped model") }}{% endif %}
  {% if active is defined %}<span class="uk-heading-aside"><a class="btn quiet mt-go" href="/model/pf2s">Model tab<span class="uk-sr">: two-strain SIHRS</span></a></span>{% endif %}</div>
 
  {{ dg.sihrs2(uid='m2') }}
@@ -443,8 +448,10 @@
  {% endcall %}
  {# the August 2026 ensemble gate (docs/archive/RELEASE-1.0.md): 0.719 is
     the ensemble in equal thirds with it, 0.704 the 50/50 blend without it;
-    no figure is the model alone. Worded as on the Models tab (MO-20) #}
- {% set verdict %}{{ status("ok", "stronger at turning points") }} {{ status("error", "worse as a third member") }}{% endset %}
+    no figure is the model alone. Worded as on the Models tab (MO-20); a
+    settled result asks nothing of the reader, so both halves are quiet
+    words #}
+ {% set verdict %}{{ status("ok", "stronger at turning points") }} {{ status("neutral", "worse as a third member") }}{% endset %}
  {% call tips.fold("Why it does not ship", id="mt-2s-why", cls="mt-fold", after=verdict) %}
  <p>Stronger at turning points, but adding it as a third equal member
  scored worse in the August 2026 evaluation (relWIS 0.719 with it against

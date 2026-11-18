@@ -45,6 +45,21 @@ def test_methods_page_carries_two_strain_research_section():
     # figures, which described a comparison that no longer exists
     assert "Why it does not ship" in r.text
     assert "remains a research run" in r.text
-    assert "not a shipped model" in r.text
+    # that it does not ship is said by the card's own title ("Research:")
+    # and by its fold "Why it does not ship", so no mark beside the title
+    # repeats it on the console; the public site, whose page has no marks,
+    # keeps the words after its title
+    card = r.text.split('id="two-strain"', 1)[1].split('id="analogue"', 1)[0]
+    head = card.split("</h2>", 1)
+    assert head[0].endswith("<h2>Research: the two-strain variant")
+    assert "Why it does not ship</span>" in card
+    assert "not a shipped model" not in r.text
+    assert "uk-badge" not in head[1].split("uk-heading-aside", 1)[0]
+    from app.core import site_build
+    site = site_build.harvest_methods(
+        {k: "x" for k in ("pybnf", "bngsim", "bionetgen", "fastapi",
+                          "plotly")})
+    assert ("<h2>Research: the two-strain variant</h2>"
+            "<em>(not a shipped model)</em>") in site
     assert "validation is in progress" not in r.text
     assert "validation now in progress" not in r.text
