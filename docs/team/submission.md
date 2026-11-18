@@ -6,6 +6,37 @@ and CDC's rules. The season's facts are in
 
 ## Now
 
+- 2026-11-18 (20:11 UTC): CORRECTION: THE SLOWDOWN IS MOSTLY REPORTING;
+  NO GROUNDHOG LEAVE-OUT ON IT (Ely: "who is to say that the 6 states
+  that fell in counts are simply not an artifact of reporting noise?").
+  - NHSN's preliminary release (data.cdc.gov mpgq-jmmr, hospitals
+    reporting): the week ending 11-14 has 4,378 hospitals reporting (76%)
+    against 4,965, 4,908 and 4,785 (86, 85, 83%) the three weeks before.
+    In most states that fell, fewer reported: Idaho 32 against 37-39,
+    West Virginia 44 against 60, DC 5 against 9, Iowa 74 against
+    100-105, Illinois 143 against 166-172, Missouri 75 against 92-93;
+    of the six, Puerto Rico 22 against 27-29, Maine 25 against 32-34,
+    Alaska 16 against 17-18, New Hampshire 24 against 26, South Carolina
+    68 against 73; New Jersey reported in full (81) and dipped 5%.
+  - First reports rise: the US week 10-24 6,006 to 6,529 now, 10-31
+    8,245 to 8,711, 11-07 9,395 to 10,112 (+4 to +9%); Illinois' 11-07
+    went from 110 to 219. So last week's growth was likely about 1.2,
+    not 1.14, and this morning's "growth is slowing" (above) and the
+    lean of the newest scored targets rest on an incomplete week.
+  - Other teams' implied weekly growth to the h3 median (13 so far): US
+    Cornell_JHU-hierarchSIR 1.38 (3.58x), our Groundhog 1.39 (3.78x),
+    our Oracle 1.32 (3.08x), the rest 1.08-1.21 (HallAI 0.93). By state,
+    each team's fastest 1.35-1.79, mostly in Idaho or West Virginia (the
+    field reads those drops as noise); the Groundhog's fastest 1.48, its
+    median 1.40 (hierarchSIR 1.37, the rest 1.17-1.28).
+  - History (hub data, seasons 2022-23 to 2025-26): US four-week growth
+    of 3.78x or more in three of four seasons (max 5.13, 3.64, 6.46,
+    7.18); in the 16 US weeks with prior growth of 1.15-1.30 a week,
+    the next four weeks' ratio had a median of 2.95, at or above 3.08x
+    in 7 and at or above 3.78x in 5. States in a like phase (910
+    state-weeks): 26% at or above 1.28 a week, 17% at or above 1.40.
+  - This lane's recommendation now: both files as uploaded, 53 locations
+    each, no evening. Ely decides.
 - 2026-11-18 (20:05 UTC): ROUND 2026-11-21 REVIEWED (Ely's two files,
   -modified; Oracle 833200f2..., Groundhog 1885af7e...; 53 locations and
   4,876 rows each). Run record (Ely's second report, -modified,
