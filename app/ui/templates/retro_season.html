@@ -216,16 +216,16 @@
 {{ tips.alert("warn", figs.reason ~ ".", title="No scores under this convention.", id="rs-unavail", action=ros_link, live="") }}
 {% endif %}
 {% if prog and prog.active and not export %}
-{# live replay, driven by the shared ticker (retro_progress.js): the run
-   bar and its readout (the time left, or "paused"), what the estimate
-   rests on for a screen reader only (.rbasis), a lost connection as a
-   badge #}
+{# live replay, driven by the shared ticker (retro_progress.js): its
+   heading says the state (in progress, or paused) and wears no badge for
+   it, then the run bar and its readout (the time left, or "paused"), what
+   the estimate rests on for a screen reader only (.rbasis), a lost
+   connection as a badge #}
 <div class="card season-card" data-season="{{ season }}"
      data-status="{{ prog.status }}" data-active="1"
      data-done="{{ prog.done }}" data-total="{{ prog.total }}"
      data-results="1">
- {{ tips.heading("Replay paused" if prog.status == 'paused' else "Replay in progress", "rs-live",
-                 after=(tips.badge("warn", "paused") if prog.status == 'paused' else tips.badge("pending", "running"))) }}
+ {{ tips.heading("Replay paused" if prog.status == 'paused' else "Replay in progress", "rs-live") }}
  <div class="runbar"><div class="rfill" style="width:2%"></div></div>
  <div class="rt-readout"><p class="runstat rstat">{{ prog.done }}/{{ prog.total }} weeks</p>
   <span class="rbasis uk-sr">{{ ("estimate from " ~ prog.weeks_measured ~ " completed week" ~ ("" if prog.weeks_measured == 1 else "s")) if prog.weeks_measured else "estimate arrives once the first week completes" }}</span>
@@ -264,7 +264,7 @@
  <div class="rs-facts rt-bandfacts">
   {% set ex = export_facts if export_facts is defined else {} %}
   {% set ns_ex = namespace(items=[("calendar", (weeks[0] ~ " to " ~ weeks[-1]) if weeks else "", "Weeks")]) %}
-  {% if ex.truth %}{% set ns_ex.items = ns_ex.items + [("check", ex.truth)] %}{% endif %}
+  {% if ex.truth %}{% set ns_ex.items = ns_ex.items + [("", ex.truth)] %}{% endif %}
   {% set ns_ex.items = ns_ex.items + [("info", "build " ~ running_sha(), "Build")] %}
   {% set proj %}<a href="https://github.com/elyfmiller/flubnf">github.com/elyfmiller/flubnf</a>{% endset %}
   {% set ns_ex.items = ns_ex.items + [("external", proj, "Project")] %}

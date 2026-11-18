@@ -11,7 +11,10 @@
 <div class="rt-title"><h1>Replay: {{ ds.name }}</h1>
  {{ tips.badge("neutral", "your data") }}
  {% if meta.knobs %}{{ tips.badge("warn", "modified settings") }}{% endif %}
- {{ tips.badge("ok" if status == 'done' else ("error" if status in ('error', 'interrupted') else ("pending" if status == 'running' else "warn")), (status ~ " after " ~ (meta.weeks_completed or 0) ~ " of " ~ meta.total_weeks ~ " weeks") if early else status) }}</div>
+ {# the status, unless the block under the title says it: a live replay
+    has the Running card, a failed one the alert. A stopped replay (the
+    user's own Stop) is a fact, in quiet words #}
+ {% if not (status == 'running' and live) and not (status == 'error' and meta.error) %}{{ tips.badge("ok" if status == 'done' else ("error" if status in ('error', 'interrupted') else ("pending" if status == 'running' else ("neutral" if status == 'stopped' else "warn"))), (status ~ " after " ~ (meta.weeks_completed or 0) ~ " of " ~ meta.total_weeks ~ " weeks") if early else status) }}{% endif %}</div>
 <div class="rt-sub">
  {{ tips.badge("ok" if vt else "warn", "vintage-true" if vt else "final data", id="rd-kind") }}
  {% if meta.first %}{{ tips.meta([("calendar", meta.first ~ " to " ~ meta.last, "Weeks")]) }}{% endif %}

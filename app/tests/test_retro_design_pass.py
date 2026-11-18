@@ -158,6 +158,9 @@ def test_the_report_states_its_evidence(world):
     facts = html.split('aria-label="Report facts"', 1)[1].split("</ul>", 1)[0]
     assert f"{W1} to {W2}" in facts
     assert "scored against" in facts and "through" in facts
+    # the truth is a fact in words: no check before it
+    truth = next(li for li in facts.split("<li>") if "scored against" in li)
+    assert truth.startswith("<span>scored against") and "<svg" not in truth
     assert "build " in facts
     assert 'href="https://github.com/elyfmiller/flubnf"' in facts
     assert 'id="rs-timing"' not in html

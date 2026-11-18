@@ -189,6 +189,15 @@ def test_the_badges_and_lines_say_what_their_tips_did():
                             weeks_measured=3))
     assert ('<span class="rbasis uk-sr">estimate from 3 completed weeks'
             '</span>') in live
+    # the live card's heading says the state, in progress or paused, and
+    # no badge beside it says the word again
+    held = _page(prog=_prog(status="paused", active=True, done=3))
+    for html, title in ((live, "Replay in progress"),
+                        (held, "Replay paused")):
+        head = html.split('<h2 id="h-rs-live">', 1)[1] \
+            .split('<div class="runbar">', 1)[0]
+        assert head.startswith(title + "</h2>")
+        assert "uk-badge" not in head
     # the banners say it in their line
     arch = _page(archive="20981201T090000", archive_when="2098-12-01 09:00")
     assert "Set aside when a fresh replay started; read only." in arch

@@ -13,12 +13,14 @@
     for a request that sent none, never "the default settings".
 """
 import json
+import re
 import shutil
 import subprocess
 from datetime import date
 from pathlib import Path
 
 from app.core import custom_retro as CX
+from app.ui import datasets_ui as DU
 from app.ui import state as ui_state
 from test_datasets_ui import client, isolated, stored        # noqa: F401
 from test_dataset_engines import grouped_bytes                # noqa: E402
@@ -138,20 +140,77 @@ def test_a_refusal_keeps_the_particles_replicates_and_same_day_week(
 
 # ------------------------------------------ RE-24 and RE-25: a replay page
 
-def test_a_stopped_replay_leads_back_and_says_how_far_it_got():
+def _replay_page(**record):
+    """A two-week dataset replay's page, its record changed by `record`,
+    as (dataset, replay folder, the page on one line)."""
     ds = stored(grouped_bytes(groups=("Pediatric", "Adult"),
                               end=date(2023, 12, 2)), "Kids")
     out = CX.replay_dir(ds, CX.new_stamp(ds))
     CX.run(ds, ["2023-11-25", "2023-12-02"], ds.groups, out_dir=out)
     meta = json.loads((out / CX.META).read_text(encoding="utf-8"))
-    meta.update(status="stopped", weeks_completed=1, total_weeks=2)
+    meta.update(record)
     (out / CX.META).write_text(json.dumps(meta), encoding="utf-8")
+    if meta["status"] == "running":
+        DU._REPLAY.update({"id": ds.id, "stamp": out.name})
     page = " ".join(client.get(f"/retro/dataset/{ds.id}/{out.name}")
                     .text.split())
-    assert "stopped after 1 of 2 weeks" in page
+    return ds, out, page
+
+
+def _status_marks(page):
+    """The status beside a replay page's title, as the badges' (state,
+    words): every badge there but the kind and the settings mark."""
+    title = page.split('<div class="rt-title">', 1)[1] \
+        .split('<div class="rt-sub">', 1)[0]
+    marks = re.findall(r'data-state="(\w+)">.*?<span class="uk-badge-t">'
+                       r'([^<]*)</span>', title)
+    return [m for m in marks
+            if m[1] not in ("your data", "modified settings")]
+
+
+def test_a_stopped_replay_leads_back_and_says_how_far_it_got():
+    ds, out, page = _replay_page(status="stopped", weeks_completed=1,
+                                 total_weeks=2)
+    # a fact about a replay the user stopped, in quiet words: no warning
+    assert _status_marks(page) == [("neutral", "stopped after 1 of 2 weeks")]
     assert f'<a href="/retro?dataset={ds.id}" id="rd-back">Back to the ' \
            f'replays</a>' in page
     assert "No forecasts stored yet" not in page
+
+
+def test_a_replay_page_says_its_status_once():
+    """The status badge beside the title stands down where the block under
+    the title says the same: the Running card of a live replay, the alert
+    of a failed one. Every other status keeps its word there."""
+    _ds, _out, done = _replay_page()
+    assert _status_marks(done) == [("ok", "done")]
+    assert "<h2>Running</h2>" not in done and 'id="rd-error"' not in done
+    # live: the card headed Running, with its count and its bar
+    _ds, _out, live = _replay_page(status="running", weeks_completed=1,
+                                   total_weeks=2)
+    assert _status_marks(live) == []
+    card = live.split("<h2>Running</h2>", 1)[1].split("</form>", 1)[0]
+    assert 'id="dsr-prog" aria-live="polite">1 of 2 weeks</p>' in card
+    assert 'id="rd-progress"' in card
+    DU._REPLAY.clear()
+    # failed: the alert names it and gives the recorded message
+    _ds, _out, failed = _replay_page(status="error",
+                                     error="ValueError: boom")
+    assert _status_marks(failed) == []
+    alert = failed.split('id="rd-error"', 1)[1].split("</div>", 1)[0]
+    assert "<strong>The replay failed.</strong> ValueError: boom" in alert
+    # a failure with no recorded message has no alert: the badge says it
+    _ds, _out, bare = _replay_page(status="error")
+    assert 'id="rd-error"' not in bare
+    assert _status_marks(bare) == [("error", "error")]
+    # the app closed mid-replay: nothing else says so
+    _ds, _out, gone = _replay_page(status="interrupted", weeks_completed=1,
+                                   total_weeks=2)
+    assert _status_marks(gone) == [
+        ("error", "interrupted after 1 of 2 weeks")]
+    # a replay that forecast nothing is still a warning
+    _ds, _out, none = _replay_page(status="no forecast")
+    assert _status_marks(none) == [("warn", "no forecast")]
 
 
 # ------------- review S3 (RE-22): a season replayed before the zero rule
