@@ -127,6 +127,11 @@ def test_last_run_values_say_how_a_modified_runs_files_were_named():
     assert FA.last_run_values([row()])["hub_names"] is False
     src = (Path(FA.__file__).parent / "templates" / "forecast.html").read_text()
     assert "tick.checked !== LAST.hub_names) diff.push('File names')" in src
+    # a difference is no fault: it is said in quiet words, as "Same as
+    # last run" is, in the one slot beside Run models
+    assert "FluBNFUI.setBadge(badge, 'neutral', 'Differs: '" in src
+    assert "FluBNFUI.setBadge(badge, 'ok', 'Same as last run')" in src
+    assert "setBadge(badge, 'warn'" not in src
 
 
 def test_the_last_form_survives_a_restart_without_its_date(monkeypatch, tmp_path):

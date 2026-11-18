@@ -344,20 +344,23 @@ def test_data_tab_card_shows_the_check(tmp_path, monkeypatch):
     _hub(tmp_path / "hub", monkeypatch)
     page = client.get("/data").text
     assert 'id="newest-check"' in page
-    assert 'class="ncmark ok" role="img" aria-label="Complete"' in page
-    # clean, the mark and the head say it all, beside the Data through
-    # week (no "?" repeating the line)
+    # clean, the head says it all, beside the Data through week (no check
+    # mark and no "?" repeating the line)
     assert (f'<span class="dt-newest-head">All {len(LOCS)} reported</span>'
             in page)
+    assert 'data-complete="yes"' in page
+    assert 'class="ncmark' not in page and 'aria-label="Complete"' not in page
     assert 'id="tip-newest-gaps"' not in page
     _hub(tmp_path / "hub2", monkeypatch, newest={"Nebraska": None})
     page = client.get("/data").text
     assert 'aria-label="Incomplete"' in page
-    # the row: a badge carries the count, the text the head, and the
-    # toggletip names each state and links to Data issues on the Forecast
-    # tab (a tooltip could not hold the link)
+    # the row: the mark is its one warning, the count follows the head in
+    # quiet words, and the toggletip names each state and links to Data
+    # issues on the Forecast tab (a tooltip could not hold the link)
     row = page.split('id="newest-check"')[1].split('id="tt-newest-gaps"')[0]
-    assert ('<span class="uk-badge uk-badge--warn" data-state="warn">'
+    assert row.count('class="ncmark warn"') == 1
+    assert "uk-badge--warn" not in row
+    assert ('· <span class="uk-badge uk-badge--neutral" data-state="neutral">'
             in row)
     assert '<span class="uk-badge-t">1 not reported</span>' in row
     assert f"4 of {len(LOCS)} reported" in row
@@ -419,16 +422,19 @@ def test_forecast_tab_line_under_the_anchor(tmp_path, monkeypatch):
     assert "nc.hidden = a !== nc.dataset.week" in page
 
 
-def test_forecast_tab_says_all_reported_in_green(tmp_path, monkeypatch):
+def test_forecast_tab_says_all_reported_in_words(tmp_path, monkeypatch):
     _hub(tmp_path / "hub", monkeypatch)
     ui_state._last_form.clear()
     ui_state._last_form.update({"forecast_date": NEW, "locations": ["all"],
                                 "engine": "all"})
     page = client.get("/forecast").text
-    # the green check mark, named "Complete", beside the head
+    # a clean week is the head's words: no check mark repeats them, and
+    # nothing follows them
     line = page.split('id="newest-check"')[1].split("</p>")[0]
-    assert 'class="ncmark ok" role="img" aria-label="Complete"' in line
     assert f'<span class="nc-head">All {len(LOCS)} reported</span>' in line
+    assert 'data-complete="yes"' in line
+    assert 'class="ncmark' not in line and "<svg" not in line
+    assert "uk-badge" not in line
 
 
 def test_forecast_setting_reaches_the_check(tmp_path, monkeypatch):
@@ -440,11 +446,14 @@ def test_forecast_setting_reaches_the_check(tmp_path, monkeypatch):
     (g,) = ui_data._newest_report().gaps
     assert (g.action, g.from_week) == ("forecast", WEEKS[-2])
     page = client.get("/forecast").text
-    # the head, then each count as a warn badge (as the Data tab's row)
+    # the mark, the head, then each count in quiet words (as the Data
+    # tab's row): the mark is the line's one warning
     line = page.split('id="newest-check"')[1].split("</p>")[0]
     assert f'<span class="nc-head">All {len(LOCS)} reported</span>' in line
     assert '<span class="uk-badge-t">1 reads 0</span>' in line
-    assert 'aria-label="Complete, with issues"' in page
+    assert 'data-state="neutral"' in line and "uk-badge--warn" not in line
+    assert line.count('class="ncmark warn"') == 1
+    assert 'aria-label="Complete, with issues"' in line
     # the Data issues box under the line names Ohio: the line has no "?"
     # of its own (FC-26)
     assert 'id="tip-newest-gaps"' not in page

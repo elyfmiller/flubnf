@@ -172,6 +172,9 @@ def test_the_engines_parts_are_one_component_in_the_badge_rows_and_versions():
     assert ">1 not installed<" in html and 'id="tip-hm-missing"' not in html
     rows = html.split('class="hm-missing"', 1)[1].split("</ul>", 1)[0]
     assert rows.count("<li>") == 1 and f"<span>{ENGINE}</span>" in rows
+    # the badge is the warning: a row is its name and its "?", no icon
+    assert 'class="uk-badge uk-badge--warn" id="hm-missing"' in html
+    assert f"<li><span>{ENGINE}</span>" in rows and "<svg" not in rows
     assert "fit_type=pf" not in rows and "venv" not in rows
     assert "(FLUBNF_PY_ENGINE) and <span class=\"hm-mono\">/p/pybnf/pf.py" in rows
     assert 'id="hm-v-engine"' in html and 'id="hm-v-pybnf"' not in html

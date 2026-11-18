@@ -196,7 +196,7 @@
    diagram (read-once reference) sits one scroll below #}
 <div class="grid2 homeperf">
  <div class="card hm-perf">
-  {{ tips.heading("Measured performance", "hm-perf", after=tips.tag("relWIS")) }}
+  {{ tips.heading("Measured performance", "hm-perf") }}
   {# one line says how to read the figures; each column's cells and the
      plain filter's record are on Methods (Measured performance) #}
   <p class="hint hm-perf-how">relWIS against the FluSight baseline (ratio of sums);
@@ -216,8 +216,8 @@
      the figures' cue (nau.css .figscroll) #}
   <div class="figscroll" tabindex="0" role="region" aria-label="Measured performance table (scrolls)">
   <table class="perf">
-   {# columns named for whose forecast they score; the unit is beside the
-      card's heading #}
+   {# columns named for whose forecast they score; the unit is the line
+      under the card's heading #}
    <thead><tr><th>Season</th><th class="num">Oracle SIHRS</th>
     <th class="num">Groundhog</th><th class="num">FluSight Ensemble</th>
     </tr></thead>
@@ -430,10 +430,11 @@
   {% endif %}
   {# each missing component by name, in plain words (routes/home.py
      _setup_rows: the engine's parts are one row); what it is and the
-     path looked at are its "?" #}
+     path looked at are its "?". No icon on a row: the heading's badge
+     says they are not installed #}
   <ul class="hm-missing" aria-label="Not installed on this machine">
    {% for r in setup_rows %}
-   <li>{{ tips.icon("warning", cls="uk-c-warn") }}<span>{{ r.name }}</span>
+   <li><span>{{ r.name }}</span>
     {%- call tips.tip("hm-miss-" ~ loop.index, r.name) %}{{ r.words }}. Looked
     for at {% for p, var in r.paths %}{% if not loop.first %} and {% endif %}<span class="hm-mono">{{ p }}</span> ({{ var }}){% endfor %}.{% endcall %}</li>
    {% endfor %}

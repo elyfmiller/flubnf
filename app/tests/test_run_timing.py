@@ -365,6 +365,20 @@ def test_forecast_running_card_holds_the_results_place():
     wait = card.split('id="fc-wait"')[1]
     assert 'id="quip"' in wait
     assert "renderLocs(d.locations)" in html
+    # the heading says the run is running: no badge repeats it, and the
+    # one beside it waits, hidden, for the poll to see the run stopping
+    head = card.split('<h2 id="h-fc-running">Running</h2>', 1)[1]
+    head = head.split("</div>", 1)[0]
+    assert ">running<" not in card
+    assert ('<span id="fc-run-slot" hidden><span class="uk-badge uk-badge--warn"'
+            ' id="fc-run-state" data-state="warn">') in head
+    assert '<span class="uk-badge-t">stopping</span>' in head
+    assert "getElementById('fc-run-slot')" in card and "st.hidden=false" in card
+    # where the results will be, in quiet words (the bar shows the work)
+    assert ('<span class="uk-badge uk-badge--neutral" id="fc-skel-badge"'
+            ' data-state="neutral">') in wait
+    assert '<span class="uk-badge-t">after the run</span>' in wait
+    assert "uk-badge--pending" not in card
     # no estimate before the first fit finishes: said, not dashed
     assert "setStat('fc-left','estimating')" in html
 

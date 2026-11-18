@@ -387,7 +387,8 @@
    // the form against the latest run (the forecast date aside): the
    // model, the location pick, each model setting the run was given and,
    // after a modified run, its file names (the override box);
-   // the first two that differ named in the badge, then how many more.
+   // the first two that differ named in the badge, then how many more,
+   // in quiet words (a difference is not a fault).
    // Reads the controls only; posts nothing.
    (function () {
      var LAST = {{ lr | tojson }};
@@ -437,7 +438,7 @@
            && tick.checked !== LAST.hub_names) diff.push('File names');
        if (!window.FluBNFUI) return;
        if (diff.length) {
-         FluBNFUI.setBadge(badge, 'warn', 'Differs: ' + diff.slice(0, 2).join(', ')
+         FluBNFUI.setBadge(badge, 'neutral', 'Differs: ' + diff.slice(0, 2).join(', ')
            + (diff.length > 2 ? ' +' + (diff.length - 2) : ''));
        } else {
          FluBNFUI.setBadge(badge, 'ok', 'Same as last run');
@@ -593,7 +594,10 @@
   <div class="card fc-running">
    {% set stop %}<form method="post" action="/run/stop"
      onsubmit="this.querySelector('button').disabled=true"><button class="quiet">Stop run</button></form>{% endset %}
-   {{ tips.heading("Running", "fc-running", after=tips.badge("pending", "running", id="fc-run-state"), aside=stop) }}
+   {# the heading says the run is running; the badge beside it shows only
+      while the run stops (the poll below) #}
+   {% set run_state %}<span id="fc-run-slot" hidden>{{ tips.badge("warn", "stopping", id="fc-run-state") }}</span>{% endset %}
+   {{ tips.heading("Running", "fc-running", after=run_state, aside=stop) }}
    <p id="runlabel" class="runlabel">{{ status.run_label or "" }}</p>
    {{ tips.progress("Progress", none, text=status.phase or "starting", id="fc-prog") }}
    {# elapsed ticks client-side from the server's elapsed_s, re-anchored
@@ -621,7 +625,7 @@
      </section>
      <section id="fc-skel" aria-labelledby="fc-skel-h">
       <div class="fc-wait-head"><strong id="fc-skel-h">Results</strong>
-       {{ tips.badge("pending", "after the run", id="fc-skel-badge") }}</div>
+       {{ tips.badge("neutral", "after the run", id="fc-skel-badge") }}</div>
       <div class="fc-skel" aria-hidden="true">{% for w in (62, 48, 71, 40, 55) %}<span class="fc-skel-row"><i style="width:{{ w - 25 }}%"></i><i style="width:{{ w }}%"></i></span>{% endfor %}</div>
      </section>
      <p class="quip fc-quip" id="quip"></p>
@@ -763,9 +767,8 @@
            setStat('fc-fits', d.done+' of '+d.total);
            PS.disp=Math.max(PS.disp,3,100*d.done/d.total); progPct(PS.disp);
          }
-         const st=document.getElementById('fc-run-state');
-         if(st && st.dataset.state!=='warn' && window.FluBNFUI)
-           FluBNFUI.setBadge(st,'warn','stopping');
+         const st=document.getElementById('fc-run-slot');
+         if(st) st.hidden=false;
          setStat('fc-left','--');
        }
        else if(!d.total) progText(d.phase||'starting');
