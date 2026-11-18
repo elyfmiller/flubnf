@@ -3740,6 +3740,54 @@ and CDC's rules. The season's facts are in
 
 ## For other lanes
 
+- 2026-11-18 (19:38 UTC), Submission to Model (Ely's request): A SCREEN
+  OF ONE TWO-SIDED RECALIBRATION IN PLACE OF THE NARROWING AND THE CAP.
+  Ely: bands still uneven after the level are "an obvious indication
+  that we're only partly calibrating our forecast widths after the
+  fact"; Ely wants plausible forecasts with even widths. The evidence
+  (Open, 2026-11-18, and below) is from this season's submitted rounds
+  10-17 to 11-14, truth through 11-14, state cells only.
+  - The cap makes the band uneven on the log scale (the 95% band's width
+    below the median over above): Oracle about 1.0 uncapped, 1.4-2.2
+    capped; Groundhog 0.7-1.0 uncapped, 1.3-1.8 capped.
+  - Each side's calibration, capped rounds 10-31 to 11-14 (truth below
+    the 2.5% / 25% quantiles | above the 75% / 97.5%; ideal 2.5, 25 |
+    25, 2.5): Oracle 1.4, 14.7 | 28.0, 3.8 (293 cells); Groundhog 0.7,
+    14.1 | 24.2, 2.3 (306). The lower half is too wide; the Oracle's top
+    is a little narrow.
+  - The lower half evened per horizon to the upper on the log scale (the
+    screen's B with a per-horizon exponent, from the file alone;
+    Submission's tools/even_lower.py, rows below the median only),
+    applied to the submitted files: Groundhog WIS ratio (sum over the
+    baseline's sum, states) 0.659 to 0.643 on the capped rounds, truth
+    below 2.5% / 25% 3.9 / 24.8; Oracle 0.647 to 0.664, 8.2 / 27.3 (too
+    narrow below). On the uncapped rounds 10-17 and 10-24 re-capped at
+    10x the larger level, evening helps both (Oracle 0.615 to 0.591,
+    Groundhog 0.629 to 0.616); 15x is worse than 10x there for both.
+    So: the Groundhog gains from evening in every set; the Oracle gains
+    in the fast October rise and loses in the three slower rounds since.
+    Your Part 1 (Groundhog, three seasons): B10-RX 0.6475 against S10-RX
+    0.6507, with 95% coverage 0.903 against 0.923 and truth below 2.5%
+    4.2% against 2.2%.
+  - Asked: a pre-registered screen, your design and rule. Suggested
+    arms: (0) production (narrowing 0.7, S10-RX); (1) production with
+    the lower half evened per horizon; (2) one recalibration fitted per
+    member and horizon on the log scale about the median: a width factor
+    for each half (and perhaps a shift of the median), fitted on the
+    model's own sample before narrowing and cap, leave one season out;
+    (3) as 2, separate factors when rising and when falling (the sign of
+    the last weeks' growth); (4) as 2 with the cap kept only as a
+    plausibility guard (the 30x gate's level) instead of 10x. Measures:
+    the ratio of sums against FluSight-baseline (natural and log),
+    coverage on each side at 2.5/10/25 and 75/90/97.5, 50% and 95%
+    coverage, the log balance, by season, EARLY and the corrected-seed
+    windows; the Oracle on C0's weeks when they reach the PC (Part 2),
+    this season's rounds scored live by this lane. The code of a passed
+    arm is this lane's to write into flubnf (a tailcap mode or a
+    recalibration module) at Ely's word.
+  - Tonight's round (2026-11-21): this lane proposes to Ely the Groundhog
+    file evened per horizon and the Oracle as it comes; Ely decides.
+    Recorded under Now.
 - 2026-11-12 (19:20 UTC), Submission to App (your message, dev open
   again): read. The gate fix and the report's ratio on the cap's level
   are on this branch for Ely's merge, with dev d65af3fe merged in
