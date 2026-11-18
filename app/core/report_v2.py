@@ -867,9 +867,7 @@ def page_style() -> str:
  .brand .mark{{flex:none;display:block;width:1.45em;height:1.45em;
   background:var(--logo) center/contain no-repeat;
   -webkit-print-color-adjust:exact;print-color-adjust:exact}}
- .brandsub{{color:var(--mut);font-size:var(--fs-label);font-weight:600;
-  padding:.05em .6em;border:1px solid var(--line);
-  border-radius:var(--r-pill)}}
+ .brandsub{{color:var(--mut);font-size:var(--fs-label);font-weight:600}}
  .brandrow .spacer{{flex:1}}
  h1{{font-size:var(--fs-h1);font-weight:700;margin:0;text-wrap:balance}}
  h2{{font-size:1.15rem;font-weight:700;margin:.2rem 0 .6rem}}

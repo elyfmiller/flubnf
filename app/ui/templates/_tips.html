@@ -26,15 +26,15 @@
    to use each, with examples). Styles: static/ui-kit.css, colors through
    the nau.css tokens only; behavior: static/tips.js (FluBNFUI). Every
    macro whose explainer can be rich text takes it as a call block, as tip()
-   does:  {% call tips.badge("warn", "not archived") %}...{% endcall %}
+   does:  {% call tips.badge("warn", "incomplete", id=id) %}...{% endcall %}
    Ids are the caller's: a tip's box is "tip-<id>", a toggletip's
    "tt-<id>", so one id per page.
 
      icon, icon_tip         the inline icon set; an icon whose tooltip explains
      heading                a section title and its "?"
      toggletip              a click-to-open explainer that may hold links and lists
-     badge                  a status: icon and word, no box (ok, warn, error, info,
-                            neutral, pending)
+     badge                  a status with no box: icon and word (warn, error,
+                            pending), the word alone (ok, info, neutral)
      alert                  a line the user must act on now
      empty                  an empty state: icon, short title, one action
      stats, stat            labelled values with their units
@@ -113,8 +113,11 @@
 {%- if aside %}<span class="uk-heading-aside">{{ aside }}</span>{% endif %}</div>
 {%- endmacro %}
 
-{# a status badge: icon and word, never color alone. state is one of ok,
-   warn, error, info, neutral, pending; `icon` overrides the state's icon.
+{# a status badge, never color alone: a state that asks something or is
+   under way (warn, error, pending) shows its icon and its word in its
+   color; one that asks nothing (ok, info, neutral) is the word alone,
+   muted (ui-kit.css hides its icon, which stays in the markup).
+   `icon_name` overrides the state's icon.
    With tiptext (or a call block) its "?" follows it, the two held
    together (uk-badge-pair) so a wrapping line never splits them. An `id`
    names the badge (FluBNFUI.setBadge updates it in place) and its tip

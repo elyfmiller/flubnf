@@ -131,6 +131,10 @@ html:not(.uk-js) .uk-tt:focus-within > .uk-tt-pop{position:static;
   font-weight:650;line-height:1.4;white-space:nowrap;vertical-align:middle;
   text-transform:none;letter-spacing:normal}
 .uk-badge-t{overflow:hidden;text-overflow:ellipsis}
+/* the word, not the icon, gives the badge its baseline (the icon stays
+   centered beside it), so a mark set on a baseline sits on its
+   neighbor's line whether it shows its icon or not */
+.uk-badge > .uk-badge-t{align-self:baseline}
 .uk-badge--warn{--uk-c:var(--warn)}
 .uk-badge--error{--uk-c:var(--bad)}
 .uk-badge--pending{--uk-c:var(--accent-ink)}
@@ -382,9 +386,10 @@ details.uk-fold[open] > summary::before{transform:rotate(45deg)}
 
 /* ---- 12. tag, name chip, figure line ---- */
 /* a tag: a kind or a unit in a word, as plain muted text with no outline
-   (it states no status) */
+   (it states no status), held on one line so it reads as one unit */
 .uk-tag{color:var(--mut);font-size:var(--fs-label);font-weight:500;
-  line-height:1.4;text-transform:none;letter-spacing:normal}
+  line-height:1.4;white-space:nowrap;text-transform:none;
+  letter-spacing:normal}
 /* a name chip: the name of the formula or figure beside it, as a plain
    caption; its "?" follows the word, as close as a badge's */
 .uk-name{display:inline-flex;align-items:center;gap:.15rem;

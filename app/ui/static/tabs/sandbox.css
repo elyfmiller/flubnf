@@ -43,8 +43,12 @@
   min-width:0;overflow-wrap:anywhere}
 /* the last run: its status is the link. The kit underlines the word of
    a status inside a link (ui-kit.css), so no pill has to mark it as
-   pressable; the box keeps the focus ring around the whole status */
-a.sb-runlink{display:inline-block}
+   pressable; the box keeps the focus ring around the whole status. Its
+   hit area, centered on the word, is at least 24px each way (as the
+   kit's "?"), however short the word, and moves nothing */
+a.sb-runlink{display:inline-block;position:relative}
+a.sb-runlink::before{content:"";position:absolute;left:50%;top:50%;
+  width:max(100%,24px);height:max(100%,24px);transform:translate(-50%,-50%)}
 
 /* ---- the editor card ---- */
 /* the toolbar: the card's title with the page's "i" (the three files),

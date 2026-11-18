@@ -175,9 +175,9 @@
 details[data-scope] > summary{scroll-margin-top:.75rem}
 /* a refusal's reason under the head */
 .fc-ms-refused{margin:.4rem 0 .2rem}
-/* a group's count of changed rows: quiet words at the summary's right,
-   worded as a changed row's mark (the rows wear the bar) */
-.ms-n{margin-left:auto;color:var(--mut);font-size:var(--fs-label);
+/* a group's count of changed rows: plain words at the summary's right,
+   worded and inked as a changed row's note (the rows wear the bar) */
+.ms-n{margin-left:auto;color:var(--ink);font-size:var(--fs-label);
   font-weight:500;white-space:nowrap}
 .ms-n[hidden]{display:none}
 /* a changed group's other rows, folded under its changed ones */
@@ -265,14 +265,20 @@ details[data-scope] > summary{scroll-margin-top:.75rem}
   background:var(--card);border-top:1px solid var(--line);
   border-radius:0 0 10px 10px}
 /* a field off its default: a bar at its row's edge (in the group's
-   padding, so the field keeps its place and width) and quiet words by
-   its label naming the default (--ms-mark, set on the row). The bar
-   carries the warning color; the words say it, so it is never color
-   alone */
+   padding, so the field keeps its place and width) and plain words by
+   its label naming the default (--ms-mark, set on the row), in the ink
+   so they stand apart from the muted label. The bar carries the warning
+   color; the words say it, so it is never color alone */
 .ms-row.ms-changed{box-shadow:inset 3px 0 0 var(--warn);padding-left:.5rem;
   margin-left:-.5rem}
 .ms-row.ms-changed > .lblrow > label::after{content:var(--ms-mark,"changed");
-  display:inline-block;margin-left:.5rem;color:var(--mut);
+  display:inline-block;margin-left:.5rem;color:var(--ink);
   font-size:var(--fs-label);font-weight:500;white-space:nowrap}
+/* forced colors drop the bar (a box-shadow): an edge in the system's text
+   color takes its place, the field kept where it stands */
+@media (forced-colors:active){
+  .ms-row.ms-changed{border-left:3px solid CanvasText;
+    margin-left:calc(-.5rem - 3px)}
+}
 /* the fan chart takes focus for its arrow keys */
 #fanplot:focus-visible{outline:2px solid var(--accent-ink);outline-offset:2px}

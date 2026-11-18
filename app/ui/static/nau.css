@@ -1593,34 +1593,28 @@ header.nav .navtabs.more-l.more-r{
 .runsettings .kv{grid-template-columns:max-content minmax(0,max-content)}
 
 /* round8: data check */
-/* the newest week's reporting: one line, a mark (ok or warn token) with
-   its own text alternative, the "?" listing each missing location */
+/* the newest week's reporting: one line, the head ("51 of 53 reported")
+   and each count in quiet words; when a state needs a look, a warning
+   icon with its own text alternative leads it and the "?" lists each
+   location to look at */
 p.newest-check{margin:.2rem 0 .4rem}
 p.newest-check[hidden]{display:none}
 .ncmark{display:inline-block;min-width:1em;font-weight:800;text-align:center}
 .ncmark.warn{color:var(--warn)}
+/* the line's middle dots already part its counts: no room from the kit's
+   marks-side-by-side rule as well, so each dot sits midway (the element
+   in each selector outranks that rule wherever the sheets load) */
+p.newest-check > .uk-badge,dd.dt-newest-dd > .uk-badge{margin-right:0}
 .tipbox .ncline{display:block}
 .tipbox .ncline + .ncline{margin-top:.3rem}
 
 
 /* round9: retrospective layout */
-/* season header band: the finished replay's settings as chips (the shared
-   renderer's dl.kv, laid out as a wrapped chip row) beside the report
-   buttons */
+/* season header band: the replay's facts (.rs-facts) beside the report
+   buttons (.rs-acts) */
 .rs-band{display:flex;flex-wrap:wrap;align-items:center;
   justify-content:space-between;gap:.45rem 1rem;margin:.3rem 0 .7rem}
 .rs-band .rs-acts{margin:0;gap:.55rem;min-width:0}
-.rs-chips{min-width:0}
-.rs-chips .runsettings{margin:0;display:flex;flex-wrap:wrap;
-  align-items:center;gap:.3rem .5rem}
-.rs-chips .runsettings .kv{display:flex;flex-wrap:wrap;gap:.35rem 0;
-  margin:0;width:auto;max-width:100%;font-size:var(--fs-label)}
-.rs-chips .kv dt{color:var(--mut);padding:.08rem .3rem .08rem .6rem;
-  border:1px solid var(--line);border-right:0;border-radius:99px 0 0 99px;
-  background:var(--bg);white-space:nowrap}
-.rs-chips .kv dd{margin:0 .45rem 0 0;padding:.08rem .6rem .08rem 0;
-  border:1px solid var(--line);border-left:0;border-radius:0 99px 99px 0;
-  background:var(--bg);font-weight:650;overflow-wrap:anywhere}
 /* the verdict: one row of tiles (four across when the window allows;
    the floor in rem, so large text wraps them rather than clipping);
    the cumulative chart sits in the player's side column with a marker
@@ -1629,7 +1623,6 @@ p.newest-check[hidden]{display:none}
 .rs-band .rs-facts{margin:0;flex:1 1 20rem;min-width:0}
 .rs-settings{margin:.15rem 0 .7rem}
 .rs-settings .runsettings > strong{display:none}
-.rs-chips .runsettings > strong{display:none}
 .cumwrap{margin-top:.9rem}
 .cumwrap h2{font-size:var(--fs-label);margin-bottom:.2rem}
 .cumwrap svg.cumchart{max-height:clamp(200px,32vh,420px)}

@@ -107,8 +107,7 @@ A form label with its "?" on the same line. A hint under a field (`<p class="hin
 A section title with its explainer beside it. It replaces the subtext line under a card's `h2`. The "?" sits after the heading element, not inside it, so the heading's accessible name is the title alone. `after` is markup after the tip (a badge, a count); `aside` is markup pushed to the right edge (an action). `rich=True` makes the explainer a toggletip. The heading gets `id="h-<id>"`. At `level=3` it is a sub-heading inside a card, drawn at one size on every tab; a tab's `cls` sets its spacing only.
 
 ```jinja
-{{ tips.heading("Run ledger", "st-ledger", "Elapsed is wall time; a dash: recorded before timing existed.",
-                after=tips.badge("neutral", ledger | length ~ " runs")) }}
+{{ tips.heading("Runs", "sb-runs", after=tips.badge("neutral", runs | length ~ " runs")) }}
 ```
 
 Inside a `<summary>` (whose content may not hold a `<div>`), keep the plain `<h2>` and put `tips.tip` after it.
@@ -283,7 +282,7 @@ Each tab's own rules live in `app/ui/static/tabs/<tab>.css` (`home`, `data`, `fo
 {% block head %}<link rel="stylesheet" href="/static/tabs/data.css">{% endblock %}
 ```
 
-A partial that renders on another tab's page (the upload box is on Data, Forecast and Retrospective) links its owner's sheet itself; a `<link>` in the body is valid and the browser loads the file once. So every rule in a tab sheet is scoped by the tab's class prefix (`hm-`, `dt-`, `fc-`, `out-`, `rt-`, `st-`, `md-`, `mt-`, `sb-`) and never styles a bare element or a kit class. A sheet a tab does not need is deleted. `nau.css` keeps the tokens, the themes and the shared layout; a tab edits it only to delete rules that only it used. A tab's own count or kind that is not a control (Forecast's locations count, a changed setting's words, the ledger's facts) takes the look of a quiet mark: plain words with no outline, fill or pill.
+A partial that renders on another tab's page (the upload box is on Data, Forecast and Retrospective) links its owner's sheet itself; a `<link>` in the body is valid and the browser loads the file once. So every rule in a tab sheet is scoped by the tab's class prefix (`hm-`, `dt-`, `fc-`, `out-`, `rt-`, `st-`, `md-`, `mt-`, `sb-`) and never styles a bare element or a kit class. A sheet a tab does not need is deleted. `nau.css` keeps the tokens, the themes and the shared layout; a tab edits it only to delete rules that only it used. A tab's own count or kind that is not a control (Forecast's locations count, a changed setting's words, the ledger's count and facts) takes the look of a quiet mark: plain words with no outline, fill or pill, in the ink where they sit beside a muted label (a changed setting's words).
 
 Colors come only from the `nau.css` tokens (`var(--ink)`, `var(--ok)`, a `color-mix()` of two tokens; the table of tokens is under "Display settings" in [app/ui/README.md](../app/ui/README.md)), never a literal, so a rule works in every theme, in high contrast and in the color-vision mode; `app/tests/test_ui_kit.py` holds the tab sheets and the kit to that. Sizes are in `rem`, `em` and the type tokens (`--fs-label`, `--fs-hint`), so they follow the text size, which runs from 80% to 160% of the root.
 
@@ -291,7 +290,7 @@ Colors come only from the `nau.css` tokens (`var(--ink)`, `var(--ok)`, a `color-
 
 - Every tip, toggletip and reason is reachable by keyboard and named for a screen reader; Escape closes what is open.
 - Status is never color alone: a mark that wears a state's color (a warning, a failure, work under way) is an icon shape and a word in that color, a quiet word uses no state color, a stepper speaks each step's state, a legend names each swatch.
-- Only what can be pressed has an outline: a button, a switch, a "?" or an "i". A badge, a tag and a name chip have none, and a status that is a link is underlined.
+- A mark has no outline: a badge, a tag and a name chip are words set in the line, and a status that is a link is underlined. Among words in a line, only what can be pressed has an outline (a button, a switch, a "?" or an "i"). A key is not a mark and keeps its box: `code`, `kbd`, a model's parameter symbols ("Fitted per state"), a tile.
 - Hit targets: the "?" and "i" buttons are drawn at 1.1rem, and their clickable ring reaches 24px at the standard text size.
 - Measured in `app/tests/test_ui_kit.py` in every theme, with and without high contrast and the color-vision mode: a mark's word (each state color and the muted color) on the card and on the page ground, the text a mark takes on a filled surface, an alert's text on its tint, and the current step's number hold 4.5:1; an alert's icon holds 3:1.
 
