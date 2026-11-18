@@ -6,6 +6,39 @@ and CDC's rules. The season's facts are in
 
 ## Now
 
+- 2026-11-18 (19:23 UTC): ROUND 2026-11-21 CAN RUN, WITH THE SAME
+  OPTIONS (Ely asked). The week ending 2026-11-14 is on cdcepi main
+  (5fe13b25, 16:41 UTC; 53 locations; US 11,513, and 11-07 revised from
+  9,395 to 10,112). The hub's deadline is back to Wednesday
+  (submissions_due end -3, c704166a): tonight, 23:00 ET. popn_frac is
+  still 0.005.
+  - The options, as round 2026-11-14's run record: Oracle step on,
+    weight 0.25; spread narrowing 0.7; upper-tail cap 10, form shrink,
+    level larger (both members); seed denominator expected total
+    (early season); replicates 3, particles 10,000; Groundhog donors
+    flusurv@06eff6a7, own-state 0.50; the public engine.
+  - The build: main is 2a540a34 (#7) against round 2026-11-14's
+    dcef8bee. Its model-side changes are speed (the Groundhog's calendar
+    cache and donor memo, flubnf/analogue.py) and run timing
+    (run_timing.json); App's #93 check: every forecast, score and
+    stored file byte-identical. The report's ratio fix (e32c2f38) is
+    on this branch only, so this week's report still divides by the
+    mean: capped locations read 12-15x where the files hold 10x the
+    larger level.
+  - Seed stages (tools/stage_now.py): LA and NV join the old to_date
+    pin (now AK, CA, FL, HI, LA, NV, PR, UT, WA); next TX 25%, TN 23%,
+    AL 22%.
+  - Growth is slowing: US week on week 1.33, 1.16, 1.14; 17 of 52
+    states fell in the week to 11-14 (11 the week before). The newest
+    observed targets ran high: the truth above our median in 24%
+    (Oracle) and 21% (Groundhog) of states for round 2026-11-07's h1,
+    38% and 39% for round 2026-11-14's h0. Over rounds 10-17 to 11-14,
+    every observed cell: WIS ratio (sum of WIS, the mean of 2 x pinball
+    over 23 levels, over the sum of FluSight-baseline's on the same
+    cells) 0.63 (Oracle, 719 cells) and 0.65 (Groundhog, 736); 95%
+    coverage 0.97 and 0.98 (tools/score_recent.py). No change of
+    option is proposed on one week; the review reads h3 against the
+    slower growth.
 - 2026-11-12 (22:04 UTC): ROUND 2026-11-14 MERGED ON THE HUB, AND THE
   5 PM ET FIELD CHECK. cdcepi #4060 merged at 20:31 UTC (merge commit
   07c0814e, in main 7cf88ab9); both files on main are byte-identical to
