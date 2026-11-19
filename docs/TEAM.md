@@ -83,6 +83,15 @@ Model lanes on Ely's Windows PC push their own notes with Ely's login.
   and pull requests alike. Set the name and email in every clone and
   cloud session before its first commit, merges included. Nobody outside
   Ely's lanes commits under Ely's name.
+- Pull request titles and descriptions, and commit messages, say what the
+  change does: what is added, changed, removed or fixed, why, and how it
+  was checked (tests, measurements, results). They do not say who asked
+  for it or decided it ("Ely asked", "as Ely chose"), do not speak as
+  "we", and do not tell how the work was split between lanes, sessions or
+  reviewers. Write "Status marks have no outline", not "Ely asked us to
+  remove the outlines". Who decided what goes in the lane notes
+  (Decided), not on GitHub. Comments on a pull request are not bound by
+  this.
 - Work lands through `dev`; pull requests go from `dev` to `main` and are
   opened only when Ely asks. Never rewrite history on a branch another lane
   owns.
