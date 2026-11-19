@@ -1,7 +1,8 @@
 {# The upload box's result (datasets_ui.check_view; rendered in the page on
    a refused store, and returned as HTML by POST /data/datasets/check):
    every problem grouped by kind under one alert line, or a column mapping
-   when that is what is missing (the roles still to choose marked), the
+   when that is what is missing (a role still to choose reads "choose…"
+   in its select, an optional one says so beside its label), the
    target picker for a file with several, the notes on how the file was
    read (a closed fold), and a preview of a valid file: labelled values,
    a sparkline per group, the first rows, and its "Forecast this" /
@@ -16,7 +17,7 @@
    columns): a closed fold whose summary counts them #}
 {% macro notes(chk, fid) -%}
 {% if chk.notices %}{% set n = chk.notices | length %}
-{% call tips.fold(n ~ " note" ~ ("" if n == 1 else "s") ~ " on how it was read", id=fid ~ "-notes", cls="dt-notes", after=tips.icon("info", cls="uk-c-info")) %}
+{% call tips.fold(n ~ " note" ~ ("" if n == 1 else "s") ~ " on how it was read", id=fid ~ "-notes", cls="dt-notes") %}
 <ul class="dsnotes">{% for n in chk.notices %}<li>{{ n }}</li>{% endfor %}</ul>
 {% endcall %}
 {% endif %}
@@ -40,7 +41,7 @@
  {% call tips.tip(fid ~ "-map", "choosing the columns") %}{% for w in chk.mapping.why %}<span class="ncline">{{ w }}</span>{% endfor %}{% endcall %}{% endif %}</legend>
  <div class="dsmap-roles">
  {% for r in chk.mapping.roles %}
- <span><span class="dt-maplbl"><label for="{{ fid }}-col-{{ r.role }}">{{ r.label }}</label>{% if not r.required %} {{ tips.badge("neutral", "optional") }}{% elif not r.value %} {{ tips.badge("warn", "choose") }}{% endif %}</span>
+ <span><span class="dt-maplbl"><label for="{{ fid }}-col-{{ r.role }}">{{ r.label }}</label>{% if not r.required %} {{ tips.badge("neutral", "optional") }}{% endif %}</span>
   <select name="col_{{ r.role }}" id="{{ fid }}-col-{{ r.role }}" data-recheck>
    <option value="">{{ "choose…" if r.required else "none" }}</option>
    {% for v, h in chk.mapping.headers %}<option value="{{ v }}"{% if v == r.value %} selected{% endif %}>{{ h }}</option>{% endfor %}
@@ -50,9 +51,9 @@
 </fieldset>
 {% endif %}
 {% if chk.targets %}
-{# the label, its tip and (while unset) the "choose" badge the column
-   selects wear #}
-<div class="dstarget"><div class="lblrow"><label for="{{ fid }}-target">Target</label>{{ tips.tip(fid ~ "-target", "target", "This file holds several targets; a dataset holds one." ~ ("" if chk.target else " Choose the target to check and store.")) }}{% if not chk.target %} {{ tips.badge("warn", "choose") }}{% endif %}</div>
+{# the label and its tip; while unset the select reads "choose…", as a
+   column select does #}
+<div class="dstarget"><div class="lblrow"><label for="{{ fid }}-target">Target</label>{{ tips.tip(fid ~ "-target", "target", "This file holds several targets; a dataset holds one." ~ ("" if chk.target else " Choose the target to check and store.")) }}</div>
  <select name="target" id="{{ fid }}-target" data-recheck>
   <option value=""{% if not chk.target %} selected{% endif %}>choose…</option>{% for t in chk.targets %}
   <option{% if t == chk.target %} selected{% endif %}>{{ t }}</option>{% endfor %}</select></div>

@@ -476,8 +476,12 @@ def test_a_linked_cache_folder_gets_a_row_with_no_delete(state, tmp_path):
     assert row["bytes"] == b and not row["busy"]
     html = client.get("/storage").text
     sec = _section(html)
-    assert "Compiled models" in sec and "linked" in sec
+    # the row's fact line says it is a link; no word beside the size
+    # repeats it
+    assert "Compiled models" in sec
     assert f"A link to {os.path.realpath(elsewhere)}" in sec
+    assert '<span class="uk-badge-t">linked</span>' not in sec
+    assert 'class="st-act"' not in sec
     assert 'value="engine-cache"' not in sec           # no Delete
     assert 'id="reclaim-btn"' not in html
     d = client.get("/api/storage/reclaim").json()

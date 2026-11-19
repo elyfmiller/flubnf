@@ -70,6 +70,9 @@ def boxes(page):
 
 #: the preview's "Ready to use" badge (a check that stores nothing)
 READY = '<span class="uk-badge-t">Ready to use</span>'
+#: the mark an unset column or target select once wore beside its label;
+#: the select's own "choose…" says it
+CHOOSE_MARK = '<span class="uk-badge-t">choose</span>'
 
 
 def fact(html, label):
@@ -414,6 +417,8 @@ def test_a_file_with_several_targets_waits_for_a_choice():
     html = j["html"]
     assert '<select name="target" id="dsup-data-target" data-recheck>' in html
     assert '<option value="" selected>choose…</option>' in html
+    # the select says it once: no "choose" mark beside its label
+    assert CHOOSE_MARK not in html
     assert " selected>wk inc" not in html
     assert "Nothing was stored." not in html and READY not in html
     assert 'value="forecast"' not in html
@@ -476,6 +481,10 @@ def test_two_candidate_date_columns_say_why_they_ask():
     assert j["status"] == "Choose which column is which. 1 problem to fix."
     j = check(raw, col_date="#2").json()
     assert j["ok"] and "Ignored column(s): date." in j["html"]
+    # the notes sit in a fold whose summary counts them, in words alone
+    fold = j["html"].split('id="dsup-data-notes"')[1].split("</summary>")[0]
+    assert re.search(r'<span class="uk-fold-sum">\d+ notes? on how it was '
+                     r'read</span>$', fold) and "<svg" not in fold
 
 
 #: weekly counts with no group column, the count named anything
@@ -511,6 +520,11 @@ def test_two_columns_of_numbers_ask_for_the_value_not_a_group():
     assert "Choose the column that holds" not in html
     val = html.split('id="dsup-data-col-value"')[1].split("</select>")[0]
     assert '<option value="">choose…</option>' in val and " selected" not in val
+    # the unset select says it once: no "choose" mark beside its label;
+    # the optional role still says so beside its own
+    assert CHOOSE_MARK not in html
+    lbl = html.split('for="dsup-data-col-group"')[1].split("<select")[0]
+    assert '<span class="uk-badge-t">optional</span>' in lbl
     j = check(raw, col_date="#1", col_value="#2").json()
     assert j["ok"] and READY in j["html"]
     assert "Ignored column(s): deaths." in j["html"]

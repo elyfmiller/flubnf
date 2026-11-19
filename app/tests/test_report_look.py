@@ -5,6 +5,8 @@ changed in one commit so stored reports are rebuilt once.
     gold, #806000 (nau.css's light themes), not #A87300.
   * The charts' toolbar buttons show the console's focus ring in the
     report too (Plotly's own 1px black ring is lost on a dark card).
+  * The header's "weekly forecast report" is muted words with no pill, as
+    the console's marks are (2026-11, fewer marks).
 """
 import re
 import sys
@@ -60,3 +62,11 @@ def test_the_reports_chart_toolbar_shows_the_consoles_focus_ring():
     # a chartless page's style never reads as charted (legacy_theme_carry)
     assert "js-plotly-plot" not in style and "Plotly.newPlot" not in style
 
+
+def test_the_reports_name_in_the_header_is_words_with_no_pill():
+    style = report_v2.page_style()
+    rules = re.findall(r"(?<![\w-])\.brandsub\{([^}]*)\}", style)
+    assert len(rules) == 2                    # the look, and a phone hides it
+    assert rules[0] == "color:var(--mut);font-size:var(--fs-label);font-weight:600"
+    for body in rules:
+        assert not re.search(r"(?:border|padding|background|outline)", body), body

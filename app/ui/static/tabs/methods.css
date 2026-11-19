@@ -162,14 +162,10 @@ a.btn.mt-go{min-height:24px;padding:.15rem .7rem;font-size:var(--fs-label)}
 }
 
 /* ---- 5. policies ---- */
-/* the rules every run keeps, each with a check mark drawn in borders */
-.mt-rules{list-style:none;margin:.2rem 0 .6rem;padding:0;display:grid;
-  grid-template-columns:repeat(auto-fill,minmax(min(100%,30rem),1fr));
-  gap:.35rem 1.2rem}
-.mt-rules li{position:relative;padding-left:1.5rem}
-.mt-rules li::before{content:"";position:absolute;left:.3rem;top:.25em;
-  width:.35em;height:.7em;border-right:2px solid var(--ok);
-  border-bottom:2px solid var(--ok);transform:rotate(45deg)}
+/* the rules every run keeps: an ordinary bulleted list, as the page's
+   other lists (a check before each would be a mark on an explanation) */
+.mt-rules{margin:.2rem 0 .6rem;padding-left:1.1rem}
+.mt-rules li{margin:.12rem 0}
 .mt-defs{margin:.2rem 0 .8rem}
 
 /* ---- 6. print (Print / Save as PDF): the document alone, on white. The

@@ -191,6 +191,17 @@ def test_run_page_names_failed_cells_and_step_errors(tmp_path, monkeypatch):
     # Jinja default escaping, no |safe: a status string cannot inject markup
     assert "<b>boom</b>" not in html
     assert "&lt;b&gt;boom&lt;/b&gt;" in html
+    # each row is the cell (or step) and its reason: the list's heading
+    # says they failed, so no row opens with an icon
+    detail = html.split('class="card fc-partial"', 1)[1]
+    assert detail.count('<ul class="fc-faillist">') == 2
+    assert ('<li><code>Texas_r1</code> <span>pybnf exited 1 '
+            '&lt;b&gt;boom&lt;/b&gt;</span></li>') in detail
+    assert ('<li><code>archive_error</code> <span>disk full</span></li>'
+            in detail)
+    lists = "".join(u.split("</ul>", 1)[0]
+                    for u in detail.split('<ul class="fc-faillist">')[1:])
+    assert "<svg" not in lists and "uk-c-error" not in lists
 
 
 def test_run_page_without_failures_shows_no_detail_block(tmp_path,

@@ -307,6 +307,26 @@ def test_flags_falls_in_the_warning_colour_disagree_in_red():
         {"observed": [[ASOF, 3.0]], "models": {}})
 
 
+def test_a_flag_is_its_word_in_its_colour_with_no_box():
+    """A panel's flag reads as the console's marks do: the word in its
+    state's colour and weight, with no outline, pill or fill (its title
+    says why)."""
+    css = re.sub(r"/\*.*?\*/", "", G.grid_css(), flags=re.S)
+    rules = [(sel, body) for sels, body in re.findall(r"([^{}]+)\{([^{}]*)\}", css)
+             for sel in sels.split(",")
+             if re.search(r"\.g-flag(?:--\w+)?(?![\w-])", sel)]
+    assert len(rules) >= 4                    # the flag, its two states, print
+    for sel, body in rules:
+        assert not re.search(
+            r"(?:^|;)\s*(?:border|outline|padding|background|box-shadow)"
+            r"[\w-]*\s*:", body), (sel, body)
+    flag = dict(d.split(":", 1) for d in
+                [x.strip() for x in rules[0][1].split(";")] if d)
+    assert rules[0][0].strip() == ".g-flag"
+    assert flag["color"] == "var(--bad)" and flag["font-weight"] == "650"
+    assert flag["cursor"] == "help"
+
+
 def test_a_clipped_band_runs_off_the_top_without_a_mark():
     """Ely, 2026-10-01 and 2026-10-07: no off-scale note, no arrows."""
     p = {"key": "XX", "name": "X", "observed": [[ASOF, 20.0]],

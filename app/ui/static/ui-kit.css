@@ -5,9 +5,10 @@
    RULES
      - colors only through the nau.css tokens (every theme, data-contrast
        ="high", data-vision="cvd"); tints are color-mix() of two tokens.
-       Measured in app/tests/test_ui_kit.py: badge words (a token on the
-       card) and alert text (ink on a 6% tint) hold 4.5:1 in every theme
-       and mode, an alert's icon 3:1
+       Measured in app/tests/test_ui_kit.py: a mark's word (a state token
+       or the muted token, on the card and on the page ground) and alert
+       text (ink on a 6% tint) hold 4.5:1 in every theme and mode, an
+       alert's icon 3:1
      - sizes in rem/em and the nau.css type and spacing tokens, so every
        component follows the text size (80% to 160% of the root) and wraps
        rather than overflows
@@ -118,28 +119,63 @@ html:not(.uk-js) .uk-tt:focus-within > .uk-tt-pop{position:static;
 .uk-tt-line{display:block}
 .uk-tt-line + .uk-tt-line{margin-top:.3rem}
 
-/* ---- 4. badge: icon and word in the state's color, outlined on the
-   card (a tint would take the dim theme's red under 4.5:1) ---- */
+/* ---- 4. badge: a status set in the line like text, with no box. A
+   state that asks something of the reader (warn, error) or is under way
+   (pending) is its icon and its word in the state's color. A state that
+   asks nothing (ok, info, neutral) is the word alone, muted. Only
+   something that can be pressed has an outline. Each color holds 4.5:1
+   on the card and on the page ground ---- */
 .uk-badge{--uk-c:var(--mut);display:inline-flex;align-items:center;
-  gap:.3em;max-width:100%;padding:.05em .6em .05em .45em;
-  border:1px solid var(--uk-c);border-radius:var(--r-pill);
-  background:var(--card);color:var(--uk-c);font-size:var(--fs-label);
+  gap:.3em;max-width:100%;padding:0;border:0;border-radius:0;
+  background:none;color:var(--uk-c);font-size:var(--fs-label);
   font-weight:650;line-height:1.4;white-space:nowrap;vertical-align:middle;
   text-transform:none;letter-spacing:normal}
 .uk-badge-t{overflow:hidden;text-overflow:ellipsis}
-.uk-badge--ok{--uk-c:var(--ok)}
+/* the word, not the icon, gives the badge its baseline (the icon stays
+   centered beside it), so a mark set on a baseline sits on its
+   neighbor's line whether it shows its icon or not */
+.uk-badge > .uk-badge-t{align-self:baseline}
 .uk-badge--warn{--uk-c:var(--warn)}
 .uk-badge--error{--uk-c:var(--bad)}
-.uk-badge--info,.uk-badge--pending{--uk-c:var(--accent-ink)}
-.uk-badge--neutral{--uk-c:var(--mut)}
+.uk-badge--pending{--uk-c:var(--accent-ink)}
+/* the quiet states: the word alone, free to wrap; --uk-quiet lets a
+   stat's value keep the ink */
+.uk-badge--ok,.uk-badge--info,.uk-badge--neutral{
+  --uk-c:var(--uk-quiet,var(--mut));font-weight:500;white-space:normal}
+.uk-badge--ok > .uk-icon,.uk-badge--info > .uk-icon,
+.uk-badge--neutral > .uk-icon{display:none}
+.uk-badge--ok > .uk-badge-t,.uk-badge--info > .uk-badge-t,
+.uk-badge--neutral > .uk-badge-t{overflow:visible}
 .uk-badge + .tip{margin-left:.15rem}
 /* a badge and its "?" (tips.badge with a tip): one unit that wraps as a
-   whole; a badge too long for its line shortens (ellipsis, the full word
+   whole; a mark too long for its line shortens (ellipsis, the full word
    in the tip) rather than push the "?" off */
 .uk-badge-pair{display:inline-flex;align-items:center;gap:.15rem;
   max-width:100%;vertical-align:middle;white-space:nowrap}
 .uk-badge-pair > .uk-badge{min-width:0}
 .uk-badge-pair > .tip,.uk-badge-pair > .uk-tt{flex:none;margin-left:0}
+/* marks side by side: with no box to part them, a mark followed by
+   another stands apart from it as the facts of a row do, on top of the
+   row's own gap (the room trails the first, so a mark that wraps starts
+   its line flush) */
+:is(.uk-badge,.uk-badge-pair,.uk-tag):has(+ :is(.uk-badge,.uk-badge-pair,.uk-tag)){
+  margin-right:.45rem}
+/* a status that is also a link: its word is underlined, since no
+   outline says it can be pressed; the line thickens under the pointer */
+a > .uk-badge > .uk-badge-t{text-decoration:underline;
+  text-underline-offset:.15em}
+a:hover > .uk-badge > .uk-badge-t{text-decoration-thickness:2px}
+/* a mark brings no fill of its own, so on a filled surface it takes that
+   surface's text color and its state rests on its icon and its word: an
+   alert's tint (the dim theme's red is under 4.5:1 there), a tooltip (the
+   inverted surface), the chosen side of a segmented switch. A filled
+   surface outside the kit states the same beside its own rule (nau.css,
+   the open Model settings button) */
+.uk-alert .uk-badge,.uk-alert .uk-tag,.uk-alert .uk-name,
+.tipbox .uk-badge,.tipbox .uk-tag,.tipbox .uk-name,
+.uk-seg > [aria-pressed="true"] .uk-badge,.uk-seg > [aria-current] .uk-badge,
+.uk-seg > [aria-pressed="true"] .uk-tag,.uk-seg > [aria-current] .uk-tag{
+  color:inherit}
 
 /* ---- 5. alert: one line to act on now, a 6% tint of its kind ---- */
 .uk-alert{--uk-c:var(--accent-ink);display:flex;align-items:center;
@@ -194,6 +230,12 @@ html:not(.uk-js) .uk-tt:focus-within > .uk-tt-pop{position:static;
 .uk-stat-v{color:var(--ink);font-size:var(--fs-lead);font-weight:700;
   font-variant-numeric:tabular-nums;overflow-wrap:anywhere}
 .uk-stat-u{color:var(--mut);font-size:var(--fs-label)}
+/* a stat whose value is a status: the word reads as the value (the ink
+   when the state asks nothing, the state's color behind its icon when
+   it does) */
+.uk-stat-v{--uk-quiet:var(--ink)}
+.uk-stat-v .uk-badge{font-size:inherit;font-weight:inherit;
+  vertical-align:baseline}
 .uk-stat--ok .uk-stat-v{color:var(--ok)}
 .uk-stat--warn .uk-stat-v{color:var(--warn)}
 .uk-stat--error .uk-stat-v{color:var(--bad)}
@@ -343,20 +385,17 @@ details.uk-fold[open] > summary::before{transform:rotate(45deg)}
 .uk-affix > span{flex:none;color:var(--mut);font-size:var(--fs-label)}
 
 /* ---- 12. tag, name chip, figure line ---- */
-/* a tag: a kind or a unit in a word, outlined and muted, no icon (it
-   states no status) */
-.uk-tag{display:inline-flex;align-items:center;max-width:100%;
-  padding:.05em .6em;border:1px solid var(--line);border-radius:var(--r-pill);
-  color:var(--mut);font-size:var(--fs-label);font-weight:650;line-height:1.4;
-  white-space:nowrap;vertical-align:middle}
-/* a name chip: the name of the formula or figure beside it, its "?"
-   inside the pill */
-.uk-name{display:inline-flex;align-items:center;
-  padding:.05rem .15rem .05rem .65rem;border:1px solid var(--line);
-  border-radius:var(--r-pill);color:var(--mut);font-size:var(--fs-label);
-  font-weight:600;white-space:nowrap}
-/* a chip with no "?" keeps the pill even on both sides */
-.uk-name:not(:has(> .tip)){padding-right:.65rem}
+/* a tag: a kind or a unit in a word, as plain muted text with no outline
+   (it states no status), held on one line so it reads as one unit */
+.uk-tag{color:var(--mut);font-size:var(--fs-label);font-weight:500;
+  line-height:1.4;white-space:nowrap;text-transform:none;
+  letter-spacing:normal}
+/* a name chip: the name of the formula or figure beside it, as a plain
+   caption; its "?" follows the word, as close as a badge's */
+.uk-name{display:inline-flex;align-items:center;gap:.15rem;
+  color:var(--mut);font-size:var(--fs-label);font-weight:600;
+  white-space:nowrap}
+.uk-name > .tip{margin-left:0}
 /* a centered line under a figure: a formula beside its name chip, or a
    badge about the figure */
 .uk-figline{display:flex;flex-wrap:wrap;align-items:center;
@@ -399,14 +438,13 @@ details.uk-fold[open] > summary::before{transform:rotate(45deg)}
 /* high contrast: flat surfaces, heavier boundaries */
 [data-contrast="high"] .uk-alert{background:var(--card);border-width:2px;
   border-left-width:5px}
-[data-contrast="high"] .uk-badge,[data-contrast="high"] .uk-tag,
-[data-contrast="high"] .uk-name,[data-contrast="high"] .uk-seg{border-width:2px}
+[data-contrast="high"] .uk-seg{border-width:2px}
 [data-contrast="high"] .uk-empty:not(.uk-empty--compact){border:2px solid var(--line)}
 [data-contrast="high"] .uk-tt-pop{border-width:2px}
 [data-contrast="high"] .uk-step-mark{border-width:3px}
 /* Windows high contrast: the system colors take over; keep the edges */
 @media (forced-colors:active){
-  .uk-badge,.uk-alert,.uk-tt-pop,.uk-step-mark,.uk-tag,.uk-name,.uk-seg{border-color:CanvasText}
+  .uk-alert,.uk-tt-pop,.uk-step-mark,.uk-seg{border-color:CanvasText}
   .uk-seg > button[aria-pressed="true"],.uk-seg > [aria-current]{
     background:Highlight;color:HighlightText}
   .uk-progress-fill{background:Highlight}

@@ -748,8 +748,9 @@ def grid_css() -> str:
    font-weight:650}
  html.g-off-pf .g-tail [data-s="pf"],
  html.g-off-analogue .g-tail [data-s="analogue"]{display:none}
+ /* a panel's flag: its word in its state's color with no box, as the
+    console's marks; the title says why */
  .g-flag{font-size:var(--fs-micro);font-weight:650;color:var(--bad);
-   border:1px solid currentColor;border-radius:999px;padding:0 .35rem;
    cursor:help}
  .g-flag--warn{color:var(--warn)}
  .g-flag--bad{color:var(--bad)}

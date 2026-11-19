@@ -19,9 +19,10 @@
  {{ dsup.box("forecast") }}
 </div>
 {% else %}
-{# a status word in a badge: the ledger's run statuses by kind #}
+{# a status word in a badge: the ledger's run statuses by kind; a stop is
+   the reader's own, said in quiet words #}
 {% set RUN_STATE = {"ok": "ok", "done": "ok", "running": "pending",
-                    "stopped": "warn", "interrupted": "warn", "partial": "warn"} %}
+                    "stopped": "neutral", "interrupted": "warn", "partial": "warn"} %}
 {# the live run, read once by the route (live_running) so the Running card
    and the Latest run card's status agree; a dataset page reads it here #}
 {% set running = live_running if live_running is defined else status.running %}
@@ -98,7 +99,7 @@
        Saturday is its own anchor); the badge stays either way #}
     <span class="fc-anchor-ok"{% if not aw %} hidden{% endif %}><span class="fc-anchor-kv" id="fc-anchor-kv"{% if kv_off %} hidden{% endif %}>{{ tips.icon("calendar", cls="uk-c-muted") }}<span class="fc-anchor-k">Anchor week</span>
      <b id="fc-anchor-wk">{{ aw }}</b></span>
-     <span id="fc-anchor-live"{% if live_off %} hidden{% endif %}>{{ tips.badge("warn", "not archived · target-data", id="fc-live") }}</span></span>
+     <span id="fc-anchor-live"{% if live_off %} hidden{% endif %}>{{ tips.badge("neutral", "not archived · target-data", id="fc-live") }}</span></span>
     <span class="fc-anchor-none"{% if aw %} hidden{% endif %}>{{ tips.icon("warning") }}<span id="fc-anchor-none">{{ an if not aw else "" }}</span></span>
    </div>
    {# the round the date answers: its reference date (the anchor week + 7)
@@ -270,7 +271,7 @@
       setMode(initial, false);
     })();
    </script>
-   {# the pick's count rides in the label as a chip (the script below) #}
+   {# the pick's count rides in the label, in quiet words (the script below) #}
    <div class="lblrow"><label id="fc-locs-lbl">{{ "Groups" if dataset else "Locations" }} <span id="lcount" class="fc-count"></span></label></div>
    {% if locations_error %}{{ tips.alert("warn", locations_error, id="fc-locs-error") }}{% endif %}
    {# presets and a filter over the list: buttons and a search box with no
@@ -281,7 +282,7 @@
     <button type="button" class="quiet fc-chip" data-preset="states">States only (52)</button>
     <button type="button" class="quiet fc-chip" data-preset="us">US only</button>
     {% if pre.last %}<button type="button" class="quiet fc-chip" data-preset="last" data-locs="{{ pre.last | tojson | forceescape }}">Last pick</button>{% endif %}
-    {% if pre.failed %}<button type="button" class="quiet fc-chip" data-preset="failed" data-locs="{{ pre.failed | tojson | forceescape }}">Failed last run <span class="fc-chip-n">{{ pre.failed | length }}</span></button>{% endif %}
+    {% if pre.failed %}<button type="button" class="quiet fc-chip" data-preset="failed" data-locs="{{ pre.failed | tojson | forceescape }}">Failed last run (<span class="fc-chip-n">{{ pre.failed | length }}</span>)</button>{% endif %}
    </div>
    {% endif %}
    {# the filter and the list in a fold: closed while the pick is one the
@@ -348,7 +349,7 @@
     {# no engine: Both runs the Groundhog alone, said before the run in the
        words the dataset form uses; a broken install fails Both at run
        time, so it is named instead #}
-    <p class="fc-under">{% if pf_state == "absent" %}{{ tips.badge("neutral", "Groundhog only: the particle-filter engine is not installed on this machine", id="fc-pf-off", icon_name="lock") }}{% else %}{{ tips.badge("warn", "Oracle SIHRS engine install incomplete", id="fc-pf-off", icon_name="lock") }}{% endif %}</p>
+    <p class="fc-under">{% if pf_state == "absent" %}{{ tips.badge("neutral", "Groundhog only: the particle-filter engine is not installed on this machine", id="fc-pf-off", icon_name="lock") }}{% else %}{{ tips.badge("warn", "Oracle SIHRS engine install incomplete", id="fc-pf-off") }}{% endif %}</p>
     {% else %}
     {% call tips.stats("uk-stats--kv fc-kv") %}
      {{- tips.stat("Engine", "Particle filter", id="fc-engine", after=(eb_after | trim if eb_beside else "")) -}}
@@ -387,7 +388,8 @@
    // the form against the latest run (the forecast date aside): the
    // model, the location pick, each model setting the run was given and,
    // after a modified run, its file names (the override box);
-   // the first two that differ named in the badge, then how many more.
+   // the first two that differ named in the badge, then how many more,
+   // in quiet words (a difference is not a fault).
    // Reads the controls only; posts nothing.
    (function () {
      var LAST = {{ lr | tojson }};
@@ -437,7 +439,7 @@
            && tick.checked !== LAST.hub_names) diff.push('File names');
        if (!window.FluBNFUI) return;
        if (diff.length) {
-         FluBNFUI.setBadge(badge, 'warn', 'Differs: ' + diff.slice(0, 2).join(', ')
+         FluBNFUI.setBadge(badge, 'neutral', 'Differs: ' + diff.slice(0, 2).join(', ')
            + (diff.length > 2 ? ' +' + (diff.length - 2) : ''));
        } else {
          FluBNFUI.setBadge(badge, 'ok', 'Same as last run');
@@ -593,7 +595,9 @@
   <div class="card fc-running">
    {% set stop %}<form method="post" action="/run/stop"
      onsubmit="this.querySelector('button').disabled=true"><button class="quiet">Stop run</button></form>{% endset %}
-   {{ tips.heading("Running", "fc-running", after=tips.badge("pending", "running", id="fc-run-state"), aside=stop) }}
+   {# the heading says the run is running; while it stops, the progress
+      readout under it says so (the poll below), so no mark beside it #}
+   {{ tips.heading("Running", "fc-running", aside=stop) }}
    <p id="runlabel" class="runlabel">{{ status.run_label or "" }}</p>
    {{ tips.progress("Progress", none, text=status.phase or "starting", id="fc-prog") }}
    {# elapsed ticks client-side from the server's elapsed_s, re-anchored
@@ -621,7 +625,7 @@
      </section>
      <section id="fc-skel" aria-labelledby="fc-skel-h">
       <div class="fc-wait-head"><strong id="fc-skel-h">Results</strong>
-       {{ tips.badge("pending", "after the run", id="fc-skel-badge") }}</div>
+       {{ tips.badge("neutral", "after the run", id="fc-skel-badge") }}</div>
       <div class="fc-skel" aria-hidden="true">{% for w in (62, 48, 71, 40, 55) %}<span class="fc-skel-row"><i style="width:{{ w - 25 }}%"></i><i style="width:{{ w }}%"></i></span>{% endfor %}</div>
      </section>
      <p class="quip fc-quip" id="quip"></p>
@@ -763,9 +767,6 @@
            setStat('fc-fits', d.done+' of '+d.total);
            PS.disp=Math.max(PS.disp,3,100*d.done/d.total); progPct(PS.disp);
          }
-         const st=document.getElementById('fc-run-state');
-         if(st && st.dataset.state!=='warn' && window.FluBNFUI)
-           FluBNFUI.setBadge(st,'warn','stopping');
          setStat('fc-left','--');
        }
        else if(!d.total) progText(d.phase||'starting');

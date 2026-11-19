@@ -1,28 +1,29 @@
 {# Did every jurisdiction report the newest week? (app/core/reported.py)
 
    check(r): the Forecast tab's line under the anchor. A mark with a text
-   alternative (the kit's check or warning icon), the counts, and a "?"
-   naming each such location, its flag and the recommended choice.
+   alternative (the kit's warning icon) when a state needs a look, the
+   counts, and a "?" naming each such location, its flag and the
+   recommended choice.
    {% import "_newest.html" as newest %}{{ newest.check(r, short=True) }}
-   short=True: the mark and "All 53 reported", then one warn badge per
-   count ("5 read 0"), as the Data tab's row. The mark warns for any
+   short=True: the mark and the head ("51 of 53 reported"), then each
+   count in quiet words ("5 read 0"), as the Data tab's row: the mark is
+   the line's one warning. It warns for any
    zero, collapsed or unreported state; the per-state choice is made on
    the Forecast tab (the Data issues box, _data_issues.html).
    head_only=True: the head alone ("All 53 reported") plus the "?".
    tip=False: no "?" (the Data issues box under the line names each).
 
-   row(r): the Data tab's "Newest week" value: the mark and the head, one
-   badge per count ("5 read 0"), and a toggletip naming each location,
+   row(r): the Data tab's "Newest week" value: the mark and the head, each
+   count in quiet words ("5 read 0"), and a toggletip naming each location,
    whose pointer to Data issues is a link to the Forecast tab. Clean, the
-   mark and the head say it all ("All 53 reported"). #}
+   head says it all ("All 53 reported"). #}
 {% import "_tips.html" as tips %}
 
-{# the mark: an icon whose name says complete, complete with issues, or
-   incomplete (never color alone) #}
+{# the mark: a warning icon whose name says complete with issues, or
+   incomplete (never color alone). A clean week has none: the head beside
+   it says "All 53 reported" #}
 {% macro mark(r) -%}
-{%- if r.clean -%}
-<span class="ncmark ok" role="img" aria-label="Complete">{{ tips.icon("check") }}</span>
-{%- else -%}
+{%- if not r.clean -%}
 <span class="ncmark warn" role="img" aria-label="{{ 'Complete, with issues' if r.complete else 'Incomplete' }}">{{ tips.icon("warning") }}</span>
 {%- endif -%}
 {%- endmacro %}
@@ -41,7 +42,7 @@
  data-complete="{{ 'yes' if r.complete else 'no' }}"{% if hidden %} hidden{% endif %}>
 {%- if short or head_only -%}
 {{ mark(r) }} <span class="nc-head">{{ parts[0] }}</span>
-{%- if not head_only %}{% for c in parts[1:] %} {{ tips.badge("warn", c) }}{% endfor %}{% endif %}
+{%- if not head_only %}{% for c in parts[1:] %} · {{ tips.badge("neutral", c) }}{% endfor %}{% endif %}
 {%- else -%}
 {{ mark(r) }} {{ r.line() }}
 {%- endif %}
@@ -57,7 +58,7 @@
 <span class="newest-check dt-newest" id="newest-check" data-week="{{ r.week }}"
  data-complete="{{ 'yes' if r.complete else 'no' }}">{{ mark(r) }} <span class="dt-newest-head">{{ r.short().split(' · ')[0] }}</span></span>
 {%- if not r.clean %}
-{%- for c in r.short().split(' · ')[1:] %} {{ tips.badge("warn", c) }}{% endfor %}
+{%- for c in r.short().split(' · ')[1:] %} · {{ tips.badge("neutral", c) }}{% endfor %}
 {% call tips.toggletip("newest-gaps", "the jurisdictions to look at for " ~ r.week, title="Newest week " ~ r.week) -%}
 {{ lines(r, link=True) }}
 {%- endcall %}

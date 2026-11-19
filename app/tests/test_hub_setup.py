@@ -172,10 +172,18 @@ def test_the_engines_parts_are_one_component_in_the_badge_rows_and_versions():
     assert ">1 not installed<" in html and 'id="tip-hm-missing"' not in html
     rows = html.split('class="hm-missing"', 1)[1].split("</ul>", 1)[0]
     assert rows.count("<li>") == 1 and f"<span>{ENGINE}</span>" in rows
+    # the badge is the warning: a row is its name and its "?", no icon
+    assert 'class="uk-badge uk-badge--warn" id="hm-missing"' in html
+    assert f"<li><span>{ENGINE}</span>" in rows and "<svg" not in rows
     assert "fit_type=pf" not in rows and "venv" not in rows
     assert "(FLUBNF_PY_ENGINE) and <span class=\"hm-mono\">/p/pybnf/pf.py" in rows
     assert 'id="hm-v-engine"' in html and 'id="hm-v-pybnf"' not in html
     assert "<dt>PyBNF</dt>" not in html and "<dt>bngsim</dt>" not in html
+    # the versions row says "not installed" in plain words: the heading's
+    # badge is the one warning
+    row = html.split('aria-label="Component versions"', 1)[1].split("</dl>", 1)[0]
+    assert '<span data-vkey="pybnf">not installed</span>' in row
+    assert "uk-stat--warn" not in row
     assert H._setup_gaps(ENGINE_GONE, {"pybnf": "not installed",
                                        "bngsim": "not installed"}) == [ENGINE]
     # installed: PyBNF and bngsim read their versions, as before
@@ -230,6 +238,22 @@ def test_a_machine_without_the_engine_says_so_once_in_setup():
 def test_the_bngsim_pin_note_stays_off_beside_not_installed():
     html = _home([], dict(INSTALLED, bngsim="not installed"))
     assert 'id="tip-home-pin"' not in html
+    # the value in plain words, under a heading that warns once
+    assert 'class="uk-badge uk-badge--warn" id="hm-missing"' in html
+    row = html.split('aria-label="Component versions"', 1)[1].split("</dl>", 1)[0]
+    assert ('<div class="uk-stat"><dt>bngsim</dt><dd><span class="uk-stat-v" '
+            'id="home-pin"><span data-vkey="bngsim">not installed</span>') in row
+    assert "uk-stat--warn" not in row
+
+
+def test_a_missing_component_s_value_is_plain_words():
+    html = _home([BNG_GONE], dict(INSTALLED, bionetgen="not installed"))
+    assert ">1 not installed<" in html
+    row = html.split('aria-label="Component versions"', 1)[1].split("</dl>", 1)[0]
+    assert ('<div class="uk-stat"><dt>BioNetGen</dt><dd><span class="uk-stat-v" '
+            'id="hm-v-bionetgen"><span data-vkey="bionetgen">not installed'
+            '</span>') in row
+    assert "uk-stat--warn" not in row
 
 
 # ------------------------------------------ HM-13: a cold launch's badge
@@ -247,6 +271,21 @@ def test_a_cold_launch_says_checking_until_the_probe_lands():
     assert "slot.innerHTML = FluBNFUI.badge('warn', word);" in script
     assert "FluBNFUI.tip(" not in script
     assert "FluBNFUI.badge('ok', 'All components installed')" in script
+
+
+def test_while_checking_each_missing_row_keeps_its_warning_icon():
+    """A cold launch with something missing: the heading says
+    "checking…", not how many are missing, so each Setup row keeps its
+    warning icon (once settled the heading's count is the warning and
+    the rows are bare names)."""
+    html = _home(ENGINE_GONE, dict(INSTALLED, pybnf=V.VERSION_PENDING,
+                                   bngsim=V.VERSION_PENDING))
+    assert 'id="hm-checking"' in html and 'id="hm-missing"' not in html
+    rows = html.split('class="hm-missing"', 1)[1].split("</ul>", 1)[0]
+    assert rows.count("<li>") == 1
+    assert '<li><svg class="uk-icon uk-c-warn"' in rows
+    assert 'aria-hidden="true" focusable="false">' in rows
+    assert f"</svg><span>{ENGINE}</span>" in rows
 
 
 # ----------------------------------------- HM-14 and ME-19: Perl's version

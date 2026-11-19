@@ -100,6 +100,11 @@ def test_a_half_installed_engine_is_named_not_promised_as_groundhog_only(
     monkeypatch.setattr(ui_pipeline, "_pf_engine_state", lambda: "broken")
     page = " ".join(client.get("/forecast").text.split())
     assert "Oracle SIHRS engine install incomplete" in page
+    # a warning, drawn with the warning's own triangle (not a lock)
+    icon = page.split('id="fc-pf-off" data-state="warn">', 1)[1] \
+        .split('<span class="uk-badge-t">', 1)[0]
+    assert '<path d="M8 1.9 14.6 13.5H1.4Z"/>' in icon
+    assert "<rect" not in icon
     assert "Groundhog only: the particle-filter engine" not in page
     assert '<option value="pf" disabled>Oracle SIHRS only</option>' in page
     assert 'id="fc-engine"' not in page

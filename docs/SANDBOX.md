@@ -294,9 +294,11 @@ most half the computer's. At a limit the runner stops
 the experiment, keeps its finished weeks and says why on its page;
 Resume queues it again.
 
-**Where the queue shows.** The experiment's row and page show its badge
-(`queued · 2nd in line`, `queued · runner not running`, or `refused by
-the runner`), and while it waits the page's card reads **Queued** with
+**Where the queue shows.** The experiment's row shows its state (`queued ·
+2nd in line`, `queued · runner not running`, or `refused by the runner`).
+Its page marks the title only for `queued · runner not running`: a place
+in line is said by the card and a refusal by the alert. While it waits
+the page's card reads **Queued** with
 one line (`Queued · 2nd in line · starts in about 1:05:00 · runs about
 10:32 · needs about 173.8 MB of disk`) and **Stop**, which takes it out
 of the queue. A student sees only their own experiments. On that

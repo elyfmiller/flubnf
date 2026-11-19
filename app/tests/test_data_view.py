@@ -211,6 +211,12 @@ def test_data_page_stays_read_only(archive):
     assert 'action="/freshness"' in html and 'action="/data/pull"' in html
     assert 'action="/data/datasets#datasets"' in html
     assert 'method="get" action="/data"' in html
+    # the browser's heading says the card changes nothing, in quiet words
+    vb = html.split('<h2 id="h-vb">Vintage browser</h2>', 1)[-1] \
+        .split("</div>", 1)[0]
+    assert (vb.startswith('<span class="uk-badge uk-badge--neutral" '
+                          'data-state="neutral">')
+            and vb.endswith('<span class="uk-badge-t">read-only</span></span>'))
 
 
 def test_vintage_scans_are_ttl_cached():

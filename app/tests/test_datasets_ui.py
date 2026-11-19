@@ -164,9 +164,10 @@ def test_browse_view_plots_a_group_with_group_wording():
     assert f'<h2 id="h-ds-browse">{ds.name}</h2>' in page
     assert '<label for="dv-loc">Group</label>' in page
     assert 'name="source" value="' + ds.id in page
-    # final data: a badge beside the name, the reason in its "?"
-    assert ('<span class="uk-badge uk-badge--warn" id="ds-kind" '
-            'data-state="warn">') in page
+    # final data: said beside the name in quiet words (nothing is forecast
+    # or scored on this page), the reason in the heading's "?"
+    assert ('<span class="uk-badge uk-badge--neutral" id="ds-kind" '
+            'data-state="neutral">') in page
     assert page.split('id="ds-kind"')[1].split("</span></span>")[0] \
         .endswith('<span class="uk-badge-t">final data')
     assert "forecasts and replays on it are not vintage-true" in page

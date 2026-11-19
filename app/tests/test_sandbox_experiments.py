@@ -18,9 +18,11 @@ no BNG2.pl, no hub clone. Every thread a start begins is joined.
 
 golden/experiment_pages.json holds the gallery and three experiment
 pages as a console off the runner renders them, from fixed fixtures. It
-was captured from origin/dev 24ac926, before the runner's branches came
-to the routes and templates; regenerate only for a deliberate change to
-those pages, and review its diff:
+was first captured from origin/dev 24ac926, before the runner's branches
+came to the routes and templates, and regenerated when the title mark
+was dropped where the card or alert under it says the state, and when a
+stopped experiment's status became quiet words. Regenerate only for a
+deliberate change to those pages, and review its diff:
 
     python app/tests/test_sandbox_experiments.py --write-golden
 """
@@ -50,8 +52,8 @@ if __name__ == "__main__":
         sys.exit(__doc__)
     with tempfile.TemporaryDirectory(prefix="flubnf-golden-") as _d:
         pytest.main(["-q", "-p", "no:cacheprovider", f"--basetemp={_d}/t",
-                     f"{__file__}::test_the_default_role_pages_are_as_on_"
-                     "24ac926"])
+                     f"{__file__}::test_the_default_role_pages_match_the_"
+                     "golden"])
     _pages = getattr(sys.modules.get("test_sandbox_experiments"), "PAGES",
                      None)
     if not _pages:
@@ -60,8 +62,11 @@ if __name__ == "__main__":
     GOLDEN.write_text(json.dumps({
         "_about": ("the gallery and three experiment pages (<main> only) "
                    "as a console off the runner renders them from "
-                   "test_sandbox_experiments.py's fixed fixtures; captured "
-                   "at origin/dev 24ac926, before the runner's branches. "
+                   "test_sandbox_experiments.py's fixed fixtures; first "
+                   "captured at origin/dev 24ac926, before the runner's "
+                   "branches; regenerated when the title mark was dropped "
+                   "where the card or alert says the state, and when a "
+                   "stopped experiment's status became quiet words. "
                    "Regenerate only for a deliberate change: python "
                    "app/tests/test_sandbox_experiments.py --write-golden"),
         "pages": _pages}, indent=1, sort_keys=True) + "\n",
@@ -1131,17 +1136,21 @@ def test_the_page_words(world, truth, monkeypatch):
         assert f"<strong>{title}</strong> {text}" in alert, (title, alert)
         assert resume in alert
         assert "Delete experiment" in html
-    # complete and done: no state alert
+        # the alert says the state: the title carries no mark of its own
+        assert _title_badge(html) is None, title
+    # complete and done: no state alert, so the title's mark says it
     _record(folder, "done")
     shutil.copytree(folder / "weeks" / SMOKE_WEEKS[0],
                     folder / "weeks" / SMOKE_WEEKS[1])
     html = client.get(url).text
     assert 'id="sbx-state"' not in html and "uk-badge--ok" in html
-    # no run record: Start
+    assert _title_badge(html) == ("ok", "done")
+    # no run record: Start, and the alert alone says it
     retro.meta_path(folder).unlink()
     html = client.get(url).text
     alert = html.split('id="sbx-state"', 1)[1].split("</div>", 1)[0]
     assert "<strong>Not started yet.</strong>" in alert
+    assert _title_badge(html) is None
     assert 'data-guard="sandbox-run">Start</button>' in alert
     # nothing to compare with, and the US not compared on a full
     _record(folder, "done")
@@ -1263,7 +1272,12 @@ def test_the_page_opens_while_the_claim_has_no_folder_yet(world):
     html = r.text
     assert '<p class="runstat" id="sbx-line" aria-live="polite">Starting…</p>' \
         in html
-    assert "uk-badge--pending" in html and ">starting<" in html
+    # the Running card says it (its heading, its line): no mark on the
+    # title. The state is still worked out as before (the gallery's row
+    # draws it once the folder is there)
+    assert "<h2>Running</h2>" in html and _title_badge(html) is None
+    assert ui_sandbox._experiment_view(SMOKE)["badge"] == (
+        "pending", "starting")
     meta = html.split('<ul class="uk-meta">', 1)[1].split("</ul>", 1)[0]
     assert re.findall(r"<li>([^<]*)</li>", meta) == [
         "sihrs", "2024-25", "smoke", "Oracle step on"]
@@ -1275,6 +1289,31 @@ def test_the_page_opens_while_the_claim_has_no_folder_yet(world):
     assert (api["live"], api["claimed"], api["status"]["line"]) == (
         True, True, "Starting…")
     assert not X.root().exists()
+
+
+def test_the_title_keeps_a_mark_only_for_what_the_card_does_not_draw(
+        world, truth, monkeypatch):
+    """While it replays, the Running card says the state (its heading and
+    its line), so the title carries no mark of its own. A pause is a
+    warning the card says only in its line's words: its mark stays on the
+    title. The gallery's row keeps one word in every state."""
+    url = f"/sandbox/experiments/{BETA}"
+    folder = _hand_written(monkeypatch, truth)
+    monkeypatch.setattr(X, "stale", lambda folder: "")
+    now = time.time()
+    _record(folder, "running", heartbeat_utc=now, pid=os.getpid(),
+            segment_start_utc=now)
+    html = client.get(url).text
+    assert "<h2>Running</h2>" in html and 'id="sbx-state"' not in html
+    assert " so far" in _line(html)
+    assert _title_badge(html) is None
+    assert _row_badge(url) == ("pending", "running")
+    _record(folder, "paused")
+    html = client.get(url).text
+    assert "<h2>Running</h2>" in html and 'id="sbx-state"' not in html
+    assert _line(html).startswith("Paused · ")
+    assert _title_badge(html) == ("warn", "paused")
+    assert _row_badge(url) == ("warn", "paused")
 
 
 def _st(status: str, **more) -> dict:
@@ -1308,8 +1347,8 @@ def test_the_running_line_and_the_badge_of_each_state():
             (running, True, ("pending", "running")),
             (_st("stopping"), False, ("pending", "stopping")),
             (_st("paused"), False, ("warn", "paused")),
-            (_st("stopped"), False, ("warn", "stopped · 2 of 5 weeks")),
-            (_st("stopped", **whole), False, ("warn", "stopped")),
+            (_st("stopped"), False, ("neutral", "stopped · 2 of 5 weeks")),
+            (_st("stopped", **whole), False, ("neutral", "stopped")),
             (_st("interrupted"), False, ("warn", "interrupted · 2 of 5 weeks")),
             (_st("done", **whole), False, ("ok", "done")),
             (_st("done"), False, ("warn", "done · 2 of 5 weeks")),
@@ -1449,7 +1488,7 @@ def test_one_question_mark_on_the_page(world, truth, monkeypatch):
     assert marks(html.split('<div id="sbx"', 1)[1]) == ["tip-sbx-scores"]
 
 
-# ------------------------------------- the default role, as on 24ac926
+# ------------------------- the default role, against the golden pages
 
 #: the pages the golden test rendered (read by its --write-golden)
 PAGES: dict = {}
@@ -1529,8 +1568,8 @@ def _main(html: str) -> str:
     return re.search(r'<main id="main".*?</main>', html, re.S).group(0)
 
 
-def test_the_default_role_pages_are_as_on_24ac926(world, truth, tmp_path,
-                                                  monkeypatch):
+def test_the_default_role_pages_match_the_golden(world, truth, tmp_path,
+                                                 monkeypatch):
     urls = _golden_world(monkeypatch)
     pages = {}
     for name, url in urls.items():
@@ -1551,6 +1590,10 @@ def test_the_default_role_pages_are_as_on_24ac926(world, truth, tmp_path,
     assert "Stopped after 1 of 2 weeks." in pages["stopped"]
     assert 'data-guard="sandbox-run">Resume</button>' in pages["stopped"]
     assert "Not started yet." in pages["not_started"]
+    # the gallery's row says the stop in quiet words
+    row = pages["gallery"].split(f'<a href="{PAGE}">', 1)[1].split("</tr>", 1)[0]
+    assert ('<span class="uk-badge uk-badge--neutral" data-state="neutral">'
+            in row and "stopped · 1 of 2 weeks</span>" in row)
 
 
 # ---------------------------- in a student's folder on the runner computer
@@ -1597,10 +1640,24 @@ def _line(html: str) -> str:
                      r"([^<]*)</p>", html).group(1)
 
 
-def _title_badge(html: str) -> tuple:
+def _title_badge(html: str) -> tuple | None:
+    """The mark after the page's title as (state, words); None when the
+    title carries none (the card or the alert under it says the state)."""
     head = html.split('id="h-sbx-title"', 1)[1].split("</div>", 1)[0]
+    if "uk-badge" not in head:
+        return None
     return (re.search(r'data-state="(\w+)"', head).group(1),
             re.search(r'<span class="uk-badge-t">([^<]*)</span>', head
+                      ).group(1))
+
+
+def _row_badge(page: str) -> tuple:
+    """The gallery's status mark in the row of the experiment whose page
+    is `page`, as (state, words): one word in every state."""
+    row = client.get("/sandbox").text.split(f'href="{page}"', 1)[1].split(
+        "</tr>", 1)[0]
+    return (re.search(r'data-state="(\w+)"', row).group(1),
+            re.search(r'<span class="uk-badge-t">([^<]*)</span>', row
                       ).group(1))
 
 
@@ -1639,7 +1696,7 @@ def test_in_a_runner_folder_start_queues_and_claims_nothing(alice,
     line = (f"Queued · 1st in line · starts within a minute · runs {runs} · "
             f"needs about {peak} of disk")
     assert _line(html) == line
-    assert _title_badge(html) == ("pending", "queued · 1st in line")
+    assert _title_badge(html) is None
     assert ('<input type="hidden" name="experiment" value="' + SMOKE
             + '"><button class="quiet">Stop</button>') in html
     assert "Delete experiment" not in html and 'id="sbx-state"' not in html
@@ -1651,9 +1708,7 @@ def test_in_a_runner_folder_start_queues_and_claims_nothing(alice,
         "measured": False, "peak_bytes": est["peak_bytes"],
         "keep_bytes": est["keep_bytes"], "why": "", "runner": True}
     assert api["status"]["queued"] is True
-    row = client.get("/sandbox").text.split(f'href="{PAGE}"', 1)[1]
-    assert '<span class="uk-badge-t">queued · 1st in line</span>' in row.split(
-        "</tr>", 1)[0]
+    assert _row_badge(PAGE) == ("pending", "queued · 1st in line")
     # JSON: Start's keys, started false, and where it stands: "queued" as
     # the experiment's JSON gives it
     got = client.post("/sandbox/experiments", data=FORM, headers=JSON).json()
@@ -1789,7 +1844,7 @@ def test_the_queue_line_and_badge():
         assert badge(_st(state), False, None, LINKED) == (
             "warn", "refused by the runner")
     assert badge(_st("stopped"), False, None, "") == (
-        "warn", "stopped · 2 of 5 weeks")
+        "neutral", "stopped · 2 of 5 weeks")
 
 
 def test_in_a_runner_folder_the_page_reads_the_runner(alice, students,
@@ -1809,7 +1864,8 @@ def test_in_a_runner_folder_the_page_reads_the_runner(alice, students,
     html = client.get(PAGE).text
     assert 'data-poll="1"' in html and "<h2>Running</h2>" in html
     assert _line(html) == "Starting on the runner…"
-    assert _title_badge(html) == ("pending", "starting")
+    assert _title_badge(html) is None
+    assert _row_badge(PAGE) == ("pending", "starting")
     assert "Delete experiment" not in html
     got = client.post(f"{PAGE}/delete", data={"confirm": SMOKE},
                       headers=JSON).json()
@@ -1821,7 +1877,8 @@ def test_in_a_runner_folder_the_page_reads_the_runner(alice, students,
     runner_state(students, retro_root=rr, job=job, pid=DEAD)
     html = client.get(PAGE).text
     assert 'data-poll="0"' in html and 'id="sbx-line"' not in html
-    assert _title_badge(html) == ("neutral", "not started")
+    assert _title_badge(html) is None
+    assert _row_badge(PAGE) == ("neutral", "not started")
     alert = html.split('id="sbx-state"', 1)[1].split("</div>", 1)[0]
     assert "Not started yet." in alert
     assert '<button class="gold">Start</button>' in alert
@@ -1832,16 +1889,14 @@ def test_in_a_runner_folder_the_page_reads_the_runner(alice, students,
         "seconds": 0.0, "weeks": 0}])
     html = client.get(PAGE).text
     assert 'data-poll="0"' in html
-    assert _title_badge(html) == ("warn", "refused by the runner")
+    assert _title_badge(html) is None
     alert = html.split('id="sbx-state"', 1)[1].split("</div>", 1)[0]
     assert html.count('id="sbx-state"') == 1
     assert 'class="uk-alert uk-alert--warn"' in html.split(
         'id="sbx-state"', 1)[0].rsplit("<div", 1)[1]
     assert f"The runner did not run it: {LINKED}." in alert
     assert '<button class="gold">Start</button>' in alert
-    row = client.get("/sandbox").text.split(f'href="{PAGE}"', 1)[1]
-    assert ('<span class="uk-badge-t">refused by the runner</span>'
-            in row.split("</tr>", 1)[0])
+    assert _row_badge(PAGE) == ("warn", "refused by the runner")
     retro.write_meta(f, {"status": "stopped", "started_utc": old,
                          "settings": {"experiment": SMOKE_FP,
                                       "weeks": SMOKE_WEEKS}})
@@ -1855,7 +1910,19 @@ def test_in_a_runner_folder_the_page_reads_the_runner(alice, students,
     _start()
     html = client.get(PAGE).text
     assert "The runner did not run it" not in html
-    assert _title_badge(html) == ("pending", "queued · 1st in line")
+    assert "<h2>Queued</h2>" in html and _title_badge(html) is None
+    assert _line(html).startswith("Queued · 1st in line · ")
+    assert _row_badge(PAGE) == ("pending", "queued · 1st in line")
+    # queued with the runner not running: the card's line says it in
+    # passing, so the warning keeps its mark on the title
+    state_file = students / runner.STATE_NAME / runner.STATE_FILE
+    was = state_file.read_text(encoding="utf-8")
+    runner_state(students, retro_root=rr, pid=DEAD)
+    html = client.get(PAGE).text
+    assert "<h2>Queued</h2>" in html
+    assert " · the runner is not running" in _line(html)
+    assert _title_badge(html) == ("warn", "queued · runner not running")
+    state_file.write_text(was, encoding="utf-8", newline="\n")
     # an interrupted replay says the runner's reason when it gave one
     os.unlink(f / X.QUEUED)
     retro.write_meta(f, {"status": "running", "pid": DEAD,

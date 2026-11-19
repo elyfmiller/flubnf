@@ -199,15 +199,36 @@ def test_workroot_rows_read_as_human_labels_with_the_id_secondary(state):
     assert "run 01-18 09:30:00" in row            # parsed from the id
 
 
+def test_a_stopped_run_says_so_in_quiet_words(state):
+    """A stop is the reader's own: the ledger's status column and the run
+    workroot row say "stopped" in quiet words; a failed run still says it
+    as an error."""
+    html = client.get("/runs").text
+    quiet = '<span class="uk-badge uk-badge--neutral" data-state="neutral">'
+    for status, look in (("stopped", quiet),
+                         ("error", '<span class="uk-badge uk-badge--error" '
+                                   'data-state="error">')):
+        rid = state["rids"][status]
+        led = html.split(f'<tr data-st="{status}"', 1)[1].split("</tr>", 1)[0]
+        assert f'href="/runs/{rid}"' in led
+        stat = led.split('<td class="st-stat">', 1)[1].split("</td>", 1)[0]
+        assert look in stat and f'<span class="uk-badge-t">{status}</span>' in stat
+        row = html.split(f'data-wid="{rid}"', 1)[1].split("</div>", 1)[0]
+        assert look in row and f'<span class="uk-badge-t">{status}</span>' in row
+        assert "uk-badge--warn" not in stat + row
+
+
 def test_protected_trees_render_no_delete_controls(state):
     html = client.get("/runs").text
     protected = html.split('id="st-protected"', 1)[1].split("</section>", 1)[0]
     assert ">Protected</h3>" in protected
     assert "<form" not in protected
     assert "data-del-storage" not in protected
-    # each tree says so with a badge (lock icon and word), not a button
-    assert protected.count('<span class="uk-badge-t">protected</span>') \
-        == protected.count('class="st-row"') == 2      # seal and hub
+    # the heading says protected for both trees: no row repeats it, and
+    # none has a button or an action slot
+    assert protected.count('class="st-row"') == 2      # seal and hub
+    assert '<span class="uk-badge-t">protected</span>' not in protected
+    assert 'class="st-act"' not in protected
     # the section's count is the kit's neutral badge, as on other tabs
     assert '<span class="uk-badge-t">2 entries</span>' in protected
 
@@ -632,7 +653,11 @@ def test_the_runner_computer_lists_student_experiments_by_folder(state,
     stu = _stu(fold)
     assert ">Student experiments</h3>" in stu
     assert '<span class="uk-badge-t">3 entries</span>' in stu
-    assert '<span class="uk-tag">not in the total</span>' in stu
+    # outside the total: the note under the heading says so, and no tag
+    # on the heading says it a second time
+    assert ("Not in the total: the folders belong to the students' "
+            "clones.</p>") in stu
+    assert '<span class="uk-tag">not in the total</span>' not in stu
     assert ('<ul class="uk-meta"><li>The runner: idle</li><li>412.0 GB free '
             '· FluBNF keeps 20.0 GB free</li></ul>') in stu
     assert 'id="st-stu-down"' not in stu

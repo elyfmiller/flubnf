@@ -140,6 +140,13 @@ def test_a_modified_replay_records_its_knobs_and_says_so():
             in page)
     card = client.get(f"/retro?dataset={ds.id}").text.split('id="dataset-replay"')[1]
     assert "modified settings" in card
+    # its row in the list of replays says so once, in quiet words and not
+    # as a warning: the mark is the replay page's own, above
+    rows = card.split('class="card dsr-replays"')[1]
+    assert rows.count("modified settings") == 1
+    said = rows.split('<span class="uk-badge-t">modified settings</span>')[0]
+    assert said[said.rindex('<span class="uk-badge '):].startswith(
+        '<span class="uk-badge uk-badge--neutral" data-state="neutral">')
 
 
 def test_a_shipped_replay_records_no_knobs():

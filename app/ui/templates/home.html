@@ -196,7 +196,7 @@
    diagram (read-once reference) sits one scroll below #}
 <div class="grid2 homeperf">
  <div class="card hm-perf">
-  {{ tips.heading("Measured performance", "hm-perf", after=tips.tag("relWIS")) }}
+  {{ tips.heading("Measured performance", "hm-perf") }}
   {# one line says how to read the figures; each column's cells and the
      plain filter's record are on Methods (Measured performance) #}
   <p class="hint hm-perf-how">relWIS against the FluSight baseline (ratio of sums);
@@ -216,8 +216,8 @@
      the figures' cue (nau.css .figscroll) #}
   <div class="figscroll" tabindex="0" role="region" aria-label="Measured performance table (scrolls)">
   <table class="perf">
-   {# columns named for whose forecast they score; the unit is beside the
-      card's heading #}
+   {# columns named for whose forecast they score; the unit is the line
+      under the card's heading #}
    <thead><tr><th>Season</th><th class="num">Oracle SIHRS</th>
     <th class="num">Groundhog</th><th class="num">FluSight Ensemble</th>
     </tr></thead>
@@ -395,7 +395,8 @@
  {# the badge counts what check() reports missing AND what the version
     probe reads as "not installed" (routes/home.py _setup_gaps), so it never
     says "All components installed" beside a "not installed" value; the
-    script below recounts when a resolving version lands #}
+    script below recounts when a resolving version lands. It is the one
+    warning: the versions row says "not installed" in plain words #}
  {% set gaps = setup_gaps if setup_gaps is defined else (missing | map(attribute="0") | list) %}
  {# a cold launch paints "checking…" until the version probe lands (the
     script below then counts); a badge from values still resolving said
@@ -430,10 +431,12 @@
   {% endif %}
   {# each missing component by name, in plain words (routes/home.py
      _setup_rows: the engine's parts are one row); what it is and the
-     path looked at are its "?" #}
+     path looked at are its "?". No icon on a row once the heading's
+     badge says they are not installed; while it says "checking…" each
+     row keeps its warning icon #}
   <ul class="hm-missing" aria-label="Not installed on this machine">
    {% for r in setup_rows %}
-   <li>{{ tips.icon("warning", cls="uk-c-warn") }}<span>{{ r.name }}</span>
+   <li>{% if setup_pending is defined and setup_pending %}{{ tips.icon("warning", cls="uk-c-warn") }}{% endif %}<span>{{ r.name }}</span>
     {%- call tips.tip("hm-miss-" ~ loop.index, r.name) %}{{ r.words }}. Looked
     for at {% for p, var in r.paths %}{% if not loop.first %} and {% endif %}<span class="hm-mono">{{ p }}</span> ({{ var }}){% endfor %}.{% endcall %}</li>
    {% endfor %}
@@ -464,20 +467,20 @@
  {% call tips.stats("uk-stats--row hm-versions", label="Component versions") %}
   {% if engine_venv_absent or ((engine_absent or (versions.pybnf == "not installed" and versions.bngsim == "not installed")) and not ebv.known) %}
   {% set v %}<span data-vkey="pybnf">{{ versions.pybnf if versions.pybnf == version_pending else "not installed" }}</span>{% endset %}
-  {{ tips.stat(engine_name if engine_name is defined else "Particle-filter engine", v, id="hm-v-engine", state=("" if versions.pybnf == version_pending else "warn")) }}
+  {{ tips.stat(engine_name if engine_name is defined else "Particle-filter engine", v, id="hm-v-engine") }}
   {% else %}
   {% set v %}{% if ebv.known %}<span data-engine-label>{{ ebv.label }}</span>{% else %}<span data-vkey="pybnf">{{ versions.pybnf }}</span>{% endif %}{% endset %}
-  {{ tips.stat("PyBNF", v, id="hm-v-pybnf", state=("warn" if versions.pybnf == "not installed" and not ebv.known else "")) }}
+  {{ tips.stat("PyBNF", v, id="hm-v-pybnf") }}
   {% set v %}<span data-vkey="bngsim">{{ versions.bngsim }}</span>{% endset %}
   {# the pin note only beside a known build that is not the pin #}
   {% set pin_note %}{% if versions.bngsim not in (bngsim_pin, version_pending, "not installed") %}Reproducing
   the sealed numbers needs bngsim {{ bngsim_pin }} (pinned by every engine installer),
   whatever version a build reports.{% endif %}{% endset %}
-  {{ tips.stat("bngsim", v, id="home-pin", state=("warn" if versions.bngsim == "not installed" else ""), tip_label="the bngsim version", tiptext=pin_note) }}
+  {{ tips.stat("bngsim", v, id="home-pin", tip_label="the bngsim version", tiptext=pin_note) }}
   {% endif %}
   {% for key, name in [("bionetgen", "BioNetGen"), ("perl", "Perl"), ("fastapi", "FastAPI"), ("plotly", "Plotly")] %}
   {% set v %}<span data-vkey="{{ key }}">{{ versions[key] }}</span>{% endset %}
-  {{ tips.stat(name, v, id="hm-v-" ~ key, state=("warn" if versions[key] == "not installed" else "")) }}
+  {{ tips.stat(name, v, id="hm-v-" ~ key) }}
   {% endfor %}
  {% endcall %}
  {# a version that was still resolving at paint lands through base.html's

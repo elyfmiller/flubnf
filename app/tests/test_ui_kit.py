@@ -5,9 +5,12 @@ static/tips.js; docs/UI-KIT.md).
 Each macro is rendered through the console's own Jinja env and its
 accessibility contract pinned: names, roles, the links between a control
 and its explainer, state spoken as well as drawn. The stylesheet is held to
-tokens only, and its measured pairs (a badge's word, an alert's text and
-icon, the current step's number) to the contrast bars in every theme and
-mode that nau.css defines.
+tokens only, and its measured pairs (a mark's word on the card and on the
+page ground, an alert's text and icon, the current step's number) to the
+contrast bars in every theme and mode that nau.css defines. A mark (a
+badge, a tag, a name chip) is held to its look as well, in every sheet
+that can style one: no outline, no fill, and no icon on a state that
+asks nothing of the reader.
 """
 import re
 import sys
@@ -29,6 +32,12 @@ BASE_T = (UI / "templates" / "base.html").read_text()
 KIT_CSS = (UI / "static" / "ui-kit.css").read_text()
 TIPS_JS = (UI / "static" / "tips.js").read_text()
 NAU = (UI / "static" / "nau.css").read_text()
+TABS = UI / "static" / "tabs"
+#: every sheet that can style a mark: the kit, nau.css and the console's
+#: other shared sheets, then each tab's own
+SHEETS = {p.relative_to(UI / "static").as_posix(): p.read_text()
+          for p in sorted((UI / "static").glob("*.css"))
+          + sorted(TABS.glob("*.css"))}
 DOC = (REPO / "docs" / "UI-KIT.md").read_text()
 DOCS_INDEX = (REPO / "docs" / "README.md").read_text()
 
@@ -40,6 +49,10 @@ ICON_NAMES = ("info", "warning", "error", "check", "clock", "download",
               "upload", "folder", "external", "lock", "calendar", "refresh", "dot",
               "close")
 STATES = ("ok", "warn", "error", "info", "neutral", "pending")
+#: the states that ask nothing of the reader: the word alone, muted
+QUIET = ("ok", "info", "neutral")
+#: the states that ask something or are under way: icon and word, colored
+LOUD = ("warn", "error", "pending")
 
 
 def render(src: str, **ctx) -> str:
@@ -189,6 +202,10 @@ def test_toggletip_script_opens_closes_and_returns_focus():
 
 @pytest.mark.parametrize("state", STATES)
 def test_badge_says_its_state_in_a_word_and_an_icon(state):
+    # the markup is the same for every state: the state as a class and a
+    # data attribute, the word, and the state's icon (decorative). The
+    # stylesheet decides which states show the icon (the next tests), so a
+    # script that turns a quiet badge into a warning finds its icon there
     html = render('{{ t.badge(s, "the word") }}', s=state)
     a = first(html, "span", "uk-badge")
     assert f"uk-badge--{state}" in a["class"] and a["data-state"] == state
@@ -197,10 +214,84 @@ def test_badge_says_its_state_in_a_word_and_an_icon(state):
     assert f".uk-badge--{state}" in KIT_CSS
 
 
+def test_a_quiet_state_is_the_word_alone_and_a_loud_one_keeps_its_icon():
+    rules = _rules(KIT_CSS)
+    hidden = {sel for sel, d in rules if d.get("display") == "none"}
+    for s in QUIET:
+        # ok, info and neutral ask nothing: no icon, the muted token (the
+        # ink where the word is a stat's value), normal weight, free to wrap
+        assert f".uk-badge--{s} > .uk-icon" in hidden, s
+        d = _own(rules, f"uk-badge--{s}")
+        assert d["--uk-c"] == ["var(--uk-quiet,var(--mut))"], s
+        assert d["font-weight"] == ["500"] and d["white-space"] == ["normal"]
+        # a word free to wrap is never clipped to its first line (the
+        # word's ellipsis is for a loud mark, held on one line)
+        assert _rule(rules, f".uk-badge--{s} > .uk-badge-t") == {
+            "overflow": "visible"}, s
+    for s in LOUD:
+        # warn, error and pending keep icon and word, in the state's color
+        # (no other rule in any sheet hides it: the next test)
+        assert f".uk-badge--{s} > .uk-icon" not in hidden, s
+    assert {s: _own(rules, f"uk-badge--{s}")["--uk-c"] for s in LOUD} == {
+        "warn": ["var(--warn)"], "error": ["var(--bad)"],
+        "pending": ["var(--accent-ink)"]}
+    # the word takes the state's color, the icon follows it (currentColor)
+    assert _own(rules, "uk-badge")["color"] == ["var(--uk-c)"]
+    # a stat whose value is a status reads as a value: the ink, and the
+    # value's own size and weight
+    assert ("--uk-quiet", "var(--ink)") in [
+        (k, v) for sel, d in rules if sel == ".uk-stat-v" for k, v in d.items()]
+    in_stat = _rule(rules, ".uk-stat-v .uk-badge")
+    assert in_stat["font-size"] == in_stat["font-weight"] == "inherit"
+    # the word, not the icon, gives a badge its baseline: the badge centers
+    # its icon, so without this a loud mark set on a baseline (a stat's
+    # value) would sit above its neighbors and a quiet one would not
+    assert _own(rules, "uk-badge")["align-items"] == ["center"]
+    assert _rule(rules, ".uk-badge > .uk-badge-t") == {"align-self": "baseline"}
+
+
+#: what may hide an icon or a drawing outside any mark, by sheet: the
+#: Display menu switch's knob, and the Oracle pipeline's two drawings (one
+#: shows at a time)
+_ICON_HIDERS = {("nau.css", ".dm-sw-knob .uk-icon"),
+                ("nau.css", ".figpipe > svg.pipe-v"),
+                ("nau.css", ".figpipe:has(> svg.pipe-v) > svg.pipe-h")}
+_HIDDEN = (("display", "none"), ("visibility", "hidden"), ("opacity", "0"))
+
+
+def test_no_rule_in_any_sheet_hides_a_loud_state_s_icon():
+    # a warning, a failure and work under way are an icon and a word. The
+    # quiet states hide theirs by name; any other rule that hides an icon
+    # where a badge may hold one (inside a badge, a pair, a row, a table)
+    # would take a warning's icon with it
+    quiet = re.compile(r"\.uk-badge--(?:ok|info|neutral)(?![\w-])")
+    loud = re.compile(r"\.uk-badge--(?:warn|error|pending)(?![\w-])")
+    seen = []
+    for name, css in SHEETS.items():
+        for sel, d in _rules(css):
+            if not any(d.get(k, "").replace("!important", "").strip() == v
+                       for k, v in _HIDDEN):
+                continue
+            if not re.search(r"\.uk-icon(?![\w-])|(?:^|[^\w-])svg(?![\w-])",
+                             _split(sel, " >+~")[-1]):
+                continue
+            seen.append((name, sel))
+            if (name, sel) in _ICON_HIDERS:
+                continue
+            named = re.sub(r":not\([^)]*\)", "", sel)
+            assert quiet.search(named) and not loud.search(named), (name, sel)
+    # the check sees the quiet states' own rules
+    assert ("ui-kit.css", ".uk-badge--neutral > .uk-icon") in seen
+
+
 def test_badge_icons_differ_by_state_and_a_tip_follows():
     drawn = {s: render('{{ t.badge(s, "w") }}', s=s).split("<svg", 1)[1]
              for s in STATES if s != "pending"}
     assert len(set(drawn.values())) == len(drawn)         # shape, not hue
+    # the three states that show their icon: triangle, octagon, clock
+    loud = {s: render('{{ t.badge(s, "w") }}', s=s).split("<svg", 1)[1]
+            for s in LOUD}
+    assert len(set(loud.values())) == 3
     html = render('{{ t.badge("warn", "not archived", "Why.", id="ln") }}')
     assert 'id="ln"' in html and 'aria-describedby="tip-ln"' in html
     assert 'aria-label="About not archived"' in html
@@ -336,6 +427,12 @@ def test_tag_and_name_chip():
     assert 'aria-label="About seasonal forcing"' in chip
     assert 'id="tip-f">The curve.</span>' in chip
     assert ".uk-figline" in KIT_CSS
+    # both are plain muted words in the line (no outline, no fill: the
+    # stylesheet tests below), the chip's "?" as close as a badge's
+    rules = _rules(KIT_CSS)
+    assert _own(rules, "uk-tag")["color"] == ["var(--mut)"]
+    assert _own(rules, "uk-name")["color"] == ["var(--mut)"]
+    assert _rule(rules, ".uk-name > .tip") == {"margin-left": "0"}
 
 
 def test_hidden_alert_and_empty_stay_hidden():
@@ -376,6 +473,295 @@ def test_the_script_builds_the_kit_markup_the_macros_write():
 
 def _classes_in_macros() -> set:
     return set(re.findall(r"\buk-[a-z][\w-]*", TIPS_T)) - {"uk-js"}
+
+
+def _split(text: str, seps: str) -> list:
+    """`text` cut at each separator that is outside parentheses."""
+    out, depth, cur = [], 0, ""
+    for ch in text:
+        depth += (ch == "(") - (ch == ")")
+        if depth == 0 and ch in seps:
+            out.append(cur)
+            cur = ""
+        else:
+            cur += ch
+    return [x.strip() for x in out + [cur] if x.strip()]
+
+
+def _rules(css: str) -> list:
+    """Every rule of a sheet as (selector, {property: value}), one entry
+    per selector of a list, comments out; a rule inside an @media or
+    @container block counts like any other."""
+    body = re.sub(r"/\*.*?\*/", "", css, flags=re.S)
+    out = []
+    for m in re.finditer(r"([^{}]+)\{([^{}]*)\}", body):
+        decls = {}
+        for d in _split(m.group(2), ";"):
+            k, _, v = d.partition(":")
+            decls[k.strip()] = " ".join(v.split())
+        for sel in _split(m.group(1), ","):
+            out.append((" ".join(sel.split()), decls))
+    return out
+
+
+def _rule(rules: list, selector: str) -> dict:
+    """The declarations of the first rule with that selector (a later one
+    is a mode's override: forced colors, reduced motion)."""
+    for sel, decls in rules:
+        if sel == selector:
+            return decls
+    raise AssertionError(f"no rule {selector}")
+
+
+def _own(rules: list, cls: str) -> dict:
+    """What the sheet gives the class by its bare selector, as
+    {property: [values]}."""
+    out = {}
+    for sel, decls in rules:
+        if sel == "." + cls:
+            for k, v in decls.items():
+                out.setdefault(k, []).append(v)
+    return out
+
+
+def _styles(rules: list, cls: str) -> list:
+    """(selector, declarations) of every rule that styles an element of
+    the class itself, wherever it sits: the selector's last compound
+    names the class (not a longer class that starts with its name)."""
+    names = re.compile(r"\." + re.escape(cls) + r"(?![\w-])")
+    return [(sel, d) for sel, d in rules
+            if names.search(_split(sel, " >+~")[-1])]
+
+
+#: what draws a box: an edge, a ground, a rounded corner, room inside
+_BOX = re.compile(r"^(?:border|outline|background|box-shadow|padding)")
+_NO_BOX = {"0", "none", "transparent"}
+
+
+def _boxes(rules: list, cls: str) -> list:
+    return [(sel, k, v) for sel, d in _styles(rules, cls)
+            for k, v in d.items() if _BOX.match(k) and v not in _NO_BOX]
+
+
+@pytest.mark.parametrize("cls", ["uk-badge", "uk-badge-t", "uk-tag",
+                                 "uk-name"] + [
+    f"uk-badge--{s}" for s in STATES])
+def test_a_mark_has_no_outline_no_fill_and_no_pill(cls):
+    # a badge (its word included), a tag and a name chip are set in the
+    # line like text. Only something that can be pressed has an outline,
+    # so no rule in any sheet (the kit's, nau.css's or a tab's; the
+    # high-contrast and forced-colors blocks included) draws a box around
+    # one
+    rules = _rules(KIT_CSS)
+    assert _styles(rules, cls), cls
+    for name, css in SHEETS.items():
+        assert _boxes(_rules(css), cls) == [], name
+    assert "nau.css" in SHEETS and "tabs/storage.css" in SHEETS
+    # and the helper sees a box where there is one
+    assert _boxes(rules, "uk-alert") and _boxes(rules, "uk-seg")
+
+
+def _at_blocks(css: str, prelude: str) -> str:
+    """The bodies of every at-rule block that opens with `prelude`
+    (comments out, braces matched), one after another."""
+    body = re.sub(r"/\*.*?\*/", "", css, flags=re.S)
+    out, start = [], 0
+    while (k := body.find(prelude + "{", start)) >= 0:
+        i = k + len(prelude) + 1
+        depth = 1
+        for j in range(i, len(body)):
+            depth += (body[j] == "{") - (body[j] == "}")
+            if depth == 0:
+                break
+        assert depth == 0, f"{prelude} is not closed"
+        out.append(body[i:j])
+        start = j
+    assert out, f"no {prelude} block"
+    return "\n".join(out)
+
+
+def test_marks_side_by_side_stand_apart_and_a_tag_holds_together():
+    rules = _rules(KIT_CSS)
+    # with no box to part them, a mark followed by another stands apart
+    # from it
+    assert _rule(rules, ":is(.uk-badge,.uk-badge-pair,.uk-tag)"
+                        ":has(+ :is(.uk-badge,.uk-badge-pair,.uk-tag))") == {
+        "margin-right": ".45rem"}
+    # a tag moves to the next line whole, never split mid-phrase
+    assert _own(rules, "uk-tag")["white-space"] == ["nowrap"]
+
+
+def test_the_newest_week_s_dots_sit_midway_between_its_counts():
+    # the newest week writes " · " between its count marks. The kit's room
+    # after a mark followed by a mark would land before each dot (the
+    # sibling rule skips the text between them), so nau.css takes it back
+    # there. Each selector names an element, which outranks the kit's rule
+    # (two classes) wherever the sheets load
+    nau = _rules(NAU)
+    assert _rule(nau, "p.newest-check > .uk-badge") == {"margin-right": "0"}
+    assert _rule(nau, "dd.dt-newest-dd > .uk-badge") == {"margin-right": "0"}
+    # and the counts are children of those two, with the dot between
+    from types import SimpleNamespace
+    r = SimpleNamespace(week="2098-10-11", complete=False, clean=False,
+                        max_lag=2, details=lambda: ["Ohio: no row."],
+                        short=lambda: "3 of 5 reported · 2 not reported"
+                                      " · 1 reads 0")
+
+    class Parents(HTMLParser):
+        def __init__(self):
+            super().__init__()
+            self.stack, self.found = [], []
+
+        def handle_starttag(self, tag, attrs):
+            a = dict(attrs)
+            if "uk-badge" in (a.get("class") or "").split():
+                self.found.append(self.stack[-1])
+            if tag not in ("path", "circle", "line", "rect", "polyline"):
+                self.stack.append((tag, a.get("class") or ""))
+
+        def handle_startendtag(self, tag, attrs):
+            self.handle_starttag("path", attrs)
+
+        def handle_endtag(self, tag):
+            if tag not in ("path", "circle", "line", "rect", "polyline"):
+                self.stack.pop()
+
+    for src, host in (
+            ('{{ n.check(r, short=True) }}', ("p", "newest-check hint")),
+            ('<dd class="dt-newest-dd">{{ n.row(r) }}</dd>',
+             ("dd", "dt-newest-dd"))):
+        html = templates.env.from_string(
+            '{% import "_newest.html" as n %}' + src).render(r=r)
+        assert html.count(' · <span class="uk-badge uk-badge--neutral"') == 2
+        p = Parents()
+        p.feed(html)
+        assert p.found == [host, host], (src, p.found)
+    data_t = (UI / "templates" / "data.html").read_text()
+    assert '<dd class="dt-newest-dd">{{ newest.row(newest_report) }}</dd>' \
+        in data_t
+
+
+def test_the_modes_thicken_no_edge_on_a_mark():
+    # with no border left on a mark, the high-contrast and forced-colors
+    # blocks thicken and recolor only the edges that remain
+    modes = KIT_CSS.split(
+        "/* ---- 14. high contrast and forced colors ---- */", 1)[1]
+    for cls in ("uk-badge", "uk-tag", "uk-name"):
+        assert not re.search(r"\." + cls + r"(?![\w-])", modes), cls
+    assert '[data-contrast="high"] .uk-seg{border-width:2px}' in modes
+    assert (".uk-alert,.uk-tt-pop,.uk-step-mark,.uk-seg"
+            "{border-color:CanvasText}") in modes
+
+
+def test_a_status_inside_a_link_reads_as_a_link():
+    # no pill marks it as pressable, so its word is underlined
+    assert _rule(_rules(KIT_CSS), "a > .uk-badge > .uk-badge-t")[
+        "text-decoration"] == "underline"
+    # the Sandbox's last-run status is the one such link; its own rule no
+    # longer rounds it or strips the underline
+    sbr = _rules((TABS / "sandbox.css").read_text())
+    sb = _rule(sbr, "a.sb-runlink")
+    assert "border-radius" not in sb and "text-decoration" not in sb
+    # with no pill its hit area would be its word; a ring centered on the
+    # word keeps it 24px each way at least, and moves nothing
+    assert sb["position"] == "relative"
+    hit = _rule(sbr, "a.sb-runlink::before")
+    assert hit["position"] == "absolute" and hit["content"] == '""'
+    assert hit["width"] == hit["height"] == "max(100%,24px)"
+    assert (hit["left"], hit["top"], hit["transform"]) == (
+        "50%", "50%", "translate(-50%,-50%)")
+
+
+#: the tabs' own counts and kinds that are not controls, by sheet: the same
+#: look as a quiet mark (plain words with no box)
+TAB_WORDS = {
+    "forecast.css": (".fc-count", ".ms-n", ".fc-chip-n",
+                     ".ms-row.ms-changed > .lblrow > label::after"),
+    "models.css": (".md-tag",),
+    "home.css": (".hm-facts li",),
+    "storage.css": (".st-fact", ".st-lcount"),
+}
+
+
+@pytest.mark.parametrize("sheet", sorted(TAB_WORDS))
+def test_the_tabs_own_counts_and_kinds_draw_no_box(sheet):
+    rules = _rules((TABS / sheet).read_text())
+    for sel in TAB_WORDS[sheet]:
+        mine = [d for s2, d in rules if s2 == sel]
+        assert mine, sel
+        for d in mine:
+            drawn = {k: v for k, v in d.items()
+                     if _BOX.match(k) and v not in _NO_BOX}
+            assert drawn == {}, (sel, drawn)
+
+
+def test_the_tabs_own_words_keep_their_other_signal():
+    fc_css = (TABS / "forecast.css").read_text()
+    fcr = _rules(fc_css)
+    fc = dict(fcr)
+    # a changed setting: the bar at its row's edge carries the warning
+    # color, the words by its label say it (never color alone), in the ink
+    # so they stand apart from the muted label; the group's count of
+    # changed rows reads as they do
+    assert _rule(fcr, ".ms-row.ms-changed")["box-shadow"] == (
+        "inset 3px 0 0 var(--warn)")
+    after = fc[".ms-row.ms-changed > .lblrow > label::after"]
+    assert after["content"] == 'var(--ms-mark,"changed")'
+    assert after["color"] == fc[".ms-n"]["color"] == "var(--ink)"
+    # forced colors set a box-shadow to none, so there an edge in the
+    # system's text color is the bar, the field kept where it stands
+    forced = _rule(_rules(_at_blocks(fc_css, "@media (forced-colors:active)")),
+                   ".ms-row.ms-changed")
+    assert forced == {"border-left": "3px solid CanvasText",
+                      "margin-left": "calc(-.5rem - 3px)"}
+    assert _rule(fcr, ".ms-row.ms-changed")["margin-left"] == "-.5rem"
+    assert fc[".fc-count"]["color"] == "var(--mut)"
+    # a preset stays a button with its outline; its count takes the
+    # button's own color, and its parentheses are in the page, not drawn
+    # around it by the sheet ("((3))" if both were)
+    assert "border-radius" in fc[".fc-presets .fc-chip"]
+    assert "color" not in fc[".fc-chip-n"] and "background" not in fc[".fc-chip-n"]
+    assert not [s for s, _ in fcr if re.search(r"\.fc-chip-n\b.*::?(?:before|after)", s)]
+    # Storage: the ledger's count beside its heading is quiet words, as
+    # every count beside a heading is, and its facts take a quiet mark's
+    # weight
+    st = dict(_rules((TABS / "storage.css").read_text()))
+    assert st[".st-lcount"] == {"color": "var(--mut)",
+                                "font-size": "var(--fs-label)",
+                                "font-weight": "500"}
+    assert st[".st-fact"]["font-weight"] == "500"
+    # Methods: the rules every run keeps are an ordinary bulleted list,
+    # with no check drawn before each line
+    mt = _rules((TABS / "methods.css").read_text())
+    assert not [s for s, _ in mt if s.startswith(".mt-rules") and "::" in s]
+    assert "list-style" not in _rule(mt, ".mt-rules")
+    # the model switcher's "research": muted, and the ink of the choice on
+    # the page being read (measured below)
+    md = dict(_rules((TABS / "models.css").read_text()))
+    assert md[".md-tag"]["color"] == "var(--mut)"
+    assert md[".md-switch > [aria-current] > .md-tag"] == {"color": "inherit"}
+    # the diagram's symbol key keeps its box (it is a key, not a status)
+    assert "border" in md[".md-par"]
+
+
+def test_the_ledger_s_run_label_holds_one_line_only_where_there_is_room():
+    # Storage's run ledger: a run's link takes its own line, so the quiet
+    # facts after it start under it. It holds to one line only where the
+    # ledger is 46rem wide or more (a container query, so it follows the
+    # text size); narrower, the label wraps between its date and its time
+    # and the summary column keeps its room, with no sideways scroll
+    css = (TABS / "storage.css").read_text()
+    rules = _rules(css)
+    led = _rule(rules, ".st-ledger")
+    assert led["container-type"] == "inline-size"
+    assert led["overflow-x"] == "auto"
+    assert [d for s, d in rules if s == ".st-ledger td.st-run > a"] == [
+        {"display": "block"}, {"white-space": "nowrap"}]
+    assert _rules(_at_blocks(css, "@container (min-width:46rem)")) == [
+        (".st-ledger td.st-run > a", {"white-space": "nowrap"})]
+    # the phone's cards keep their own layout (rows as grids, no scroll)
+    phone = _rules(_at_blocks(css, "@media (max-width:40rem)"))
+    assert (".st-ledger", {"overflow-x": "visible"}) in phone
 
 
 def test_every_kit_class_has_a_rule():
@@ -507,15 +893,26 @@ def _alert_tint() -> float:
     return int(m.group(1)) / 100
 
 
+#: the color of every word the kit sets as a mark: the three loud states,
+#: the quiet states and the tag (muted), and --ok, which a stat's value,
+#: an icon tip and the .uk-c-ok word still wear
+MARK_TOKENS = ("ok", "warn", "bad", "accent-ink", "mut")
+
+
 def test_badge_words_and_alerts_hold_the_bars_in_every_theme_and_mode():
-    # the badge sits on the card (ui-kit.css), outlined in its state color
-    assert "background:var(--card);color:var(--uk-c)" in KIT_CSS
+    # a mark brings no ground of its own (ui-kit.css: no border, no fill),
+    # so its word is measured on both grounds a page has: the card, and
+    # the page ground under a page title or a section outside a card
+    badge = _own(_rules(KIT_CSS), "uk-badge")
+    assert badge["border"] == ["0"] and badge["background"] == ["none"]
+    assert badge["color"] == ["var(--uk-c)"]
     p = _alert_tint()
     seen = 0
     for name, hc, T in _grid():
-        card = _rgb(T["card"])
-        for tok in ("ok", "warn", "bad", "accent-ink", "mut"):
-            assert _ratio(_rgb(T[tok]), card) >= 4.5, (name, tok)
+        card, ground = _rgb(T["card"]), _rgb(T["bg"])
+        for tok in MARK_TOKENS:
+            for where, surface in (("card", card), ("page ground", ground)):
+                assert _ratio(_rgb(T[tok]), surface) >= 4.5, (name, tok, where)
         for tok in ("ok", "warn", "bad", "accent-ink"):
             bg = card if hc else _mix(_rgb(T[tok]), card, p)
             assert _ratio(_rgb(T["ink"]), bg) >= 4.5, (name, "ink on", tok)
@@ -525,6 +922,91 @@ def test_badge_words_and_alerts_hold_the_bars_in_every_theme_and_mode():
         assert _ratio(_rgb(T["card"]), _rgb(T["accent-ink"])) >= 4.5, name
         seen += 1
     assert seen >= 16                        # four themes (or more) x 2 x 2
+
+
+def _token(value: str) -> str:
+    m = re.fullmatch(r"var\(--([\w-]+)\)", value)
+    assert m, value
+    return m.group(1)
+
+
+def test_a_mark_on_a_filled_surface_takes_that_surface_s_text_color():
+    # the state colors and the muted token are measured on the card and on
+    # the page ground only. Wherever a mark can sit on another fill, a
+    # rule hands it that surface's own text color, and that pair holds
+    # 4.5:1; its state then rests on its icon and its word
+    kit, nau = _rules(KIT_CSS), _rules(NAU)
+    for host in (".uk-alert", ".tipbox", '.uk-seg > [aria-pressed="true"]',
+                 ".uk-seg > [aria-current]"):
+        assert _rule(kit, host + " .uk-badge") == {"color": "inherit"}, host
+        assert _rule(kit, host + " .uk-tag") == {"color": "inherit"}, host
+    # the open Model settings button (nau.css) wears a badge on its fill
+    opened = _rule(nau, ".adv[open] > summary.advbtn")
+    assert _rule(nau, ".adv[open] > summary.advbtn .uk-badge") == {
+        "color": "inherit"}
+    tip = _rule(nau, ".tipbox")
+    seg = _rule(kit, '.uk-seg > button[aria-pressed="true"]')
+    quiet = _rule(kit, '.uk-seg--quiet > button[aria-pressed="true"]')
+    m = re.fullmatch(r"color-mix\(in srgb,var\(--([\w-]+)\) (\d+)%,"
+                     r"var\(--card\)\)", quiet["background"])
+    assert m, "the quiet switch's tint moved"
+    tint_tok, tint_p = m.group(1), int(m.group(2)) / 100
+    p = _alert_tint()
+    seen = 0
+    for name, hc, T in _grid():
+        def c(value):
+            return _rgb(T[_token(value)])
+        card = _rgb(T["card"])
+        pairs = {
+            "the open Model settings button": (c(opened["color"]),
+                                               c(opened["background"])),
+            "a tooltip": (c(tip["color"]), c(tip["background"])),
+            "a switch's chosen side": (c(seg["color"]), c(seg["background"])),
+            "the quiet switch's current page": (
+                c(quiet["color"]), _mix(_rgb(T[tint_tok]), card, tint_p)),
+        }
+        for tok in ("ok", "warn", "bad", "accent-ink"):
+            pairs[f"an alert ({tok})"] = (
+                _rgb(T["ink"]), card if hc else _mix(_rgb(T[tok]), card, p))
+        for where, (fg, bg) in pairs.items():
+            assert _ratio(fg, bg) >= 4.5, (name, where)
+        seen += 1
+    assert seen >= 16
+    # why the rules are there: left in its own color, a mark would not
+    # hold on these fills (measured when they were written: the muted word
+    # on the open button's accent fill fell under 3:1 in some theme, and
+    # the dim theme's red on an alert's tint under 4.5:1). Not pinned: a
+    # theme that improves those pairs must not fail this test
+
+
+def test_the_tabs_own_words_hold_the_bar_where_they_sit():
+    # the model switcher sits on the page ground; its "research" word is
+    # muted there (measured above) and takes the ink on the current page's
+    # tint, where the muted token falls short in the dim theme
+    quiet = _rule(_rules(KIT_CSS),
+                  '.uk-seg--quiet > button[aria-pressed="true"]')
+    m = re.fullmatch(r"color-mix\(in srgb,var\(--([\w-]+)\) (\d+)%,"
+                     r"var\(--card\)\)", quiet["background"])
+    assert m and quiet["color"] == "var(--ink)"
+    # (measured when the rule was written: the muted token fell under
+    # 4.5:1 on that tint in the dim theme; not pinned, so a theme that
+    # improves it does not fail here)
+    for name, _hc, T in _grid():
+        tint = _mix(_rgb(T[m.group(1)]), _rgb(T["card"]), int(m.group(2)) / 100)
+        assert _ratio(_rgb(T["ink"]), tint) >= 4.5, name
+    # the Home hero's facts: white at 84% on the tile, and the bold word in
+    # its own token, with no chip fill under them (the tile runs from
+    # --navy to --navy-deep)
+    home = dict(_rules((TABS / "home.css").read_text()))
+    assert home[".hm-facts li"]["color"] == (
+        "color-mix(in srgb,currentColor 84%,transparent)")
+    assert home[".hm-facts b"]["color"] == "var(--hero-chip-ink)"
+    white = (255, 255, 255)
+    for name, _hc, T in _grid():
+        for end in ("navy", "navy-deep"):
+            tile = _rgb(T[end])
+            assert _ratio(_mix(white, tile, .84), tile) >= 4.5, (name, end)
+            assert _ratio(_rgb(T["hero-chip-ink"]), tile) >= 4.5, (name, end)
 
 
 # ------------------------------------------- the docs and the house rules
@@ -538,6 +1020,29 @@ def test_the_doc_covers_every_macro_and_is_indexed():
     assert "[UI-KIT.md](UI-KIT.md)" in DOCS_INDEX
     for m in re.findall(r"{% macro (\w+)\(", TIPS_T):
         assert m in MACROS, f"{m} is not in the test's list"
+
+
+def test_the_doc_says_when_a_mark_earns_its_place():
+    # beside "Before adding a control": the questions asked of every mark
+    a = DOC.index("## Before adding a control")
+    b = DOC.index("## Before adding a mark")
+    c = DOC.index("## Components")
+    assert a < b < c
+    section = DOC[b:c]
+    for rule in ("Never repeat the neighbor", "A normal state is said quietly",
+                 "One mark per fact"):
+        assert f"**{rule}.**" in section, rule
+    for state in STATES:
+        assert f"`{state}`" in section, state
+    # and the page describes the look the sheet draws
+    contract = DOC.split("## Accessibility contract", 1)[1].split("\n## ", 1)[0]
+    assert "A mark has no outline" in contract
+    assert "only what can be pressed has an outline" in contract
+    assert "A key is not a mark and keeps its box" in contract
+    assert "on the card and on the page ground" in contract
+    for gone in ("outlined, muted pill", "a badge's word on the card,",
+                 "becomes a named chip"):
+        assert gone not in DOC, gone
 
 
 def test_tab_stylesheets_use_tokens_only():

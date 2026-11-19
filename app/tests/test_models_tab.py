@@ -104,11 +104,18 @@ def test_the_record_sentences_ride_the_record_toggletip():
     assert re.search(r'uk-stat--ok"><dt>2023-24</dt><dd><span class="uk-stat-v">'
                      r'0\.680</span>', gh)
     pf2s = client.get("/model/pf2s").text
-    # both bars beat the baseline (two checks): the badge says how much
-    # worse the ensemble scored with the two-strain added as a third
-    # member, from the two values; the Record "i" beside it names the
-    # comparison, so the badge has no "?"
-    assert '<span class="uk-badge-t">0.015 worse as a third member</span>' in pf2s
+    # both bars beat the baseline (two checks): the words beside the
+    # Record heading say how much worse the ensemble scored with the
+    # two-strain added as a third member, from the two values. A settled
+    # result asks nothing of the reader, so they are quiet words (the
+    # neutral state), not a warning; the Record "i" beside them names the
+    # comparison, so they have no "?"
+    assert ('<span class="uk-badge uk-badge--neutral" id="md-behind" '
+            'data-state="neutral">') in pf2s
+    behind = pf2s.split('id="md-behind"', 1)[1].split("</span></span>", 1)[0]
+    assert behind.endswith('<span class="uk-badge-t">0.015 worse as a third member')
+    record = pf2s.split('class="md-record"', 1)[1].split("</section>", 1)[0]
+    assert "uk-badge--warn" not in record and "uk-badge--error" not in record
     assert "scored worse" not in pf2s.split('id="tt-md-rec"', 1)[0]
     assert 'id="tip-md-behind"' not in pf2s
     rec = _text(pf2s.split('id="tt-md-rec"', 1)[1].split("</span></span>", 1)[0])

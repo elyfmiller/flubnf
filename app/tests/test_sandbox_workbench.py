@@ -95,6 +95,13 @@ def test_the_gallery_shows_each_models_origin_and_last_run(box):
     link = link[:link.index("</a>")]
     assert 'class="uk-badge uk-badge--warn"' in link
     assert '<span class="uk-badge-t">interrupted</span>' in link
+    # a stop is the reader's own: said in quiet words
+    sb.mark(w, "stopped")
+    html = client.get("/sandbox").text
+    link = html[html.index(f'href="/sandbox?run={w.name}&amp;model=kinetics_example">'):]
+    link = link[:link.index("</a>")]
+    assert 'class="uk-badge uk-badge--neutral"' in link
+    assert '<span class="uk-badge-t">stopped</span>' in link
 
 
 def test_a_note_is_the_first_sentence_over_lines(box):

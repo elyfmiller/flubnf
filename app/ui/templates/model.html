@@ -44,8 +44,10 @@
    {% call tips.fold("Full description", id="md-about", cls="md-about") %}<p>{{ header.blurb }}</p>{% endcall %}
   </div>
   <div class="md-record" role="group" aria-labelledby="h-md-rec">
+   {#- how much worse the ensemble scored with the model added: a settled
+       result that asks nothing of the reader, so quiet words #}
    {% set rec_after %}{{ tips.tag("relWIS") }}
-   {%- if record.behind %}{{ tips.badge("warn", record.behind.text, id="md-behind") }}{% endif %}{% endset %}
+   {%- if record.behind %}{{ tips.badge("neutral", record.behind.text, id="md-behind") }}{% endif %}{% endset %}
    {% call tips.heading("Record", "md-rec", level=3, rich=True, after=rec_after, tip_label="the record") %}
     {%- for line in record.lines %}<span class="uk-tt-line">{{ line }}</span>{% endfor -%}
    {% endcall %}

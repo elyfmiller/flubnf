@@ -174,11 +174,14 @@ def test_home_how_it_works_is_its_drawing_and_three_named_equations():
 def test_home_record_is_read_from_one_line():
     """The record has no "i": one line under its heading says how to read
     it, and each column's cells and the plain filter's figures are
-    Methods'. The column header is plain text."""
+    Methods'. The column header is plain text. The line names the unit,
+    so no tag beside the heading repeats it."""
     html = _home()
     assert 'id="tt-hm-perf"' not in html and 'id="tt-home-oracle"' not in html
     assert '<th class="num">Oracle SIHRS</th>' in html
     card = html.split('class="card hm-perf"', 1)[1].split('class="card hm-start"', 1)[0]
+    assert '<h2 id="h-hm-perf">Measured performance</h2></div>' in card
+    assert 'class="uk-tag"' not in card
     unit = " ".join(card.split('<p class="hint hm-perf-how">', 1)[1]
                     .split("</p>", 1)[0].split())
     assert unit == ('relWIS against the FluSight baseline (ratio of sums); '
@@ -264,12 +267,15 @@ def test_a_modified_runs_badge_says_whether_it_took_the_hub_names():
                     "submissions": ["a.csv"]})
     row = over.split('href="/runs/r1"', 1)[1].split("</tr>", 1)[0]
     assert '<span class="uk-badge-t">modified · hub names</span>' in row
+    # quiet words: the ledger lists the runs, it warns of none
+    assert "uk-badge--warn" not in row
     summary = row.split('class="st-sumcell"', 1)[1]
     assert "modified" not in summary and "tipbtn" not in row
     plain = _ledger({"knobs": {}, "submissions": ["a.csv"]})
     row = plain.split('href="/runs/r1"', 1)[1].split("</tr>", 1)[0]
     assert '<span class="uk-badge-t">modified settings</span>' in row
     assert row.count("modified settings") == 1
+    assert "uk-badge--warn" not in row
 
 
 def test_a_ledger_dash_says_why_in_its_title():

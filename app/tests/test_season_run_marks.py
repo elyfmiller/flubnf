@@ -158,6 +158,15 @@ def test_the_badges_and_lines_say_what_their_tips_did():
     assert '<span class="uk-badge-t">stopped before the last week</span>' in stopped
     gone = _page(prog=_prog(status="interrupted", done=12))
     assert '<span class="uk-badge-t">interrupted: the app closed</span>' in gone
+    # the app closed mid-replay: a warning (it can be resumed), as on every
+    # page, here and in the report; the user's own Stop is a fact in quiet
+    # words
+    for html in (gone, _page(export=True,
+                             prog=_prog(status="interrupted", done=12))):
+        assert ('<span class="uk-badge uk-badge--warn" id="rs-state" '
+                'data-state="warn">') in html
+    assert ('<span class="uk-badge uk-badge--neutral" id="rs-state" '
+            'data-state="neutral">') in stopped
     two = _page(prog=_prog(added=["2098-12-05", "2098-12-12"], added_n=2))
     assert ('<span class="uk-badge-t">2 weeks added: 2098-12-05, '
             '2098-12-12</span>') in two
@@ -189,6 +198,15 @@ def test_the_badges_and_lines_say_what_their_tips_did():
                             weeks_measured=3))
     assert ('<span class="rbasis uk-sr">estimate from 3 completed weeks'
             '</span>') in live
+    # the live card's heading says the state, in progress or paused, and
+    # no badge beside it says the word again
+    held = _page(prog=_prog(status="paused", active=True, done=3))
+    for html, title in ((live, "Replay in progress"),
+                        (held, "Replay paused")):
+        head = html.split('<h2 id="h-rs-live">', 1)[1] \
+            .split('<div class="runbar">', 1)[0]
+        assert head.startswith(title + "</h2>")
+        assert "uk-badge" not in head
     # the banners say it in their line
     arch = _page(archive="20981201T090000", archive_when="2098-12-01 09:00")
     assert "Set aside when a fresh replay started; read only." in arch
