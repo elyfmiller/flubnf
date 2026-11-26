@@ -6,6 +6,41 @@ and CDC's rules. The season's facts are in
 
 ## Now
 
+- 2026-11-26 (05:37 UTC): ROUND 2026-11-28: THE ORACLE AT WEIGHT 0.5,
+  LOOKED AT BY THIS LANE AND THE INDEPENDENT REVIEWER (Ely's rerun out of
+  curiosity; the pull request, #4237, passed the hub's validation and is
+  unchanged). Run details identical to the submitted run except the
+  weight (0.5, the default; filter^0.5 x donor^0.5 against the submitted
+  filter^0.25 x donor^0.75). Oracle 0b46d3b7..., 53 locations (Ely's
+  copy is the record); the Groundhog is byte-identical to the first run.
+  - h0 barely moves (US 15,221 vs 15,774); h3 is lower in all 53
+    (median ratio 0.83, 0.55 to 0.99): US 25,874 (1.89x the last week)
+    vs 34,136, 97.5% 59,293 vs 88,388. Most where recent counts are flat
+    or falling (Puerto Rico 0.55, Hawaii 0.58, DC 0.63, Maine 0.64,
+    Florida, California 0.69, Washington 0.71, Louisiana 0.72), least
+    where they rise fast (Virginia 0.99, Georgia 0.95). In Hawaii,
+    Maine, Oregon, California, DC and Puerto Rico part of the dip the
+    filter follows is reporting.
+  - Checks: GREEN, population 0 over, gate PASS; flat or higher fails in
+    DC, Hawaii and Puerto Rico (those rows would be left out); no h3
+    median above a state record (6 at 0.25). Field: US h3 at the field
+    median (25,078), beside NAU-ABERT 27,955, vulPES 28,046, FourCAT
+    25,191; h3 typical 1.13-1.14x the field (1.38x at 0.25), with a new
+    low end (DC 0.38x, Maine 0.51x, Nebraska 0.53x, Vermont 0.62x). US
+    h0 below 50 of 54 teams.
+  - Readings: the reviewer would rather have had the 0.5 file (60%; in
+    its scenarios the 0.5 wins in 41 of 52 states on the field-median
+    path, 33 at 1.2x a week, 15 at 1.3x); this lane leans 0.25 (US growth
+    three weeks after Thanksgiving week has been 1.97x to 5.88x the week
+    before in 2022-2025, the 0.5's 1.89x is under all four; the Model
+    lane's three-season replays favor 0.25 by 0.029 relative WIS,
+    interval clear of 0). Both: one unscored week of one national wave
+    cannot pick the weight; do not replace the open pull request.
+  - Both flag: the Oracle's hub card says "weight one half"; every round
+    this season used 0.25 (card update, Open).
+  Lane read: scratchpad round-2026-11-28/w50_lane.md; reviewer:
+  review_fable/review.md, "50/50 run". The weighting question for next
+  week goes to Model (For other lanes, 2026-11-26).
 - 2026-11-26 (05:27 UTC): ROUND 2026-11-28'S HUB PULL REQUEST IS OPEN:
   https://github.com/cdcepi/FluSight-forecast-hub/pull/4237 (Ely). Head
   692c91a5; checked by git: the merge ref ee2c355d (main ff8f3b28 +
@@ -3961,6 +3996,27 @@ and CDC's rules. The season's facts are in
 
 ## For other lanes
 
+- 2026-11-26 (05:37 UTC), Submission to Model: WEIGHT THE FILTER MORE
+  FROM ROUND 2026-12-05? Ely wants an analysis of whether the Oracle
+  should move from weight 0.25 toward the filter (0.5) starting next
+  week. What exists: round 2026-11-28 run at both weights (Now,
+  2026-11-26: the 0.5 is lower at h3 in all 53, US 25,874 vs 34,136,
+  near the field median; nothing scorable yet). What would settle it,
+  as this lane and the independent reviewer both read it:
+  1. This season so far: rounds 10-17 to 11-21 at 0.25, 0.5 and the
+     filter alone from the same runs (each week's oracle.json holds all
+     three, or a replay), scored on revised truth: relative WIS by
+     horizon, coverage, a week-cluster bootstrap; split by states whose
+     reporting dropped against steady ones (the heavier filter weight
+     passes a reporting dip through as a slowdown).
+  2. Round 2026-11-28 prospectively as 11-28 to 12-19 arrive: both
+     files on the same rows; whether the 0.5's h0 runs low.
+  3. The switching rule fixed before looking (for example: switch only
+     if 0.5 beats 0.25 pooled with the interval clear of 0), and any
+     change recorded with its date and on the hub card.
+  The 2023-24 to 2025-26 replays (model.md, 2026-10-23) favor 0.25 by
+  0.029; this season is the first real-time look. Ely has not yet sent
+  the past oracle.json files.
 - 2026-11-18 (19:38 UTC), Submission to Model (Ely's request): A SCREEN
   OF ONE TWO-SIDED RECALIBRATION IN PLACE OF THE NARROWING AND THE CAP.
   Ely: bands still uneven after the level are "an obvious indication
