@@ -6,6 +6,52 @@ and CDC's rules. The season's facts are in
 
 ## Now
 
+- 2026-11-26 (05:18 UTC): ROUND 2026-11-28 (EW47) REVIEWED IN THREE
+  STEPS (Decided, 2026-11-25). Files as uploaded: Oracle 1b78d77f...,
+  Groundhog 31abadcb..., 53 locations each; same build (2a540a34), engine
+  (8410f794) and settings as 11-21 (Oracle weight 0.25, narrowing 0.7,
+  cap 10x the larger level, shrink). All checks pass.
+  - Reporting (NHSN preliminary, week ending 11-21): US 74.7% of
+    hospitals (84.0% the week before); US 13,668 (1.13x; about 1.27x per
+    reporting hospital). Puerto Rico 9% (5 hospitals), Massachusetts 39%
+    (from 91%); Idaho, Arkansas, Kansas, Oklahoma 51-53%.
+  - Field (58 other teams after the data; NAU-ABERT 2.05x, vulPES 2.05x,
+    FourCAT 1.84x, epymorph 1.21x US h3 over the last week): Oracle
+    2.50x, upper middle; Groundhog 4.05x, the highest of 60 (next
+    3.47-3.92x: Cornell_JHU-hierarchSIR, UGA INFLAenza, CU-ensemble, VT
+    PRIME); the Groundhog's h3 is typically 1.97x the field median, with
+    0-2 teams above it in most states. Its US h3 median 55,408 sits at
+    the all-time record (55,541). Thanksgiving-period US growth h3 over
+    the week before: 1.97x (2022, from 10,923), 2.94x, 4.92x, 5.88x
+    (2023-2025, from 2,484-3,581).
+  - Step 1 (this lane, scratchpad round-2026-11-28/lane_review.md):
+    Oracle without Puerto Rico; Groundhog without Hawaii and Puerto
+    Rico, Louisiana optional.
+  - Step 2 (Fable 5.2 reviewer, review_fable/review.md): Oracle without
+    Puerto Rico (85%) and Massachusetts (60%); Groundhog without Hawaii
+    90, Washington 85, Puerto Rico 85, Louisiana 75, Florida 75,
+    California 70, US 60, Utah, Nevada, Alaska 55 (percent).
+  - Step 3: per-state relative WIS of past rounds (ratio of WIS sums
+    against FluSight-baseline on the same cells): Groundhog Hawaii 5.38,
+    Washington 1.48, Alaska 1.14, Florida 0.99, California 0.74,
+    Louisiana 0.53, Utah 0.57, Nevada 0.54, US 0.59; truth above the
+    Groundhog's median in Louisiana 15/18, Utah 14/18, Nevada 13/18, US
+    12/18, Florida 8/18, California 9/18, Washington 2/16, Hawaii 1/12.
+    (This lane's first per-state figures were wrong: its one-off script
+    mixed the baseline's ED-visit quantiles into the baseline's WIS. The
+    round scorer, tools/score_recent.py, filters the target and is
+    unaffected.) Washington's fall (314 to 260) came at 98% reporting;
+    Florida grew 1.02, 1.15, 1.04 at 81-85%.
+  - JOINT RECOMMENDATION: Oracle 52 (without Puerto Rico); Groundhog 49
+    (without Hawaii, Puerto Rico, Washington, Florida). Optional, split:
+    Groundhog California (reviewer 65% out: about 1.07x a week at last
+    week's coverage, h3 5,954 against a record of 4,599; lane keep:
+    record decent at 0.74) and Louisiana (reviewer 60% out: about 870 at
+    its own growth against a median of 1,298; lane keep: the Groundhog
+    has run low there, 15 of 18). Both keep Massachusetts and the US row.
+    Staged: Oracle bc19fff2..., 52 locations, 4,784 rows; Groundhog
+    9cc30edf..., 49 locations, 4,508 rows; hub check GREEN, population
+    check 0 over, gate PASS, no red flag, flat or higher. Ely decides.
 - 2026-11-26 (00:25 UTC): CORRECTION to the entry below: round
   2026-11-28's hour on Thursday is not stated anywhere. Checked by an
   independent agent and here:
