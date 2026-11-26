@@ -6,6 +6,15 @@ and CDC's rules. The season's facts are in
 
 ## Now
 
+- 2026-11-26 (05:22 UTC): ROUND 2026-11-28 (EW47) COMMITTED TO THE FORK
+  (Ely: "go, keep California and Louisiana"). Branch FluBNF_submission
+  fast-forwarded to cdcepi main ff8f3b28, then 692c91a5 (pushed;
+  04659561..692c91a5): the Oracle without Puerto Rico, 52 locations,
+  4,784 rows (bc19fff2...); the Groundhog without Hawaii, Puerto Rico,
+  Washington and Florida, 49 locations, 4,508 rows (9cc30edf...), both
+  byte-identical to the staged, checked files. Ely opens the hub pull
+  request; due Thursday 11-26 by 23:00 ET (the hub check accepts until
+  23:59:59 ET).
 - 2026-11-26 (05:18 UTC): ROUND 2026-11-28 (EW47) REVIEWED IN THREE
   STEPS (Decided, 2026-11-25). Files as uploaded: Oracle 1b78d77f...,
   Groundhog 31abadcb..., 53 locations each; same build (2a540a34), engine
@@ -3714,6 +3723,12 @@ and CDC's rules. The season's facts are in
 
 ## Decided
 
+- 2026-11-26 (Ely): round 2026-11-28 goes in as the joint
+  recommendation: the Oracle without Puerto Rico; the Groundhog without
+  Hawaii, Puerto Rico, Washington and Florida, keeping California and
+  Louisiana (the split rows). The Oracle stays at weight 0.25 this round;
+  Ely runs a 50/50 out of curiosity, and an analysis of weighting the
+  filter more from next week follows the round.
 - 2026-11-25 (Ely, standing from round 2026-11-28 on): every week's
   review of the two files runs in three steps. (1) This lane reviews the
   files on the plausibility checks and writes notes on what should and
