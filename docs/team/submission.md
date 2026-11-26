@@ -6,6 +6,22 @@ and CDC's rules. The season's facts are in
 
 ## Now
 
+- 2026-11-26 (00:25 UTC): CORRECTION to the entry below: round
+  2026-11-28's hour on Thursday is not stated anywhere. Checked by an
+  independent agent and here:
+  - Hub check: admin.json timezone US/Eastern; hubValidations ends the
+    window at 23:59:59 of the end date, so the check accepts files
+    until Thu 11-26 23:59:59 ET (21:59:59 in Flagstaff), measured when
+    the pull request's validation runs.
+  - CDC: 622bb15b's message reads "Updating for submission deadline
+    change next week" (A. Hines, 11-20). The README and
+    model-output/README still say Wednesday 11 PM ET and "We do not
+    accept late forecasts"; no Thanksgiving notice on cdc.gov. Veterans
+    Day week had the same change (data Thursday, ensemble Friday 11-13);
+    this week's data came out Wednesday as usual.
+  - Reading: Thursday by 23:00 ET (21:00 in Flagstaff) very likely
+    counts for the ensemble; the only certain time was Wednesday 23:00
+    ET. Earlier on Thursday is safer.
 - 2026-11-25 (00:15 UTC): ROUND 2026-11-28 (EW47) IS DUE THURSDAY
   11-26 AT 23:00 ET (21:00 in Flagstaff), not Wednesday: cdcepi main
   ae329a37 has submissions_due end -2 (changed 11-20, 622bb15b; the
