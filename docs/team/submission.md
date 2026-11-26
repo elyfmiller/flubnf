@@ -6,6 +6,11 @@ and CDC's rules. The season's facts are in
 
 ## Now
 
+- 2026-11-25 (00:15 UTC): ROUND 2026-11-28 (EW47) IS DUE THURSDAY
+  11-26 AT 23:00 ET (21:00 in Flagstaff), not Wednesday: cdcepi main
+  ae329a37 has submissions_due end -2 (changed 11-20, 622bb15b; the
+  README's time of day, 11 PM ET, unchanged). The review runs in three
+  steps from this round on (Decided, 2026-11-25).
 - 2026-11-18 (21:26 UTC): ROUND 2026-11-21 MERGED ON THE HUB:
   https://github.com/cdcepi/FluSight-forecast-hub/pull/4132 merged at
   21:26 UTC (16:26 ET; merge commit 47cd5e0b). Checked by git on cdcepi
@@ -3647,6 +3652,16 @@ and CDC's rules. The season's facts are in
 
 ## Decided
 
+- 2026-11-25 (Ely, standing from round 2026-11-28 on): every week's
+  review of the two files runs in three steps. (1) This lane reviews the
+  files on the plausibility checks and writes notes on what should and
+  should not go in. (2) An independent reviewer (a Fable 5.2 agent,
+  given the files, the data and the checks, not this lane's notes) does
+  the same. (3) This lane and that reviewer compare and settle one
+  recommendation together, which goes to Ely. Both steps weigh NHSN
+  hospital reporting percentages and what other teams submit that week,
+  the other NAU teams included (NAU-ABERT, NAU-FourCAT, NAU-epymorph,
+  NAU-vulPES, LosAlamos_NAU-CModel_Flu). Ely decides each leave-out.
 - 2026-11-12 (Ely): round 2026-11-14's Groundhog also leaves out Alaska
   and Washington (an independent review's picks, with this lane's
   recommendation; their records: too high in 10 and 12 of 14 scored
