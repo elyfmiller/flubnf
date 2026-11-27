@@ -130,6 +130,15 @@ def spec_settings(spec, outcome=None) -> list:
     if pf_absent:
         engine_label = (ENGINE_LABELS["analogue"]
                         + " (no PF engine on this machine)")
+    # the mechanistic member as it ran (pf_member_name), as the run's
+    # results and Storage name it: a run without the Oracle step, or from
+    # before it, ran the filter alone
+    from app.core.site_build import PF_LABEL_ORACLE
+    ran_as = pf_member_name(o) if o else PF_LABEL_ORACLE
+    pf_pre_step = bool(o) and not o.get("oracle") and (
+        "pf_cells" in o or o.get("pf_relwis") is not None)
+    if ran_as != PF_LABEL_ORACLE:
+        engine_label = engine_label.replace(PF_LABEL_ORACLE, ran_as)
     pairs = [("forecast date", str(d.get("forecast_date", "") or "unknown")),
              ("locations", locations_phrase(d.get("locations"))),
              ("engine", engine_label)]
@@ -156,6 +165,11 @@ def spec_settings(spec, outcome=None) -> list:
     pairs.append(("Groundhog donors", analogue_donors_label(extra)))
     if pf_absent or engine == "analogue":
         pairs.append(("Oracle step", "not run (no PF member ran)"))
+    elif pf_pre_step:
+        # the filter ran and the run recorded no bank: the step did not
+        # exist yet (it records one on every run since)
+        pairs.append(("Oracle step", "not applied (a run from before the "
+                                     "step)"))
     else:
         pairs.append(("Oracle step", oracle_label(extra, d)))
     # only a spec with a knobs record: shipped and older rows are unchanged.
@@ -498,6 +512,28 @@ ANCHOR_NOTE_KEYS = (("pf", "pf_anchor_notes"),
 HUB_MEMBER_NAMES = {"pf": "Oracle SIHRS", "analogue": "Groundhog"}
 
 
+def pf_member_name(outcome: dict) -> str:
+    """The mechanistic member's name on one run, from its ledger outcome,
+    by the season trees' rule (site_build.PF_LABEL_ORACLE and
+    PF_LABEL_FILTER): the member when the run applied the Oracle step (its
+    bank label), the filter alone when it ran without it (oracle = none,
+    or a run from before the step, which records no bank). A run whose
+    filter never ran (skipped, no engine) is named for the member it was
+    to run; a run on a dataset as the dataset pages name its member
+    (custom_run.MEMBER_LABELS). Storage's ledger and the run page name the
+    member this one way, in every fact of the run."""
+    from app.core.site_build import PF_LABEL_FILTER, PF_LABEL_ORACLE
+    o = outcome if isinstance(outcome, dict) else {}
+    if o.get("dataset"):
+        from app.core.custom_run import MEMBER_LABELS
+        return MEMBER_LABELS["pf"]
+    ox = str(o.get("oracle") or "")
+    if ox:
+        return PF_LABEL_FILTER if ox.startswith("none") else PF_LABEL_ORACLE
+    ran = "pf_cells" in o or o.get("pf_relwis") is not None
+    return PF_LABEL_FILTER if ran else PF_LABEL_ORACLE
+
+
 def anchor_notes_row(o: dict, names: dict, skip=()):
     """The Results table's one row for both members' anchor notes, or None
     when neither recorded any (a shipped run on complete data): a count per
@@ -809,7 +845,11 @@ def results_html(outcome, spec, heading: bool = True,
         return dataset_results_html(o, d, heading)
     mode = str(extra.get("mode") or "realtime")
     rows = [("Run type", MODE_LABELS.get(mode, mode))]
+    # the mechanistic member by what this run ran, as Storage names it
+    pf_name = pf_member_name(o)
     for name, key, cells_key in _RESULT_ROWS:
+        if key == "pf_relwis":
+            name = pf_name
         v = o.get(key)
         if v is None:
             continue
@@ -823,13 +863,13 @@ def results_html(outcome, spec, heading: bool = True,
         rows.append((name, f'<span class="relwis {"ok" if fv < 1 else "bad"}">'
                            f"{fv:.3f}</span>{_verdict(fv)}{cov}"))
     if "pf_cells" in o:
-        rows.append(("Oracle SIHRS fits", _pf_fits(o)))
+        rows.append((f"{pf_name} fits", _pf_fits(o)))
     elif o.get("pf_skipped"):
-        rows.append(("Oracle SIHRS fits", "none (analogue-only run)" if "analogue" in str(o["pf_skipped"]) else "none (no engine)"))
+        rows.append((f"{pf_name} fits", "none (analogue-only run)" if "analogue" in str(o["pf_skipped"]) else "none (no engine)"))
     elif o.get("pf_engine_broken"):
         # installed but broken (a different remedy from "no engine"); the
         # message (it carries a path) is the "?" tip's, escaped there
-        rows.append(("Oracle SIHRS fits", '<span class="bad">none (engine install '
+        rows.append((f"{pf_name} fits", '<span class="bad">none (engine install '
                                 'incomplete)</span>'
                                 + _tip("pf-broken", "the incomplete engine "
                                        "install", str(o["pf_engine_broken"]))))

@@ -288,7 +288,7 @@ def test_a_ledger_dash_says_why_in_its_title():
 def test_a_plain_fact_with_a_reason_says_it_in_its_chip():
     html = _ledger({"pf_skipped": True}, modified=False)
     row = html.split('href="/runs/r1"', 1)[1].split("</tr>", 1)[0]
-    assert "PF skipped (no engine)" in row and "tipbtn" not in row
+    assert "Oracle SIHRS skipped (no engine)" in row and "tipbtn" not in row
 
 
 # ---------------------------------- Sandbox: each start says what it is

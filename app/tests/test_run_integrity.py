@@ -202,6 +202,13 @@ def test_run_page_names_failed_cells_and_step_errors(tmp_path, monkeypatch):
     lists = "".join(u.split("</ul>", 1)[0]
                     for u in detail.split('<ul class="fc-faillist">')[1:])
     assert "<svg" not in lists and "uk-c-error" not in lists
+    # the failed fits' heading names the member as the results table and
+    # Storage do: this row records no Oracle bank (a run from before the
+    # step), so the filter alone, never the Oracle SIHRS
+    from app.core.site_build import PF_LABEL_FILTER, PF_LABEL_ORACLE
+    assert f"{PF_LABEL_FILTER} fits that failed" in detail
+    assert f"{PF_LABEL_ORACLE} fits that failed" not in detail
+    assert f'<th scope="row">{PF_LABEL_FILTER} fits</th>' in html
 
 
 def test_run_page_without_failures_shows_no_detail_block(tmp_path,

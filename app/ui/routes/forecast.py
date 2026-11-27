@@ -783,6 +783,9 @@ def run_page(request: Request, run_id: str):
         "results_unreadable": unreadable,
         "results": results_html(o, spec_json, heading=False,
                                 deleted=not w.is_dir()),
+        # the mechanistic member as the results table and Storage name it
+        # (its failed fits' heading)
+        "pf_name": _runs.pf_member_name(o),
         # the relWIS convention only beside a relWIS
         "results_tip": results_tip(spec_json, o),
         # the page shows a research badge, so the label stays untagged

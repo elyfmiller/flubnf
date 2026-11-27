@@ -85,7 +85,8 @@
  {{ tips.heading("Partial-run detail", "run-partial") }}
  {% if pf_failures %}
  {% set n = pf_failures | length %}
- {{ tips.heading("Oracle SIHRS fit" ~ ("s" if n != 1 else "") ~ " that failed", level=3, cls="fc-sub",
+ {# the member named as the results table and Storage name it #}
+ {{ tips.heading((pf_name | default(model_name("pf"), true)) ~ " fit" ~ ("s" if n != 1 else "") ~ " that failed", level=3, cls="fc-sub",
                  after=tips.badge("neutral", n ~ (" cell" if n == 1 else " cells"))) }}
  <ul class="fc-faillist">
  {% for cell, why in pf_failures.items() | sort %}

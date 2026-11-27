@@ -258,16 +258,21 @@ def _run_label(run_id: str, spec_json: str = "", tag: bool = True) -> str:
         return when + suffix
 
 
-def relwis_chip(value, cells=None, member: str = "PF") -> str:
-    """The one relWIS rendering outside a scores table, e.g. 'PF relWIS
-    <span class="relwis bad">4.067</span> vs FluSight baseline, ratio of
-    sums (2 cells)'. Always names convention and baseline (the CDC's
+def relwis_chip(value, cells=None, member: str = "") -> str:
+    """The one relWIS rendering outside a scores table, e.g. '<member>
+    relWIS <span class="relwis bad">4.067</span> vs FluSight baseline, ratio
+    of sums (2 cells)'. Always names convention and baseline (the CDC's
     dashboard reports a pairwise quantity, within about 0.02 of this one on
-    the same cells). Markup from fixed phrases and numbers only."""
+    the same cells). `member` is the model's display name, the mechanistic
+    member's (site_build.PF_LABEL_ORACLE) when none is given. Markup from
+    fixed phrases and numbers only."""
     try:
         v = float(value)
     except (TypeError, ValueError):
         return ""
+    if not member:
+        from app.core.site_build import PF_LABEL_ORACLE
+        member = PF_LABEL_ORACLE
     cov = ""
     if cells:
         n = int(cells)
@@ -278,14 +283,14 @@ def relwis_chip(value, cells=None, member: str = "PF") -> str:
 
 
 def _pf_member_label(o: dict) -> str:
-    """The mechanistic member's name on one ledger row: "Oracle SIHRS",
-    "plain filter" (oracle = none), or "PF" (rows from before the step)."""
-    ox = (o or {}).get("oracle")
-    if ox == "none":
-        return "plain filter"
+    """The mechanistic member's name on one ledger row, as the run page
+    names it (runs.pf_member_name: by whether the run applied the Oracle
+    step), one name for every fact of the row: its fits, its skip and its
+    relWIS."""
+    from app.core.runs import pf_member_name
     # a modified run never claims the shipped member's name
     tail = " (modified)" if (o or {}).get("knobs") else ""
-    return ("Oracle SIHRS" if ox else "PF") + tail
+    return pf_member_name(o or {}) + tail
 
 
 def _outcome_items(outcome_json, deleted: bool = False) -> list:
@@ -319,9 +324,10 @@ def _outcome_items(outcome_json, deleted: bool = False) -> list:
         from app.core.runs import _verdict
         return Markup(chip.replace("</span>", "</span>"
                                    + _verdict(float(v), "st-verdict"), 1))
+    pf_name = _pf_member_label(o)
     if "pf_cells" in o:
         n = o["pf_cells"]
-        add(f"{n} Oracle SIHRS fit{'s' if n != 1 else ''}")
+        add(f"{pf_name}: {n} fit{'s' if n != 1 else ''}")
     if o.get("pf_failures"):
         nf = len(o["pf_failures"])
         word = f"{nf} failure{'s' if nf != 1 else ''}"
@@ -332,7 +338,7 @@ def _outcome_items(outcome_json, deleted: bool = False) -> list:
         if "analogue" in str(o["pf_skipped"]):
             add("Groundhog only")
         else:
-            add("PF skipped (no engine)", "PF skipped", "",
+            add(f"{pf_name} skipped (no engine)", f"{pf_name} skipped", "",
                 "No engine: a configuration, not a fault.")
     # no engine is a configuration; a broken install is a fault
     if o.get("pf_engine_broken"):
@@ -372,7 +378,7 @@ def _outcome_items(outcome_json, deleted: bool = False) -> list:
         # scored-cell count; older rows only carry the fit-cell count
         chip = relwis_chip(o["pf_relwis"],
                            cells=o.get("pf_relwis_cells", o.get("pf_cells")),
-                           member=_pf_member_label(o))
+                           member=pf_name)
         if chip:
             add(chip, judged(chip, o["pf_relwis"]))
     # every scored member (older rows' retired-blend keys are not shown)

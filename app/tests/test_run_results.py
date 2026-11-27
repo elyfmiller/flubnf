@@ -57,7 +57,10 @@ def test_score_quantiles_applies_the_sample_scorers_cell_rule(monkeypatch):
 
 
 def test_results_table_states_type_members_fits_files_and_report():
+    # a run that applied the Oracle step records its bank, which names the
+    # member (runs.pf_member_name)
     outcome = {"pf_cells": 3, "pf_failures": {"Ohio_r1": "FAIL: x"},
+               "oracle": "admissions-fbase@test",
                "pf_relwis": 1.774, "pf_relwis_cells": 4,
                "analogue_relwis": 0.913, "analogue_relwis_cells": 4,
                "ensemble_relwis": 0.842, "ensemble_relwis_cells": 4,
