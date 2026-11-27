@@ -175,9 +175,10 @@ a > .uk-badge > .uk-badge-t{text-decoration:underline;
 a:hover > .uk-badge > .uk-badge-t{text-decoration-thickness:2px}
 /* a mark brings no fill of its own, so on a filled surface it takes that
    surface's text color and its state rests on its icon and its word: an
-   alert's tint (the dim theme's red is under 4.5:1 there), a tooltip (the
-   inverted surface), the chosen side of a segmented switch. A filled
-   surface outside the kit states the same beside its own rule */
+   alert's tint (the dim theme's red is under 4.5:1 there), a tooltip (a
+   surface of its own over the page), the chosen side of a segmented
+   switch. A filled surface outside the kit states the same beside its own
+   rule */
 .uk-alert .uk-badge,.uk-alert .uk-tag,.uk-alert .uk-name,
 .tipbox .uk-badge,.tipbox .uk-tag,.tipbox .uk-name,
 .uk-seg > [aria-pressed="true"] .uk-badge,.uk-seg > [aria-current] .uk-badge,
@@ -273,7 +274,7 @@ a:hover > .uk-badge > .uk-badge-t{text-decoration-thickness:2px}
    wrapper, whose hover tips.js places the tip from */
 .uk-reason > button[disabled]{pointer-events:none}
 .uk-reason:has(> button[disabled]){cursor:not-allowed}
-.uk-reason:hover > .uk-reason-tip:not([hidden]) .tipbox{visibility:visible;opacity:1}
+.uk-reason:hover > .uk-reason-tip:not([hidden]) .tip:not(.dismissed) .tipbox{visibility:visible}
 
 /* ---- 9. stepper: numbered marks joined by a line; progress bar ---- */
 .uk-stepper{--uk-mark:1.75rem;list-style:none;margin:.45rem 0 .6rem;
@@ -459,11 +460,16 @@ details.uk-fold[open] > summary::before{transform:rotate(45deg)}
   border-left-width:5px}
 [data-contrast="high"] .uk-seg{border-width:2px}
 [data-contrast="high"] .uk-empty:not(.uk-empty--compact){border:2px solid var(--line)}
-[data-contrast="high"] .uk-tt-pop{border-width:2px}
+[data-contrast="high"] .uk-tt-pop,[data-contrast="high"] .tipbox{border-width:2px}
 [data-contrast="high"] .uk-step-mark{border-width:3px}
 /* Windows high contrast: the system colors take over; keep the edges */
 @media (forced-colors:active){
   .uk-alert,.uk-tt-pop,.uk-step-mark,.uk-seg{border-color:CanvasText}
+  /* a popup over the page: the system's own opaque ground and text, its
+     edge drawn (the system drops its shadow) */
+  .tipbox,.uk-tt-pop{background:Canvas;color:CanvasText;
+    border-color:CanvasText}
+  .tipbox a,.uk-tt-pop a{color:LinkText}
   .uk-seg > button[aria-pressed="true"],.uk-seg > [aria-current],
   .uk-seg > [role="tab"][aria-selected="true"]{
     background:Highlight;color:HighlightText}

@@ -87,7 +87,9 @@ A plain string argument is escaped; markup built in the template (`{% set t %}..
 
 ### Tip: `tips.tip(id, label, text="", gloss="")`
 
-The "?" button beside a setting, a heading or a value. The tooltip shows on hover, on keyboard focus and on click or tap; Escape hides it. The button is named "About <label>" and described by the tooltip, so a screen reader reads the explanation on focus. Use it for a sentence or two of plain explanation. A tooltip holds no controls, so an explanation with links is a toggletip; its one exception is the glossary link below.
+The "?" button beside a setting, a heading or a value. The tooltip shows on hover, on keyboard focus and on click or tap; Escape and a click outside it hide it, whichever of the three showed it, and it stays hidden until the pointer or focus comes back. The button is named "About <label>" and described by the tooltip, so a screen reader reads the explanation on focus. Use it for a sentence or two of plain explanation. A tooltip holds no controls, so an explanation with links is a toggletip; its one exception is the glossary link below.
+
+The box is the card's own surface with a border and a shadow, opaque in every theme, in high contrast and under forced colors, with no fade. `FluBNFUI.place` sets it under its button, or above when the space under it would cover a form control (the field a label's "?" explains, a drop zone) and above fits, always inside the window.
 
 `gloss` is the key of a Methods Glossary entry (`id="g-<key>"` on the Glossary card; `app/core/glossary.py` KEYS, which refuses an unknown key) when the explainer's subject is that word. The explainer then ends with "More in the glossary", a link to the entry, on a line of its own; Tab moves from the "?" into it while the tip shows, and a pointer crosses to it over a bridge that keeps the box shown. Every macro below that draws a "?" or an "i" takes `gloss` too. The link is the console's alone: the weekly report renders the kit without the `glossary_href` global and gets none, and the season page passes no key when exported, so a saved copy holds no link it cannot follow.
 
@@ -124,7 +126,7 @@ Inside a `<summary>` (whose content may not hold a `<div>`), keep the plain `<h2
 
 ### Toggletip: `tips.toggletip(id, label, text="", title="", gloss="")`
 
-An "i" button that opens a panel on click (Enter or Space from the keyboard) and keeps it open: for explanations too long or too rich for a tooltip, with links, lists or several lines. The button carries `aria-expanded` and `aria-controls`; the panel is ordinary content (never `role="tooltip"`), so Tab moves from the button into its links. Escape, a click outside or focus leaving it closes it, and Escape returns focus to the button; an Escape that closes a panel or hides a tip goes no further, so the menu around it stays open until a second Escape. A panel taller than the window scrolls inside itself, kept in view. Without script the panel shows, in the flow under its button (so a card never clips it), while focus is inside the toggletip. Put one line per `<span class="uk-tt-line">`; a list needs the toggletip outside any `<p>` (a `<ul>` closes an open `<p>`).
+An "i" button that opens a panel on click (Enter or Space from the keyboard) and keeps it open: for explanations too long or too rich for a tooltip, with links, lists or several lines. The button carries `aria-expanded` and `aria-controls`; the panel is ordinary content (never `role="tooltip"`), so Tab moves from the button into its links. Escape, a click outside or focus leaving it closes it, and Escape returns focus to the button; an Escape that closes a panel or hides a tip goes no further, so the menu around it stays open until a second Escape. The panel is placed as a tooltip is (`FluBNFUI.place`); one taller than the window scrolls inside itself, kept in view. Without script the panel shows, in the flow under its button (so a card never clips it), while focus is inside the toggletip. Put one line per `<span class="uk-tt-line">`; a list needs the toggletip outside any `<p>` (a `<ul>` closes an open `<p>`).
 
 ```jinja
 {% call tips.toggletip("out-files", "these files", title="Submission files") %}
@@ -285,6 +287,7 @@ Inline SVG icons in the text's color, 1em square: `info`, `warning`, `error`, `c
 | `FluBNFUI.progress(label, value, max, text, id)` | a progress bar's markup (`tips.progress`); `value` null slides |
 | `FluBNFUI.setProgress(el, value, max, text)` | moves an existing bar: a number fills it, `null` slides it, `undefined` leaves the fill; `text` is the readout |
 | `FluBNFUI.esc(text)` | HTML-escapes a string |
+| `FluBNFUI.place(button, popup)` | places a popup by its button, as tips and toggletips are: under it, or above when under it would cover a form control; returns `'below'` or `'above'` |
 
 A script that fills a box with kit components builds them with these, never by copying the markup, so a change to a component reaches every page.
 
@@ -304,7 +307,7 @@ Colors come only from the `nau.css` tokens (`var(--ink)`, `var(--ok)`, a `color-
 
 ## Accessibility contract
 
-- Every tip, toggletip and reason is reachable by keyboard and named for a screen reader; Escape closes what is open.
+- Every tip, toggletip and reason is reachable by keyboard and named for a screen reader; Escape and a click outside close what is open. A popup is opaque in every theme and mode, and covers no form control when it has room not to.
 - Status is never color alone: a mark that wears a state's color (a warning, a failure, work under way) is an icon shape and a word in that color, a quiet word uses no state color, a stepper speaks each step's state, a legend names each swatch.
 - A mark has no outline: a badge, a tag and a name chip are words set in the line, and a status that is a link is underlined. Among words in a line, only what can be pressed has an outline (a button, a switch, a "?" or an "i"). A key is not a mark and keeps its box: `code`, `kbd`, a model's parameter symbols ("Fitted per state"), a tile.
 - Hit targets: the "?" and "i" buttons are drawn at 1.1rem, and their clickable ring reaches 24px at the standard text size.

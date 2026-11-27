@@ -1,55 +1,77 @@
 /* The "?" explainers (templates/_tips.html; styles in nau.css ".tip").
    CSS shows a tip on hover and keyboard focus; this adds click/tap
    toggling (WebKit, and so the pywebview window, never focuses a clicked
-   button) and Escape to dismiss, and places the tooltip. The box is
-   position:fixed, so a card's overflow never clips it: it sits under its
-   button (above when there is no room below), inside the viewport. */
+   button), hides a shown tip on Escape and on a click outside it, and
+   places the tooltip. The box is position:fixed, so a card's overflow
+   never clips it; FluBNFUI.place (below) puts it under its button, or
+   above when the space under it would cover a form control, inside the
+   viewport. A hidden tip stays hidden ("dismissed") until the pointer or
+   focus comes back to it. */
 (function () {
+  // the tip under the pointer (CSS shows it on :hover), kept here so
+  // Escape and a click outside can hide it too
+  var hot = null;
+  function tipOf(el) {
+    return el && el.closest ? el.closest('.tip') : null;
+  }
   function place(t) {
     var btn = t.querySelector('.tipbtn'), b = t.querySelector('.tipbox');
-    if (!btn || !b) return;
-    var br = btn.getBoundingClientRect(),
-        W = document.documentElement.clientWidth, H = window.innerHeight,
-        w = b.offsetWidth, h = b.offsetHeight;
-    var x = br.left + br.width / 2 - w / 2;
-    x = Math.max(8, Math.min(x, W - 8 - w));
-    var y = br.bottom + 6;
-    if (y + h > H - 8) {
-      // no room below: above, or (room on neither side) as low as fits
-      y = br.top - 6 - h > 8 ? br.top - 6 - h : Math.max(8, H - 8 - h);
-    }
-    b.style.left = Math.round(x) + 'px';
-    b.style.top = Math.round(y) + 'px';
+    if (btn && b && window.FluBNFUI) window.FluBNFUI.place(btn, b);
   }
-  function tipOf(e) {
-    return e.target && e.target.closest ? e.target.closest('.tip') : null;
-  }
-  function closeAll(except) {
-    document.querySelectorAll('.tip.open').forEach(function (t) {
-      if (t !== except) t.classList.remove('open');
+  // the tips shown now: open (clicked), holding focus, or under the
+  // pointer, less the ones already hidden
+  function shown() {
+    var out = [];
+    document.querySelectorAll('.tip.open').forEach(function (t) { out.push(t); });
+    [tipOf(document.activeElement), hot].forEach(function (t) {
+      if (t && out.indexOf(t) < 0) out.push(t);
     });
+    return out.filter(function (t) { return !t.classList.contains('dismissed'); });
+  }
+  function hide(t) {
+    t.classList.remove('open');
+    t.classList.add('dismissed');
+  }
+  // the element whose hover shows a tip: the tip, or a reason button's
+  // wrapper (its disabled button passes the pointer through, ui-kit.css)
+  function hoverTip(el) {
+    var t = tipOf(el);
+    if (t) return {tip: t, host: t};
+    var r = el && el.closest ? el.closest('.uk-reason') : null,
+        rt = r ? r.querySelector('.uk-reason-tip .tip') : null;
+    return rt ? {tip: rt, host: r} : null;
   }
   document.addEventListener('mouseover', function (e) {
-    var t = tipOf(e);
-    // the pointer coming back to a dismissed tip shows it again
-    if (t && !(e.relatedTarget && t.contains(e.relatedTarget)))
-      t.classList.remove('dismissed');
-    // a reason button's wrapper (its disabled button passes the pointer
-    // through, ui-kit.css): its reason shows on hover too
-    var r = !t && e.target && e.target.closest ? e.target.closest('.uk-reason') : null;
-    if (r) t = r.querySelector('.uk-reason-tip .tip');
-    if (t) place(t);
+    var h = hoverTip(e.target);
+    hot = h ? h.tip : null;
+    if (!h) return;
+    // the pointer coming back to a hidden tip shows it again
+    if (!(e.relatedTarget && h.host.contains(e.relatedTarget)))
+      h.tip.classList.remove('dismissed');
+    place(h.tip);
+  });
+  document.addEventListener('mouseout', function (e) {
+    var h = hoverTip(e.target);
+    if (h && !(e.relatedTarget && h.host.contains(e.relatedTarget))) hot = null;
   });
   document.addEventListener('focusin', function (e) {
-    var t = tipOf(e); if (t) { t.classList.remove('dismissed'); place(t); }
+    var t = tipOf(e.target);
+    if (t) { t.classList.remove('dismissed'); place(t); }
   });
+  // focus leaving a hidden tip lets it show on its next focus (not while
+  // the pointer still rests on it)
   document.addEventListener('focusout', function (e) {
-    var t = tipOf(e); if (t) t.classList.remove('dismissed');
+    var t = tipOf(e.target);
+    if (t && t !== hot && !(e.relatedTarget && t.contains(e.relatedTarget)))
+      t.classList.remove('dismissed');
   });
   document.addEventListener('click', function (e) {
     var btn = e.target && e.target.closest ? e.target.closest('.tipbtn') : null;
     var t = btn ? btn.parentNode : null;
-    closeAll(t);
+    // a click elsewhere hides every shown tip but the one it lands in (its
+    // glossary link, its text); the clicked "?" toggles its own
+    var keep = t || tipOf(e.target);
+    shown().forEach(function (s) { if (s !== keep) hide(s); });
     if (!t) return;
     e.preventDefault();                  // a tip inside a <label> or <summary>
     // a second click hides it, though the button keeps focus and hover
@@ -58,26 +80,23 @@
     t.classList.toggle('dismissed', !on);
     place(t);
   });
-  // Escape hides a shown tip and goes no further, so the menu or dialog
-  // the tip sits in stays open (a second Escape closes that). Capture on
-  // window: before any page's own Escape handler
+  // Escape hides every shown tip (open, focused or under the pointer) and
+  // goes no further, so the menu or dialog the tip sits in stays open (a
+  // second Escape closes that). Focus inside a tip's box (its glossary
+  // link) goes back to its button first. Capture on window: before any
+  // page's own Escape handler
   window.addEventListener('keydown', function (e) {
     if (e.key !== 'Escape') return;
-    var shown = !!document.querySelector('.tip.open');
-    closeAll(null);
-    var a = document.activeElement;
-    if (a && a.classList && a.classList.contains('tipbtn') &&
-        !a.parentNode.classList.contains('dismissed')) {
-      a.parentNode.classList.add('dismissed');
-      shown = true;
-    }
-    if (shown) e.stopPropagation();
+    var list = shown();
+    if (!list.length) return;
+    var a = document.activeElement, f = tipOf(a),
+        fb = f ? f.querySelector('.tipbtn') : null;
+    if (fb && a !== fb && fb.focus) fb.focus();
+    list.forEach(hide);
+    e.stopPropagation();
   }, true);
   // a shown tip follows its button on scroll and resize
-  function replace() {
-    document.querySelectorAll('.tip.open, .tip:focus-within, .tip:hover')
-      .forEach(place);
-  }
+  function replace() { shown().forEach(place); }
   window.addEventListener('scroll', replace, true);
   window.addEventListener('resize', replace);
 })();
@@ -85,10 +104,12 @@
 /* The UI kit's behavior (templates/_tips.html; styles in static/ui-kit.css;
    docs/UI-KIT.md). Toggletips: the "i" button opens its panel on click or
    Enter, keeps aria-expanded true while it is open, and places the panel
-   under it inside the viewport (position:fixed, as a tooltip is, so a
-   card's overflow never clips it); Escape, a click outside or focus
+   by the tooltip's rule (place, below; position:fixed, as a tooltip is,
+   so a card's overflow never clips it); Escape, a click outside or focus
    leaving it closes it. Without this script a panel shows while focus is
    inside its toggletip (ui-kit.css, html:not(.uk-js)).
+   window.FluBNFUI.place(button, popup) is that rule, for the tooltips
+   above as well.
    window.FluBNFUI builds kit markup for page scripts: icon(name, label),
    badge(state, text), tip(id, label, text), alert(kind, text, title, tip,
    live) and progress(label, value, max, text, id), and updates it in
@@ -106,25 +127,68 @@
   function parts(w) {
     return {btn: w.querySelector('.uk-tt-btn'), pop: w.querySelector('.uk-tt-pop')};
   }
-  // the panel under its button (above when there is no room below),
-  // inside the viewport; the same rule as a tooltip
+  // what a popup must not cover when it has a choice: the form controls
+  // (the field a label's "?" explains sits right under it, a drop zone is
+  // a label, a fold's row a summary) outside the popup's own tip or
+  // toggletip, and not the one that holds its button (a fold's row, a
+  // label)
+  var CONTROLS = 'input, select, textarea, button, label, summary, [contenteditable]';
+  // whether a control with box `r` shows: a box, and not hidden (a closed
+  // menu's or fold's content keeps its boxes in some browsers, so where
+  // checkVisibility is missing, a closed <details> hides all but its
+  // summary)
+  function drawn(el, r) {
+    if (!(r.width > 0 && r.height > 0)) return false;
+    if (el.checkVisibility) return el.checkVisibility({visibilityProperty: true});
+    for (var n = el.parentNode; n && n.nodeType === 1; n = n.parentNode) {
+      if (n.localName === 'details' && !n.hasAttribute('open')) {
+        var s = n.querySelector('summary');
+        if (!(s && s.contains(el))) return false;
+      }
+    }
+    return true;
+  }
+  function covers(x, y, w, h, own) {
+    var els = document.querySelectorAll(CONTROLS);
+    for (var i = 0; i < els.length; i++) {
+      if (own.contains(els[i]) || els[i].contains(own)) continue;
+      var r = els[i].getBoundingClientRect();
+      if (r.left < x + w && x < r.right && r.top < y + h && y < r.bottom &&
+          drawn(els[i], r))
+        return true;
+    }
+    return false;
+  }
+  // a popup (a tip's box, a toggletip's panel) by its button, inside the
+  // viewport, 8px from its edges: centered on the button, under it, or
+  // above it when under it would cover a form control (and above fits),
+  // or when there is no room under it; with room on neither side, as low
+  // as fits (a toggletip's panel taller than the window scrolls,
+  // ui-kit.css max-height). Returns the side it took, 'below' or 'above'
+  function placeBy(btn, pop) {
+    var br = btn.getBoundingClientRect(),
+        W = document.documentElement.clientWidth, H = window.innerHeight,
+        wd = pop.offsetWidth, h = pop.offsetHeight,
+        own = btn.parentNode;
+    var x = br.left + br.width / 2 - wd / 2;
+    x = Math.max(8, Math.min(x, W - 8 - wd));
+    var below = br.bottom + 6, above = br.top - 6 - h,
+        fitsBelow = below + h <= H - 8, fitsAbove = above >= 8,
+        y = below, side = 'below';
+    if (fitsAbove && (!fitsBelow || covers(x, below, wd, h, own))) {
+      y = above; side = 'above';
+    } else if (!fitsBelow) {
+      y = Math.max(8, H - 8 - h);
+    }
+    pop.style.left = Math.round(x) + 'px';
+    pop.style.top = Math.round(y) + 'px';
+    return side;
+  }
   function place(w) {
     var p = parts(w);
     if (!p.btn || !p.pop) return;
     p.pop.style.position = 'fixed';
-    var br = p.btn.getBoundingClientRect(),
-        W = document.documentElement.clientWidth, H = window.innerHeight,
-        wd = p.pop.offsetWidth, h = p.pop.offsetHeight;
-    var x = br.left + br.width / 2 - wd / 2;
-    x = Math.max(8, Math.min(x, W - 8 - wd));
-    var y = br.bottom + 6;
-    if (y + h > H - 8) {
-      // no room below: above, or (room on neither side) as low as fits;
-      // a panel taller than the window scrolls (ui-kit.css max-height)
-      y = br.top - 6 - h > 8 ? br.top - 6 - h : Math.max(8, H - 8 - h);
-    }
-    p.pop.style.left = Math.round(x) + 'px';
-    p.pop.style.top = Math.round(y) + 'px';
+    placeBy(p.btn, p.pop);
   }
   function close(w, refocus) {
     var p = parts(w);
@@ -316,5 +380,6 @@
   }
   window.FluBNFUI = {icon: icon, badge: badge, setBadge: setBadge,
                      setReason: setReason, esc: esc, tip: tip, alert: alert,
-                     progress: progress, setProgress: setProgress};
+                     progress: progress, setProgress: setProgress,
+                     place: placeBy};
 })();
