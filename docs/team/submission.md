@@ -3767,6 +3767,12 @@ and CDC's rules. The season's facts are in
 
 ## Decided
 
+- 2026-11-27 (17:44 UTC), Ely: the rule for changing the Oracle weight
+  is the one in For other lanes (11-27, the weight screen on the Windows
+  PC, item 3), as written ("the rule looks fine, go ahead"). The Model
+  lane's agent on the PC runs the replays and the arms; this lane scores
+  the arms again before the joint recommendation; Ely decides any change.
+
 - 2026-11-26 (Ely): round 2026-11-28 goes in as the joint
   recommendation: the Oracle without Puerto Rico; the Groundhog without
   Hawaii, Puerto Rico, Washington and Florida, keeping California and
@@ -4019,8 +4025,8 @@ and CDC's rules. The season's facts are in
      and the seed settings: it calls apply_week with none of them, so it
      gives the registered 0.5 unnarrowed. Check before scoring: the arm
      w 0.25, k 0.7 equals the replay's own member.
-  3. Rule, proposed by this lane; Ely confirms it before the
-     pre-registration is frozen and pushed, and that is before any score:
+  3. Rule, confirmed by Ely 11-27 (Decided, 17:44 UTC); freeze it as
+     written in the pre-registration and push it before any score:
      - Pooled relative WIS, natural scale, state cells, FluSight's cell
        rule, against FluSight-baseline; week-cluster bootstrap, 2,000.
      - Each w takes its k by leave-one-season-out. The comparator is
