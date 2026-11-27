@@ -510,8 +510,8 @@ def _ensure_results_job(root: Path, season: str,
 
 
 def _job_running(root: Path) -> bool:
-    """Whether a finalize job is working on this root now (a rescore the
-    season page's button started, or a visit's): the page joins it and
+    """Whether a finalize job is working on this root now (a rescore,
+    POST /retro/{season}/rescore, or a visit's): the page joins it and
     shows the preparing state rather than the caches it is replacing."""
     job = _results_jobs.get(str(root))
     return bool(job and not job["done"].is_set())
