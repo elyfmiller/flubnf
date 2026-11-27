@@ -197,32 +197,23 @@ def test_high_contrast_holds_well_above_the_review_bars():
     assert resolve("dark")["on-bad"] == "#0C0D17"
 
 
-def _rule(selector: str) -> dict:
-    """One plain rule's declarations (not a token block)."""
-    m = re.search(re.escape(selector) + r"\{([^}]*)\}", NAU)
-    assert m, f"missing rule {selector}"
-    return {k.strip(): v.strip() for k, v in re.findall(
-        r"([\w-]+)\s*:\s*([^;]+);?", m.group(1))}
-
-
-def _color(value: str, toks: dict) -> str:
-    m = re.fullmatch(r"var\(--([\w-]+)\)", value.strip())
-    return toks[m.group(1)] if m else value.strip()
-
-
-def test_the_open_model_settings_button_reads_at_aa_everywhere():
-    """.adv[open] > summary.advbtn was white on raw cyan, 2.11:1."""
-    closed = _rule(".adv > summary.advbtn")
-    assert closed["color"] == "var(--accent-ink)"          # unchanged
-    assert closed["border"] == "1.5px solid var(--accent)"
-    opened = _rule(".adv[open] > summary.advbtn")
+def test_the_model_settings_toggle_reads_at_aa_everywhere():
+    """The open toggle was a filled pill (first white on raw cyan, 2.11:1,
+    then the card's color on --accent-ink). It is now the kit fold's row
+    with no fill, open or closed: its title in the ink and its count of
+    changed settings in the muted token, both on the card."""
+    assert "advbtn" not in NAU
+    fc = (UI / "static" / "tabs" / "forecast.css").read_text()
+    m = re.search(r"\.fc-ms-state\{([^}]*)\}", fc)
+    assert m and "color:var(--mut)" in m.group(1)
+    assert "background" not in m.group(1)
     for th in THEMES:
         for contrast in (False, True):
             for vision in (False, True):
                 r = resolve(th, contrast=contrast, vision=vision)
-                fg = _color(opened["color"], r)
-                bg = _color(opened["background"], r)
-                assert _cr(fg, bg) >= 4.5, (th, contrast, vision, fg, bg)
+                for fg in ("ink", "mut"):
+                    assert _cr(r[fg], r["card"]) >= 4.5, (th, contrast,
+                                                          vision, fg)
 
 
 def test_cvd_pair_holds_the_ratios_of_the_pair_it_replaces():

@@ -236,7 +236,7 @@ def test_a_number_the_browser_allows_is_refused_on_the_panel(
     assert (f"{key}: '{typed}' is not a valid int"
             == ui_state._last_form["ms_refused"])
     page = client.get("/forecast").text
-    assert '<details class="adv" open data-refused id="model-settings"' in page
+    assert '<details class="uk-fold ms-panel" open data-refused id="model-settings"' in page
     why = page.split('id="ms-refused">')[1].split("</div>")[0]
     assert (f"{K.BY_KEY[key].label}: &#39;{typed}&#39; is not a whole "
             "number." in why)

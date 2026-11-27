@@ -86,11 +86,11 @@ def test_a_refusal_opens_the_dataset_panel_on_the_next_page_only(monkeypatch):
         "engine": "analogue", f"knob.{PARTIAL}": "missing"},
         follow_redirects=False)
     page = client.get(f"/forecast?source={ds.id}").text
-    assert '<details class="adv" open data-refused id="model-settings"' in page
+    assert '<details class="uk-fold ms-panel" open data-refused id="model-settings"' in page
     why = page.split('id="ms-refused">')[1].split("</div>")[0]
     assert "Collapsed newest week: this rule&#39;s floor" in why
     page = client.get(f"/forecast?source={ds.id}").text
-    assert '<details class="adv" id="model-settings"' in page
+    assert '<details class="uk-fold ms-panel" id="model-settings"' in page
     assert 'id="ms-refused"' not in page
 
 

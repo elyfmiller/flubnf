@@ -286,9 +286,13 @@ def test_the_coverage_key_is_one_line_for_the_player_and_the_verdicts(
 
 @needs_jsc
 def test_scale_switch_marks_the_pressed_scale(tmp_path):
+    # the kit's segmented switch draws the pressed one (aria-pressed)
     got = _js(tmp_path, "I.scaleSwitch('log')")
-    assert 'data-scale="log" class="gold" aria-pressed="true"' in got
+    assert ('<span class="uk-seg" role="group" aria-labelledby="pb-scale-l">'
+            in got)
+    assert 'data-scale="log" aria-pressed="true"' in got
     assert 'data-scale="natural" aria-pressed="false"' in got
+    assert 'class="gold"' not in got and '<span class="seg"' not in got
     assert "The CDC FluSight dashboard reports both." in got
 
 

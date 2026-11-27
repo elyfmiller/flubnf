@@ -75,10 +75,12 @@ def test_forecast_data_view_toggles_mark_the_selected_mode():
     # and states it for assistive tech
     assert "classList.toggle('gold', mode===m)" in FORECAST_T
     assert "setAttribute('aria-pressed', String(mode===m))" in FORECAST_T
-    for bid in ("mode-raw", "mode-season", "mode-pts"):
+    for bid in ("mode-raw", "mode-season"):
         assert f'id="{bid}" aria-pressed="false"' in FORECAST_T, bid
-    # the points toggle reports its own pressed state
-    assert "setAttribute('aria-pressed', String(SHOWPTS))" in FORECAST_T
+    # points is an on/off of its own: a checkbox, its state its own
+    assert ('<label class="ck" for="mode-pts"><input type="checkbox" '
+            'id="mode-pts" autocomplete="off"> points</label>') in FORECAST_T
+    assert "SHOWPTS=this.checked; drawData(CURMODE);" in FORECAST_T
 
 
 # ------------------------------------------------- playback announcements

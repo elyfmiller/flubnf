@@ -9,8 +9,8 @@
    margins, columns and text size, never its colors).
 
    CONTENTS
-     1. settings card: the dataset's truth, the anchor line, the
-        locations count, a badge under a field, labelled values
+     1. settings card: the dataset's truth, the mode switch, the anchor
+        line, the locations count, a badge under a field, labelled values
      2. results column: running, latest run, actions, pagers, the data
         panel's view switch
      3. the Data issues box (_data_issues.html)
@@ -28,6 +28,8 @@
 /* why Run is off on a dataset week no model can forecast */
 .fc-runwhy{margin:.35rem 0 0;color:var(--mut);font-size:.9rem;flex-basis:100%}
 .fc-runwhy:empty{margin:0}
+/* Real-time / Vintage (the kit's uk-seg) at the head of the form */
+.fc-modes{margin:.1rem 0 .5rem}
 /* the anchor week under the date: an icon, the label, the week, the
    "not archived" badge; or one warn line when no week is on or before */
 .fc-anchor{margin:.35rem 0 .15rem;font-size:var(--fs-label);line-height:1.5}
@@ -135,11 +137,11 @@
 .fc-pos{color:var(--mut);font-size:var(--fs-label);
   font-variant-numeric:tabular-nums}
 
-/* the data panel's view switch (the kit's uk-seg) and the points toggle
-   beside it */
+/* the data panel's view switch (the kit's uk-seg) and the points
+   checkbox beside it */
 .fc-dview{display:flex;flex-wrap:wrap;align-items:center;gap:.4rem .6rem;
   margin:.45rem 0}
-.fc-dview > button{margin:0;padding:.3rem .85rem;font-size:var(--fs-label)}
+.fc-dview > .ck{margin:0}
 
 /* ---- 3. the Data issues box ---- */
 /* the Model settings look; one row per state: the check and the name,
@@ -169,9 +171,16 @@
 .fc-di[hidden]{display:none}
 
 /* ---- 4. the Model settings panel ---- */
-/* the summary's badge (default / modified) beside its title; brought to
-   the window's top when opened near its foot (model_settings.js) */
-.fc-ms-state{margin-left:.45rem}
+/* the panel is a disclosure row (the kit's fold: a chevron and the
+   words), never a button: only Run models is filled. Its count of
+   changed settings ("3 changed") follows the title in quiet words, and
+   says nothing while every setting is at its default. The summary is
+   brought to the window's top when opened near its foot
+   (model_settings.js) */
+details.ms-panel{margin:.7rem 0 .4rem}
+details.ms-panel > summary{min-height:24px}
+.fc-ms-state{color:var(--mut);font-size:var(--fs-label);font-weight:500}
+.fc-ms-state:empty{display:none}
 details[data-scope] > summary{scroll-margin-top:.75rem}
 /* a refusal's reason under the head */
 .fc-ms-refused{margin:.4rem 0 .2rem}
@@ -232,15 +241,9 @@ details[data-scope] > summary{scroll-margin-top:.75rem}
 .fc-datestats .uk-badge{white-space:normal}
 #fc-datestats[hidden],.fc-anchor-kv[hidden]{display:none}
 .fc-anchor-kv{display:inline-flex;align-items:center;gap:.2rem .4rem}
-/* the location presets: small toggle chips over the list */
-.fc-presets{display:flex;flex-wrap:wrap;gap:.3rem;margin:.2rem 0 .35rem}
-.fc-presets .fc-chip{margin:0;padding:.12rem .6rem;font-size:var(--fs-micro);
-  border-radius:var(--r-pill)}
-.fc-presets .fc-chip[aria-pressed="true"]{border-color:var(--accent-ink);
-  color:var(--accent-ink);font-weight:700}
-/* a preset's count: in its button's own color with no fill, set in
-   parentheses as the other presets write theirs ("States only (52)") */
-.fc-chip-n{font-variant-numeric:tabular-nums}
+/* the location presets: one select over the list (the filter and the
+   list's count are nau.css's, shared with the Retrospective's groups) */
+.fc-presets{margin:.2rem 0 .35rem}
 /* more boxes below the fold: the list's foot fades */
 .checklist.fc-more{-webkit-mask-image:linear-gradient(to bottom,black 78%,transparent);
   mask-image:linear-gradient(to bottom,black 78%,transparent)}

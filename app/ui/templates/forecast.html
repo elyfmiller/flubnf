@@ -70,11 +70,12 @@
    {% if dataset %}<input type="hidden" name="dataset" value="{{ dataset.id }}">{% endif %}
    {# two modes, one form (same controls, same run record): Real-time takes
       the latest archived week the calendar allows; Vintage names one #}
-   {# a pressed-button group, as the page's other segmented controls: a
-      tab pattern would promise panels and arrow keys it has not got #}
-   <div class="modes" role="group" aria-label="Forecast mode">
-    <button type="button" class="pill mode" data-mode="realtime" aria-pressed="true">Real-time</button>
-    <button type="button" class="pill mode" data-mode="vintage" aria-pressed="false">Vintage</button>
+   {# the kit's segmented switch, a pressed-button group as the page's
+      other switches are: a tab pattern would promise panels and arrow
+      keys it has not got #}
+   <div class="uk-seg fc-modes" role="group" aria-label="Forecast mode">
+    <button type="button" data-mode="realtime" aria-pressed="true">Real-time</button>
+    <button type="button" data-mode="vintage" aria-pressed="false">Vintage</button>
    </div>
    <input type="hidden" name="mode" id="mode-field" value="realtime">
    {{ tips.label("Forecast date", "fc-date", for_="fc-date-in") }}
@@ -265,7 +266,7 @@
         form.classList.toggle('mode-realtime', mode === 'realtime');
         form.classList.toggle('mode-vintage', mode === 'vintage');
         var mf = document.getElementById('mode-field'); if (mf) mf.value = mode;
-        document.querySelectorAll('.pill.mode').forEach(function (b) {
+        document.querySelectorAll('.fc-modes > button[data-mode]').forEach(function (b) {
           b.setAttribute('aria-pressed', b.dataset.mode === mode ? 'true' : 'false');
         });
         if (mode === 'realtime' && resetDate && box && box.dataset.default) {
@@ -273,7 +274,7 @@
         }
         try { localStorage.setItem('fcmode', mode); } catch (e) {}
       }
-      document.querySelectorAll('.pill.mode').forEach(function (b) {
+      document.querySelectorAll('.fc-modes > button[data-mode]').forEach(function (b) {
         b.addEventListener('click', function () { setMode(b.dataset.mode, true); });
       });
       if (box) box.addEventListener('change', function () { paint(); paintSeason(); });
@@ -291,19 +292,24 @@
    {# the pick's count rides in the label, in quiet words (the script below) #}
    <div class="lblrow"><label id="fc-locs-lbl">{{ "Groups" if dataset else "Locations" }} <span id="lcount" class="fc-count"></span></label></div>
    {% if locations_error %}{{ tips.alert("warn", locations_error, id="fc-locs-error") }}{% endif %}
-   {# presets and a filter over the list: buttons and a search box with no
-      name, so the form still posts only the checkboxes' own values #}
+   {# the presets as one select and a filter over the list: a select and
+      a search box with no name, so the form still posts only the
+      checkboxes' own values. The script shows the pick's preset, or
+      "Custom" (not choosable: the list below makes one) for any other #}
    {% if not dataset %}{% set pre = (aids.presets if aids is defined and aids else {}) %}
-   <div class="fc-presets" role="group" aria-label="Location presets">
-    <button type="button" class="quiet fc-chip" data-preset="all">All 53</button>
-    <button type="button" class="quiet fc-chip" data-preset="states">States only (52)</button>
-    <button type="button" class="quiet fc-chip" data-preset="us">US only</button>
-    {% if pre.last %}<button type="button" class="quiet fc-chip" data-preset="last" data-locs="{{ pre.last | tojson | forceescape }}">Last pick</button>{% endif %}
-    {% if pre.failed %}<button type="button" class="quiet fc-chip" data-preset="failed" data-locs="{{ pre.failed | tojson | forceescape }}">Failed last run (<span class="fc-chip-n">{{ pre.failed | length }}</span>)</button>{% endif %}
+   <div class="fc-presets">
+    <select id="fc-preset" aria-label="Location presets">
+     <option value="all">All 53</option>
+     <option value="states">States only (52)</option>
+     <option value="us">US only</option>
+     {% if pre.last %}<option value="last" data-locs="{{ pre.last | tojson | forceescape }}">Last pick</option>{% endif %}
+     {% if pre.failed %}<option value="failed" data-locs="{{ pre.failed | tojson | forceescape }}">Failed last run ({{ pre.failed | length }})</option>{% endif %}
+     <option value="custom" disabled hidden>Custom</option>
+    </select>
    </div>
    {% endif %}
    {# the filter and the list in a fold: closed while the pick is one the
-      chips and the count already say (all 53, the 52 without US, US
+      preset and the count already say (all 53, the 52 without US, US
       only), open for any other pick, an unreadable state list or a
       dataset; "Last pick" and "Failed last run" open it (the script
       below). A closed fold still posts its boxes: /run gets the same form #}
@@ -504,7 +510,7 @@
          if (all) c.checked = true;
          c.disabled = all;
        });
-       updCount(); paintChips(); paintFade();
+       updCount(); paintPreset(); paintFade();
      }
      function updCount() {
        var all = CKALL.checked;
@@ -524,23 +530,31 @@
        return v.join('|');
      }
      var STATES = ONES.map(function (c) { return c.value; }).sort().join('|');
-     function presetKey(b) {
-       var p = b.getAttribute('data-preset');
+     // a preset (an option of the select) as a pick key
+     function presetKey(o) {
+       var p = o.value;
        if (p === 'all') return 'all';
        if (p === 'states') return STATES;
        if (p === 'us') return US || '';
        var locs = [];
-       try { locs = JSON.parse(b.getAttribute('data-locs') || '[]'); } catch (e) {}
+       try { locs = JSON.parse(o.getAttribute('data-locs') || '[]'); } catch (e) {}
        var st = locs.filter(function (l) { return l !== US; }).sort();
        if (st.length === ONES.length && locs.indexOf(US) >= 0) return 'all';
        if (locs.indexOf(US) >= 0) st.push(US);
        return st.join('|');
      }
-     var CHIPS = Array.prototype.slice.call(document.querySelectorAll('.fc-chip'));
-     function paintChips() {
-       var k = pickKey();
-       CHIPS.forEach(function (b) {
-         b.setAttribute('aria-pressed', String(presetKey(b) === k));
+     // the select shows the first preset that is the pick, else Custom
+     var PRESET = document.getElementById('fc-preset');
+     var OPTS = PRESET ? Array.prototype.slice.call(PRESET.options) : [];
+     function paintPreset() {
+       if (!PRESET) return;
+       var k = pickKey(), hit = null;
+       OPTS.forEach(function (o) {
+         if (!hit && o.value !== 'custom' && presetKey(o) === k) hit = o;
+       });
+       OPTS.forEach(function (o) {
+         if (o.value === 'custom') o.hidden = !!hit;
+         o.selected = hit ? o === hit : o.value === 'custom';
        });
      }
      // the fold around the filter and the list (closed for a preset pick)
@@ -548,7 +562,7 @@
      function apply(b) {
        var key = presetKey(b);
        // a remembered pick is shown in the list it came from
-       var p = b.getAttribute('data-preset');
+       var p = b.value;
        if (FOLD && (p === 'last' || p === 'failed')) FOLD.open = true;
        if (key === 'all') {
          CKALL.checked = true;
@@ -561,14 +575,16 @@
        }
        sync(); told();
      }
-     CHIPS.forEach(function (b) { b.addEventListener('click', function () { apply(b); }); });
+     if (PRESET) PRESET.addEventListener('change', function () {
+       OPTS.forEach(function (o) { if (o.selected && o.value !== 'custom') apply(o); });
+     });
      CKALL.addEventListener('change', function () {
        if (this.checked) { if (CKUS) CKUS.checked = true; }
        else ONES.forEach(function (c) { c.checked = false; });
        sync();
      });
      // the checklist decides what RUNS; the data panel has its own dropdown
-     ONES.forEach(function (c) { c.addEventListener('change', function () { updCount(); paintChips(); }); });
+     ONES.forEach(function (c) { c.addEventListener('change', function () { updCount(); paintPreset(); }); });
      // unticking US while 'all' is on: the 52 without US, as a custom pick
      if (CKUS) CKUS.addEventListener('change', function () {
        if (!CKUS.checked && CKALL.checked) {
@@ -900,13 +916,13 @@
    </div>
    {# the view as the kit's segmented switch (as on the Data tab): the
       selected one aria-pressed and gold (drawData keeps both); points is
-      a toggle of its own beside it #}
+      a checkbox of its own beside it #}
    <div class="fc-dview">
     <div class="uk-seg" role="group" aria-label="data view">
      <button type="button" class="quiet" id="mode-raw" aria-pressed="false">full series</button>
      <button type="button" class="quiet" id="mode-season" aria-pressed="false">season over season</button>
     </div>
-    <button type="button" class="quiet" id="mode-pts" aria-pressed="false">● points</button>
+    <label class="ck" for="mode-pts"><input type="checkbox" id="mode-pts" autocomplete="off"> points</label>
    </div>
    </div>
    {# reserved height (chart draws at 380): a fetch never collapses the page #}
@@ -1114,11 +1130,8 @@
  document.getElementById('data-next').onclick=()=>setDataLoc(DATA_SEL.selectedIndex+1);
  document.getElementById('mode-raw').onclick=()=>drawData('raw');
  document.getElementById('mode-season').onclick=()=>drawData('season');
- document.getElementById('mode-pts').onclick=function(){
-   SHOWPTS=!SHOWPTS; this.textContent=SHOWPTS?'○ points':'● points';
-   this.classList.toggle('gold', SHOWPTS);
-   this.setAttribute('aria-pressed', String(SHOWPTS));
-   drawData(CURMODE);};
+ document.getElementById('mode-pts').onchange=function(){
+   SHOWPTS=this.checked; drawData(CURMODE);};
  drawData('season');
  // forecast fans (interactive, full width)
  const MODELS=Object.keys(FANQ);

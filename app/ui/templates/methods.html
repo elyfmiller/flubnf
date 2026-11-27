@@ -20,7 +20,7 @@
   barH();
   addEventListener('resize', barH);
   addEventListener('fontsizechange', barH);
-  // ---- scrollspy: the section in view marks its chip aria-current
+  // ---- scrollspy: the section in view marks its link aria-current
   var links = Array.prototype.slice.call(toc.querySelectorAll('a[href^="#"]'));
   var secs = [];
   links.forEach(function (a) {
@@ -34,14 +34,14 @@
       if (l === a) l.setAttribute('aria-current', 'location');
       else l.removeAttribute('aria-current');
     });
-    // a chip scrolled out of a one-row (phone) contents row comes into view
+    // a link scrolled out of a one-row (phone) contents row comes into view
     if (a && toc.scrollWidth > toc.clientWidth) {
       var r = a.getBoundingClientRect(), q = toc.getBoundingClientRect();
       if (r.left < q.left || r.right > q.right)
         toc.scrollLeft += r.left - q.left - (q.width - r.width) / 2;
     }
   }
-  // the chip just clicked: when the last sections share the final screen,
+  // the link just clicked: when the last sections share the final screen,
   // its jump ends at the page's end, where its section, not the last one,
   // stays marked while in view (read again after the jump, which scrolls
   // nothing when the page is at its end already); the reader's own next
@@ -59,7 +59,7 @@
   });
   // the current section: the last one whose top has passed the band under
   // the bar, and the last one of all once the page is scrolled to its end
-  // (the last card can never reach the band), unless a chip was just
+  // (the last card can never reach the band), unless a link was just
   // clicked and its section is in view
   function spy() {
     if (!secs.length) return;
@@ -126,7 +126,7 @@
   pb.type = 'button'; pb.className = 'quiet mt-print'; pb.textContent = 'Print / Save as PDF';
   pb.addEventListener('click', function () { window.print(); });
   bar.appendChild(pb);
-  // the button can wrap the chips onto a second row: measure again, and
+  // the button can wrap the links onto a second row: measure again, and
   // whenever the bar's height changes (fonts, text size, a narrow window)
   barH();
   if ('ResizeObserver' in window) new ResizeObserver(barH).observe(bar);
@@ -552,7 +552,7 @@
 
 {# The site harvest drops this card (site_build._PERF_CARD): it must open
    exactly as below, with no class of its own and only this id (the
-   contents chip's target, so a jump lands on the card's top edge), and be
+   contents link's target, so a jump lands on the card's top edge), and be
    followed directly by a <div class="card". Kit icons are fine here, as
    the public site never shows it #}
 <div class="card" id="performance"><h2>Measured performance</h2>

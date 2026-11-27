@@ -251,7 +251,7 @@ def test_the_panel_script_sets_each_panel_up_once(path):
     assert "querySelectorAll('details[data-scope]')" in js
     assert "msReady" in js
     # never a page-wide id lookup of a panel part
-    for part in ("ms-badge", "ms-reset", "ms-override", "ms-ovr",
+    for part in ("ms-state", "ms-reset", "ms-override", "ms-ovr",
                  "ms-reason", "model-settings"):
         assert f"getElementById('{part}')" not in js, part
 

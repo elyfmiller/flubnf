@@ -161,7 +161,7 @@ def _knob_panel(scope: str, form: dict | None = None,
     modified nor survives as a typed value. The panel renders open only
     after a refusal over its settings (form["ms_refused"]: the refusal's
     reason, shown under the panel's head, or True); changed values alone
-    never open it (the summary's badge reads "modified"). The page's
+    never open it (the summary counts them: "2 changed"). The page's
     script restores the user's own open/closed choice for the session."""
     form = form or {}
     vals = {k: str(v) for k, v in (form.get("knobs") or {}).items()}

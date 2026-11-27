@@ -1,6 +1,7 @@
 /* The Model settings panel (templates/_model_settings.html): the live
-   "default / modified" badge (a kit badge; with the override, how a
-   modified run's files will be named), each group's "N changed", the rows
+   count of changed settings in its summary ("3 changed"; with the
+   override, how a modified run's files will be named; nothing while every
+   setting is at its default), each group's "N changed", the rows
    that do not apply to the chosen engine hidden (the server ignores them
    too, and never records them; their fields are still posted, so the form
    keeps them for the next run, but never checked), the Groundhog's donor
@@ -26,8 +27,8 @@
     if (box.dataset.msReady) return;
     box.dataset.msReady = '1';
     var form = box.closest('form');
-    // the summary's kit badge (tips.badge: icon and word)
-    var badge = box.querySelector('summary .uk-badge');
+    // the summary's count of changed settings (quiet words)
+    var total = box.querySelector('summary > .fc-ms-state');
     var ovr = box.querySelector('.ms-override');
     var tick = box.querySelector('input[name=submit_modified]');
     var reason = box.querySelector('input[name=modified_reason]');
@@ -142,35 +143,20 @@
         f.hidden = rows.length > 0 && rows.every(function (n) { return n.hidden; });
       });
     }
-    // the badge takes its state's word, class and icon. The icon comes
-    // from FluBNFUI (tips.js, loaded after this script): until then the
-    // server's icon stays, and the next update swaps it
-    if (badge) badge.dataset.icon = badge.getAttribute('data-state');
-    function setBadge(state, text) {
-      badge.className = 'uk-badge uk-badge--' + state;
-      badge.setAttribute('data-state', state);
-      var t = badge.querySelector('.uk-badge-t');
-      if (t) t.textContent = text;
-      var svg = badge.querySelector('svg');
-      if (svg && window.FluBNFUI && badge.dataset.icon !== state) {
-        svg.outerHTML = window.FluBNFUI.icon(state === 'warn' ? 'warning' : 'check');
-        badge.dataset.icon = state;
-      }
-    }
     function update() {
       // each field off its default is marked on its row (ms-changed)
       inputs.forEach(function (el) {
         var row = el.closest('.ms-row');
         if (row) row.classList.toggle('ms-changed', isModified(el));
       });
-      var any = inputs.some(function (el) {
+      var n = inputs.filter(function (el) {
         return !el.closest('[hidden]') && isModified(el);
-      });
+      }).length, any = n > 0;
       // with the override, the summary says how the files will be named
       // (the box starts unticked each run)
-      var word = !any ? 'default' : !tick ? 'modified'
-        : 'modified · ' + (tick.checked ? 'hub names' : 'non-hub names');
-      if (badge) setBadge(any ? 'warn' : 'ok', word);
+      var word = !any ? '' : n + ' changed' + (!tick ? ''
+        : ' · ' + (tick.checked ? 'hub names' : 'non-hub names'));
+      if (total && total.textContent !== word) total.textContent = word;
       // each group's summary counts its changed rows
       box.querySelectorAll('.ms-group').forEach(function (g) {
         var n = g.querySelectorAll('.ms-row.ms-changed:not([hidden])').length;
