@@ -9,8 +9,8 @@
    margins, columns and text size, never its colors).
 
    CONTENTS
-     1. settings card: the dataset's truth, the anchor line, the
-        locations count, a badge under a field, labelled values
+     1. settings card: the dataset's truth, the mode switch, the anchor
+        line, the locations count, a badge under a field, labelled values
      2. results column: running, latest run, actions, pagers, the data
         panel's view switch
      3. the Data issues box (_data_issues.html)
@@ -23,6 +23,8 @@
 /* ---- 1. settings card ---- */
 /* the dataset's truth badge under its picker */
 .fc-truth{margin:.1rem 0 .55rem}
+/* Real-time / Vintage (the kit's uk-seg) at the head of the form */
+.fc-modes{margin:.1rem 0 .5rem}
 /* the anchor week under the date: an icon, the label, the week, the
    "not archived" badge; or one warn line when no week is on or before */
 .fc-anchor{margin:.35rem 0 .15rem;font-size:var(--fs-label);line-height:1.5}
@@ -135,11 +137,11 @@
 .fc-pos{color:var(--mut);font-size:var(--fs-label);
   font-variant-numeric:tabular-nums}
 
-/* the data panel's view switch (the kit's uk-seg) and the points toggle
-   beside it */
+/* the data panel's view switch (the kit's uk-seg) and the points
+   checkbox beside it */
 .fc-dview{display:flex;flex-wrap:wrap;align-items:center;gap:.4rem .6rem;
   margin:.45rem 0}
-.fc-dview > button{margin:0;padding:.3rem .85rem;font-size:var(--fs-label)}
+.fc-dview > .ck{margin:0}
 
 /* ---- 3. the Data issues box ---- */
 /* the Model settings look; one row per state: the check and the name,
@@ -232,15 +234,8 @@ details[data-scope] > summary{scroll-margin-top:.75rem}
 .fc-datestats .uk-badge{white-space:normal}
 #fc-datestats[hidden],.fc-anchor-kv[hidden]{display:none}
 .fc-anchor-kv{display:inline-flex;align-items:center;gap:.2rem .4rem}
-/* the location presets: small toggle chips over the list */
-.fc-presets{display:flex;flex-wrap:wrap;gap:.3rem;margin:.2rem 0 .35rem}
-.fc-presets .fc-chip{margin:0;padding:.12rem .6rem;font-size:var(--fs-micro);
-  border-radius:var(--r-pill)}
-.fc-presets .fc-chip[aria-pressed="true"]{border-color:var(--accent-ink);
-  color:var(--accent-ink);font-weight:700}
-/* a preset's count: in its button's own color with no fill, set in
-   parentheses as the other presets write theirs ("States only (52)") */
-.fc-chip-n{font-variant-numeric:tabular-nums}
+/* the location presets: one select over the list */
+.fc-presets{margin:.2rem 0 .35rem}
 /* the filter over the list, as wide as it */
 .fc-locfilter{width:100%;margin:0 0 .3rem}
 .checklist .ck[hidden]{display:none}

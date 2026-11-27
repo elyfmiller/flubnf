@@ -247,17 +247,19 @@ def test_the_date_rule_and_the_gap_refusal_say_what_happens(tmp_path,
 
 # ------------------------------------------------- FC-30: pressed buttons
 
-def test_the_mode_pills_are_a_group_of_pressed_buttons():
+def test_the_modes_are_a_group_of_pressed_buttons():
     page = client.get("/forecast").text
-    # the row itself is the group; Real-time is pressed before the script runs
-    modes = page.split('<div class="modes" role="group" aria-label="Forecast mode">', 1)[1].split("</div>", 1)[0]
+    # the row itself is the group, the kit's segmented switch; Real-time
+    # is pressed before the script runs
+    modes = page.split('<div class="uk-seg fc-modes" role="group" aria-label="Forecast mode">', 1)[1].split("</div>", 1)[0]
     assert 'role="tab' not in modes and "aria-selected" not in modes
     assert modes.count('data-mode="realtime" aria-pressed="true"') == 1
     assert modes.count('data-mode="vintage" aria-pressed="false"') == 1
+    assert "class=" not in modes                 # the kit draws them
     assert "b.setAttribute('aria-pressed', b.dataset.mode === mode" in page
+    assert "document.querySelectorAll('.fc-modes > button[data-mode]')" in page
     css = (UI / "static" / "nau.css").read_text(encoding="utf-8")
-    assert '.pill.mode[aria-pressed="true"]' in css
-    assert ".modes > [role=" not in css
+    assert ".pill.mode" not in css and ".modes" not in css
 
 
 # ---------------------------------------------- FC-33: each fact once

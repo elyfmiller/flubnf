@@ -675,7 +675,7 @@ def test_a_status_inside_a_link_reads_as_a_link():
 #: the tabs' own counts and kinds that are not controls, by sheet: the same
 #: look as a quiet mark (plain words with no box)
 TAB_WORDS = {
-    "forecast.css": (".fc-count", ".ms-n", ".fc-chip-n",
+    "forecast.css": (".fc-count", ".ms-n",
                      ".ms-row.ms-changed > .lblrow > label::after"),
     "models.css": (".md-tag",),
     "home.css": (".hm-facts li",),
@@ -716,12 +716,8 @@ def test_the_tabs_own_words_keep_their_other_signal():
                       "margin-left": "calc(-.5rem - 3px)"}
     assert _rule(fcr, ".ms-row.ms-changed")["margin-left"] == "-.5rem"
     assert fc[".fc-count"]["color"] == "var(--mut)"
-    # a preset stays a button with its outline; its count takes the
-    # button's own color, and its parentheses are in the page, not drawn
-    # around it by the sheet ("((3))" if both were)
-    assert "border-radius" in fc[".fc-presets .fc-chip"]
-    assert "color" not in fc[".fc-chip-n"] and "background" not in fc[".fc-chip-n"]
-    assert not [s for s, _ in fcr if re.search(r"\.fc-chip-n\b.*::?(?:before|after)", s)]
+    # the location presets are one select: no chip rules are left
+    assert not [s for s, _ in fcr if "fc-chip" in s]
     # Storage: the ledger's count beside its heading is quiet words, as
     # every count beside a heading is, and its facts take a quiet mark's
     # weight

@@ -1160,12 +1160,7 @@ footer.buildline{text-align:center;padding:.6rem 0 1rem}
     scroll-behavior:auto!important}
 }
 
-/* Forecast form modes (Real-time / Vintage) and the advanced group */
-.modes{display:flex;gap:.4rem;margin:.1rem 0 .5rem;align-items:center}
-.modes .pill.mode{margin-top:0}
-.pill.mode{cursor:pointer;background:transparent;color:var(--ink);border:1px solid var(--gold);font:inherit;font-size:.85rem}
-.pill.mode[aria-selected="true"],.pill.mode[aria-pressed="true"]{background:var(--gold-bright);color:var(--on-accent);border-color:var(--gold-bright)}
-.pill.mode:focus-visible{outline:2px solid var(--gold-bright);outline-offset:2px}
+/* Forecast form modes (Real-time / Vintage: the kit's uk-seg) */
 #fcform.mode-realtime #vintage-pick{display:none}
 details.adv{margin:.7rem 0 .4rem}
 details.adv>summary{cursor:pointer;color:var(--gold);font-size:.9rem;list-style:none}
