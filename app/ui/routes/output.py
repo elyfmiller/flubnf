@@ -811,7 +811,17 @@ def output_page(request: Request):
         "report_asof": report_asof,
         "report_when": _run_when(rid) if has_report else "",
         "report_modified": report_modified,
+        # Your data's empty state: with a dataset stored, its way on is
+        # the dataset's Forecast form, else the place a dataset is added
+        "own_stored": bool(not own and _datasets_stored()),
         "stamp": stamp, "server_now": server_now})
+
+
+def _datasets_stored() -> bool:
+    """Whether any dataset is stored that a forecast could read
+    (datasets_ui.choices: a damaged one is left out)."""
+    from app.ui import datasets_ui
+    return bool(datasets_ui.choices())
 
 
 @router.get("/api/output/stamp")

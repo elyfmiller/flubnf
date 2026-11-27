@@ -205,6 +205,45 @@ def test_own_data_runs_are_listed_apart_with_their_exports(root):
     # one group per run: the dataset's name over its as-of
     assert ">Clinic admissions</h3>" in block and "as of 2098-01-10" in block
     assert "2098-01-17-FluBNF-Groundhog.csv" in block
+    # with runs to list, no empty state
+    assert 'id="out-own-empty"' not in html
+
+
+def _own_block(html: str) -> str:
+    """The Your data card, from its id to the page script after it."""
+    return html.split('id="own-data"', 1)[1].split('<script', 1)[0]
+
+
+def test_your_data_shows_before_any_dataset_run(root, monkeypatch):
+    """Your data is always on the page: before a dataset run, an empty
+    state says what goes there, and its one way on is where a dataset is
+    added (Data's Your datasets), or, once one is stored, the dataset's
+    Forecast form."""
+    from app.ui import datasets_ui
+    _run(root, "2098-01-03", [GH])            # a hub run only
+    monkeypatch.setattr(datasets_ui, "choices", lambda: [])
+    html = client.get("/output").text
+    block = _own_block(html)
+    assert "Your data" in html.split('id="own-data"', 1)[0][-200:] + block[:300]
+    assert 'id="out-own-empty"' in block
+    assert "No forecasts on your datasets yet" in block
+    assert 'href="/data#datasets">Add a dataset</a>' in block
+    assert "/forecast?tab=own" not in block
+    # a dataset stored, none run yet: the way on is its Forecast form
+    monkeypatch.setattr(datasets_ui, "choices",
+                        lambda: [("clinics-1", "Clinic admissions")])
+    block = _own_block(client.get("/output").text)
+    assert "No forecasts on your datasets yet" in block
+    assert 'href="/forecast?tab=own">Forecast a dataset</a>' in block
+    assert "Add a dataset" not in block
+    # the page with nothing at all: the hub's empty state, then Your data's
+    monkeypatch.setattr(datasets_ui, "choices", lambda: [])
+    for w in (root / "workroots").iterdir():
+        (w / "results.json").unlink()
+    ui_shared._invalidate_scans()
+    html = client.get("/output").text
+    assert 'id="out-empty"' in html and 'id="out-own-empty"' in html
+    assert html.index('id="out-empty"') < html.index('id="own-data"')
 
 
 def test_a_file_that_fails_the_hub_checks_says_so(root):
