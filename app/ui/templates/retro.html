@@ -17,10 +17,10 @@
    (as Output's and a season page's), for the season rows and the import
    too (their badges, figures and fields carry no tips of their own); the
    Your data tab's is its replays' heading #}
-{% if own_tab %}{{ tips.heading("Retrospective", level=1, cls="rt-h1") }}{% else %}{% call tips.heading("Retrospective", "rt-page", level=1, cls="rt-h1", rich=True, tip_label="the retrospective") %}
+{% if own_tab %}{{ tips.heading("Retrospective", level=1, cls="rt-h1") }}{% else %}{% call tips.heading("Retrospective", "rt-page", level=1, cls="rt-h1", rich=True, tip_label="the retrospective", gloss="relwis") %}
  <span class="uk-tt-line">Replays a past season week by week on each
  Saturday's data, then scores against settled truth.
- {{ tips.term("relwis", "relWIS") }}: the summed WIS over the FluSight baseline's (a ratio of sums); below 1 beats it.</span>
+ relWIS: the summed WIS over the FluSight baseline's (a ratio of sums); below 1 beats it.</span>
  <span class="uk-tt-line">Resume, or Run, continues a stopped or interrupted
  replay from its last completed week with the recorded settings.</span>
  <span class="uk-tt-line">Import a replay takes the .flubnf-replay.zip from

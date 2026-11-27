@@ -41,7 +41,7 @@
   <span class="uk-tt-line"><b>Real-time</b> forecasts from the hub's newest week; <b>{{ tips.term("vintage", "Vintage") }}</b> from an archived week, as it stood.</span>
   <span class="uk-tt-line"><b>Forecast date:</b> a Saturday must be an archived week; any other day anchors on the latest archived week before it.</span>
   <span class="uk-tt-line"><b>Not archived:</b> the newest week, read from target-data until archived.</span>
-  <span class="uk-tt-line"><b>{{ tips.term("reference-date", "Reference date") }}:</b> the anchor week plus 7 days; it names the round, and {{ tips.term("horizon", "horizons") }} count from it.</span>
+  <span class="uk-tt-line"><b>{{ tips.term("reference-date", "Reference date") }}:</b> the anchor week plus 7 days; it names the {{ tips.term("round", "round") }}, and {{ tips.term("horizon", "horizons") }} count from it.</span>
   <span class="uk-tt-line"><b>All 53:</b> the 50 states, DC, Puerto Rico and US; US is fitted and scored apart.</span>
   {%- if data_issues %}
   <span class="uk-tt-line"><b>Data issues:</b> each state is preset to the recommended choice, for this run only. <a href="/methods#mt-newest">What each choice does</a></span>
@@ -123,7 +123,7 @@
    {% call tips.stats("uk-stats--row fc-datestats", label="The round") %}
     {{- tips.stat("Reference date", wi.reference or "", id="fc-ref") -}}
     {%- set win %}<span id="fc-win-slot">{{ tips.badge((wi.badge or ["neutral", ""])[0], (wi.badge or ["neutral", ""])[1], id="fc-win") }}</span>{% endset -%}
-    {{- tips.stat("FluSight window", win, "", "The days the hub takes this round's files: the Sunday to the Wednesday before the reference date, until 11 PM Eastern.", id="fc-win-stat", tip_label="the FluSight window", gloss="round") -}}
+    {{- tips.stat("FluSight window", win, id="fc-win-stat") -}}
    {% endcall %}
    </div>
    {% endif %}

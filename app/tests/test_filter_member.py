@@ -330,7 +330,10 @@ def test_the_season_report_says_what_the_page_says(tmp_path, monkeypatch):
         encoding="utf-8")
     flat = " ".join(rep.split())
     assert f'<p class="rt-tilenote">{usn.PF_US_SHORT_MIXED}</p>' in flat
-    assert _page_i(page) in flat
+    # the page's "i" less its glossary link, which the file cannot follow
+    facts = re.sub(r' <span class="uk-gloss uk-tt-line">.*?</span>', "",
+                   _page_i(page))
+    assert facts != _page_i(page) and facts in flat
     assert row in flat
     for t in tiles.values():
         assert t in flat

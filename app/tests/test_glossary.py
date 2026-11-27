@@ -169,9 +169,10 @@ def _links(html: str) -> dict:
 #: each). The Data card's own "?" and the report's cards are other work
 HUB_PAGES = {
     "/data": {"tip-archive": {"vintage"}, "tip-dsup-data-about": {"snapshot"}},
-    "/forecast": {"tt-fc-settings": {"vintage", "reference-date", "horizon"},
-                  "tip-fc-win-stat": {"round"}, "tt-ms-about": {"modified"}},
-    "/output": {"tt-out-files": {"reference-date", "modified", "round"}},
+    "/forecast": {"tt-fc-settings": {"vintage", "reference-date", "round",
+                                     "horizon"},
+                  "tt-ms-about": {"modified"}},
+    "/output": {"tt-out-files": {"reference-date", "modified"}},
     "/retro": {"tt-rt-page": {"relwis"}, "tt-ms-about": {"modified"}},
 }
 
