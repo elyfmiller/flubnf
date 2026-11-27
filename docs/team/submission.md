@@ -6,6 +6,54 @@ and CDC's rules. The season's facts are in
 
 ## Now
 
+- 2026-11-27 (19:18 UTC): A US SOURCE FOR THE ATTACK RATE: THE
+  LITERATURE (Ely, Decided, same day). A research agent searched PubMed
+  and Crossref; every number below was read in the retrieved abstract or
+  full text, and this lane re-checked each quote against the downloads.
+  - No post-2009 US study gives an all-ages, population serologic
+    (fourfold rise) infection attack rate for a season, and none gives
+    season or subtype values for 2022-23 to 2025-26.
+  - Li et al. 2025 (Nat Commun, PMID 41360781, doi
+    10.1038/s41467-025-66431-2), cited in flubnf/sihrs_priors.py
+    S0_SOURCES as the CDC US panel, is an H5N1 cross-reactivity study
+    ("We assessed the pre-existing cross-reactive immunity to 2.3.4.4b
+    A(H5N1) viruses ... 723 people"); it reports no seasonal
+    seroconversion, so it supports neither an attack rate nor s0 (the
+    code's note says only that an s0 estimate "could be built" from it).
+  - US anchors for an all-ages seasonal infection attack rate:
+    - Tokars, Olsen, Reed 2018 (CID, PMID 29206909, CDC): symptomatic
+      influenza, all ages, median 8.3% (95% CI 7.3-9.7), 3.0% to 11.3%
+      by season, 2010-11 to 2015-16. Indirect: divided by a symptomatic
+      fraction, 66.9% (Carrat et al. 2008, AJE, PMID 18230677, challenge
+      studies) gives 12.4% (4.5-16.9 by season); CDC's 50% convention
+      gives 16.6% (6.0-22.6).
+    - Somes et al. 2018 (Vaccine, PMID 29716771, placebo arms, not US
+      only): infection with asymptomatic, unvaccinated, 22.5% children,
+      10.7% adults; about 13% all ages weighted (agent's weighting).
+    - Yang, Lipsitch, Shaman 2015 (PNAS, PMID 25730851): 8.2% to 24.1%
+      by season, 2003-04 to 2012-13, US cities; mean of the
+      non-pandemic seasons 14.1%. Inferred by an SIRS model with a
+      filter, so not independent of this model's own assumptions.
+    - US household serology of the 1970s (Seattle, Fox et al. 1982,
+      PMID 7114033: 17-24% overall, 6-13% of adults; Houston), child
+      weighted; the "5-20%" figure traces to Tecumseh 1976-81.
+    - Post-COVID US cohorts, weekly PCR (a floor): HEROES-RECOVER
+      2022-23, 7.1% of working adults (White et al. 2025, PMID
+      39446477); CASCADIA 2022-24, 17% over two seasons, child weighted.
+  - Non-US, the same fourfold-rise method as the Vietnam source: UK Flu
+    Watch, 18% (95% CI 16-22) of unvaccinated people a winter (Hayward
+    et al. 2014, PMID 24717637); New Zealand SHIVERS 2015, 35% with HAI
+    or NAI.
+  Reading: the US evidence supports the 10-26% range rather than
+  narrowing it; its centre sits near 12-17% depending mostly on the
+  symptomatic fraction assumed, so 18% is inside it toward the upper
+  end. The stage-rule seed pins on a typical season's admissions, so a
+  typical-season value is the matching quantity. A candidate for the
+  sensitivity screen must be fixed before any score: Ely to choose (this
+  lane's proposal: 12.4%, Tokars 2018 / Carrat 2008, two measured
+  estimates; 16.6% under CDC's 50% convention is within 0.92x of 18%).
+  Sources and downloads: this lane's scratchpad, serology/raw/.
+
 - 2026-11-27 (18:43 UTC): THE WEIGHT SCREEN IS RUNNING; ITS FROZEN TEXT
   CHECKED. The Model lane's replays started 17:52:58 UTC on the PC (public
   engine 8410f794, the rounds' engine; about 19 to 20 hours, so Saturday
@@ -4060,6 +4108,16 @@ and CDC's rules. The season's facts are in
   against the hub schema), then the submission lane copies it to the fork.
 
 ## For other lanes
+
+- 2026-11-27 (19:18 UTC), Submission to Model: A CITATION TO CHECK IN
+  flubnf/sihrs_priors.py. S0_SOURCES["cdc_us_longitudinal_panel"] (Li
+  et al. 2025, doi 10.1038/s41467-025-66431-2) is an H5N1
+  cross-reactivity study of a 723-person US panel; it reports no
+  seasonal-strain seroconversion or susceptibility (full text read, Now,
+  same day). The note beside it says an s0 estimate "could be built"
+  from the panel, which is true of the sera but not of the paper; a
+  methods reader could take it as support for s0 0.85. Suggest a wording
+  that says so, or moving it out of S0_SOURCES; no number changes.
 
 - 2026-11-27 (18:55 UTC), Submission to Model: THE SEEDING ASSUMPTIONS,
   A SENSITIVITY SCREEN, AFTER THE WEIGHT SCREEN (Ely, Decided, same day).
