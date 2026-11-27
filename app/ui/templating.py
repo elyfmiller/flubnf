@@ -15,6 +15,7 @@ from pathlib import Path
 
 from fastapi.templating import Jinja2Templates
 
+from app.core import glossary
 from app.core.runs import fmt_hms, results_html, settings_html
 from app.ui import versions
 from app.ui.state import _status
@@ -157,6 +158,10 @@ templates.env.globals["version_pending"] = versions.VERSION_PENDING
 # one settings/results renderer for progress cards, run page and both report
 # exports (app/core/runs.py), so their wording cannot diverge
 templates.env.globals["settings_html"] = settings_html
+# the link a "?" ends with when its subject is a glossary word (the kit's
+# `gloss` key): the console's pages only, so the weekly report, which
+# renders the kit without this env, carries none (app/core/glossary.py)
+templates.env.globals["glossary_href"] = glossary.href
 
 # the exported season report (app/core/report_season) renders the season
 # page as one self-contained file: every stylesheet and script it loads is

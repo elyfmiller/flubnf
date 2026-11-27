@@ -14,7 +14,8 @@
      3. card parts: sub-headings, the facts panel, the rates key, folds,
         the heading's link button
      4. tables: the record, performance, the component list
-     5. policies: the "every run" checklist, the scoring definitions */
+     5. policies: the "every run" checklist, the scoring definitions;
+        the glossary's entry a link lands on */
 
 /* ---- 1. contents row: the bar stays in view while the page scrolls;
    its links (plain links, no outline: they go somewhere, they set
@@ -165,6 +166,15 @@ a.btn.mt-go{min-height:24px;padding:.15rem .7rem;font-size:var(--fs-label)}
 .mt-rules{margin:.2rem 0 .6rem;padding-left:1.1rem}
 .mt-rules li{margin:.12rem 0}
 .mt-defs{margin:.2rem 0 .8rem}
+/* the glossary entry a "?" linked to (/methods#g-<key>): its word and its
+   lines on a light accent tint, the word's cell as tall as its lines and
+   marked by an accent bar, so the eye finds it under the contents row */
+.mt-glossary dt:target,.mt-glossary dt:target + dd{
+  background:color-mix(in srgb,var(--accent-ink) 12%,var(--card))}
+.mt-glossary dt:target{align-self:stretch;align-items:flex-start;
+  padding:.1rem 0 0 .45rem;box-shadow:inset 3px 0 0 var(--accent-ink)}
+.mt-glossary dt:target + dd{padding-right:.45rem;
+  border-radius:0 var(--r-sm) var(--r-sm) 0}
 
 /* ---- 6. print (Print / Save as PDF): the document alone, on white. The
    page script opens every fold and sets the light theme before printing

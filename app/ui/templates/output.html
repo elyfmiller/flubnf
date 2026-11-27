@@ -83,9 +83,9 @@
 {% else %}
 {# the page's explainer: what the files are and the rules they follow #}
 {% set about %}<strong class="uk-tt-title">Submission files</strong>
-<span class="uk-tt-line">Your forecasts by reference date, newest first, as the hub's CSV files, each checked against the hub's rules before it is written.</span>
-<span class="uk-tt-line">A date run more than once shows the newest complete run's files: all 53 locations first, and a run made in the round's own week before a later vintage run. Modified settings write &lt;model&gt;-modified files, not for the hub.</span>
-<span class="uk-tt-line">The hub takes files from Sunday to Wednesday before the reference date, until 11 PM Eastern. FluBNF only writes them; you upload them yourself.</span>
+<span class="uk-tt-line">Your forecasts by {{ tips.term("reference-date", "reference date") }}, newest first, as the hub's CSV files, each checked against the hub's rules before it is written.</span>
+<span class="uk-tt-line">A date run more than once shows the newest complete run's files: all 53 locations first, and a run made in the round's own week before a later vintage run. {{ tips.term("modified", "Modified settings") }} write &lt;model&gt;-modified files, not for the hub.</span>
+<span class="uk-tt-line">The hub takes files from Sunday to Wednesday before the reference date, until 11 PM Eastern: the {{ tips.term("round", "FluSight window") }}. FluBNF only writes them; you upload them yourself.</span>
 {% endset %}
 {{ tips.heading("Output", "out-files", about, level=1, rich=True, tip_label="the submission files", cls="out-title") }}
 {% if rid or archive_dates %}

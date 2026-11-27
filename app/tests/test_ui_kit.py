@@ -42,10 +42,10 @@ SHEETS = {p.relative_to(UI / "static").as_posix(): p.read_text()
 DOC = (REPO / "docs" / "UI-KIT.md").read_text()
 DOCS_INDEX = (REPO / "docs" / "README.md").read_text()
 
-MACROS = ("tip", "label", "icon", "icon_tip", "toggletip", "heading",
-          "badge", "alert", "empty", "stats", "stat", "reason_button",
-          "stepper", "progress", "legend", "fold", "meta", "tag",
-          "namechip")
+MACROS = ("tip", "term", "gloss_end", "label", "icon", "icon_tip",
+          "toggletip", "heading", "badge", "alert", "empty", "stats", "stat",
+          "reason_button", "stepper", "progress", "legend", "fold", "meta",
+          "tag", "namechip")
 ICON_NAMES = ("info", "warning", "error", "check", "clock", "download",
               "upload", "folder", "external", "lock", "calendar", "refresh", "dot",
               "close")

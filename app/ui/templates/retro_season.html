@@ -168,10 +168,11 @@
 {# the page's one "i", beside the title: how to read the scores and the
    coverage colors (the player's legend line, report_season.COV_LEGEND),
    what the pooled and US figures are, which figures an earlier cell rule
-   scored, the pairwise view's terms and the player's keys (player.js).
-   Badges, tags and labels say the rest #}
+   scored, the pairwise view's terms and the player's keys (player.js),
+   then relWIS's glossary entry (the console's page only: the exported
+   report cannot reach Methods). Badges, tags and labels say the rest #}
 <div class="rt-title"><h1><span class="accent">{{ season }}</span>: {{ n_weeks }} week{{ "" if n_weeks == 1 else "s" }} scored</h1>
-{%- call tips.toggletip("rs-page", "reading this season") %}<span class="uk-tt-line">{{ live_scores("note") }}</span>
+{%- call tips.toggletip("rs-page", "reading this season", gloss=("" if export else "relwis")) %}<span class="uk-tt-line">{{ live_scores("note") }}</span>
  <span class="uk-tt-line"><span class="pblegend">{{ live_scores("legend") }}</span></span>
  {%- if heads or tm.us %}<span class="uk-tt-line">{{ pooled_note }}</span>{% endif %}
  {#- what the US figures are, in one line (us_national.NOTES): a

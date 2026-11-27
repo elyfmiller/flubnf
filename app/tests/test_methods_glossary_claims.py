@@ -53,16 +53,16 @@ def _methods():
 
 
 def _said(term: str) -> str:
-    """The Words used here line for `term`: its dd's words."""
+    """The Glossary card's line for `term`: its dd's words."""
     fold = [el for el in _flat(_methods())
-            if el["attrs"].get("id") == "mt-words"]
+            if el["attrs"].get("id") == "glossary"]
     assert len(fold) == 1
     els = _flat(fold[0])
     for i, el in enumerate(els):
         if el["tag"] == "dt" and _words(el) == term:
             dd = next(e for e in els[i + 1:] if e["tag"] == "dd")
             return _words(dd)
-    raise AssertionError(f"no {term!r} in the fold")
+    raise AssertionError(f"no {term!r} in the glossary")
 
 
 def _spec(rec: dict) -> str:

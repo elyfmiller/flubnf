@@ -1211,6 +1211,12 @@ button.tipbtn:hover{background:var(--accent-ink);color:var(--card)}
 .tipbox a{color:inherit;text-decoration:underline}
 .tip:hover .tipbox,.tip:focus-within .tipbox,.tip.open .tipbox{visibility:visible;opacity:1}
 .tip.dismissed .tipbox{visibility:hidden;opacity:0}
+/* a box that ends with its glossary link (the kit's `gloss` key) takes
+   the pointer, so the link can be clicked; a bridge over the gap to its
+   button (above or below it) keeps it shown while the pointer crosses */
+.tipbox:has(> .uk-gloss){pointer-events:auto}
+.tipbox:has(> .uk-gloss)::before{content:"";position:absolute;left:0;right:0;
+  top:-.5rem;bottom:-.5rem;z-index:-1}
 /* a notice's detail keeps its lines (BNG2.pl's log, one line a step) */
 #tip-flash{white-space:pre-line}
 @media (prefers-reduced-motion:reduce){.tipbox{transition:none}}

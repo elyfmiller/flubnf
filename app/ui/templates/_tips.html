@@ -8,17 +8,42 @@
    (aria-describedby), so a screen reader reads the explainer on focus. The
    tooltip shows on hover, on keyboard focus and on click or tap (tips.js;
    WebKit does not focus a clicked button); Escape hides it. Styles:
-   nau.css ".tip". #}
-{% macro tip(id, label, text="") -%}
+   nau.css ".tip".
+
+   `gloss`, on this macro and on every kit macro that draws a "?" or an
+   "i": the key of a Methods Glossary entry (methods.html, id="g-<key>";
+   app/core/glossary.py KEYS) when the explainer's subject is that word.
+   The explainer then ends with a link to the entry, "More in the
+   glossary". The console's pages only: the glossary_href global is the
+   console env's (app/ui/templating.py), so the weekly report, which
+   renders these macros without it, carries no link a saved copy could not
+   follow. #}
+{% macro tip(id, label, text="", gloss="") -%}
 <span class="tip"><button type="button" class="tipbtn"
  aria-label="About {{ label }}" aria-describedby="tip-{{ id }}">?</button
-><span class="tipbox" role="tooltip" id="tip-{{ id }}">{% if caller is defined %}{{ caller() }}{% else %}{{ text }}{% endif %}</span></span>
+><span class="tipbox" role="tooltip" id="tip-{{ id }}">{% if caller is defined %}{{ caller() }}{% else %}{{ text }}{% endif %}{{ gloss_end(gloss) }}</span></span>
+{%- endmacro %}
+
+{# a glossary word inside a rich explainer (a toggletip that defines
+   several), linked to its entry; the word alone where the glossary is out
+   of reach (no glossary_href: the weekly report) #}
+{% macro term(key, text) -%}
+{%- if glossary_href is defined %}<a class="uk-term" href="{{ glossary_href(key) }}">{{ text }}</a>{% else %}{{ text }}{% endif -%}
+{%- endmacro %}
+
+{# an explainer's last line when its subject is a glossary word (`gloss`):
+   the link to the entry, on a line of its own (the space before it keeps
+   the words apart where a screen reader reads the box as one line);
+   nothing without a key or where the glossary is out of reach. `cls` is
+   the line's class in a toggletip ("uk-tt-line") #}
+{% macro gloss_end(gloss, cls="") -%}
+{%- if gloss and glossary_href is defined %} <span class="uk-gloss{% if cls %} {{ cls }}{% endif %}">{{ term(gloss, "More in the glossary") }}</span>{% endif -%}
 {%- endmacro %}
 
 {# a form label with its tip on the same line; no tip when tiptext is
    empty (the row keeps its label spacing) #}
-{% macro label(text, id, tiptext="", for_="") -%}
-<div class="lblrow"><label{% if for_ %} for="{{ for_ }}"{% endif %}>{{ text }}</label>{% if tiptext | trim %}{{ tip(id, text | lower, tiptext) }}{% endif %}</div>
+{% macro label(text, id, tiptext="", for_="", gloss="") -%}
+<div class="lblrow"><label{% if for_ %} for="{{ for_ }}"{% endif %}>{{ text }}</label>{% if tiptext | trim %}{{ tip(id, text | lower, tiptext, gloss=gloss) }}{% endif %}</div>
 {%- endmacro %}
 
 {# ---------------------------------------------------------------- the kit
@@ -31,6 +56,8 @@
    "tt-<id>", so one id per page.
 
      icon, icon_tip         the inline icon set; an icon whose tooltip explains
+     term, gloss_end        a glossary word linked to its entry; an
+                            explainer's "More in the glossary" line
      heading                a section title and its "?"
      toggletip              a click-to-open explainer that may hold links and lists
      badge                  a status with no box: icon and word (warn, error,
@@ -81,10 +108,10 @@
    tooltip names what to check, a lock whose tooltip says why). Same
    behavior and markup as tip(); `state` colors the icon (ok, warn, error,
    info). #}
-{% macro icon_tip(id, label, name, text="", state="") -%}
+{% macro icon_tip(id, label, name, text="", state="", gloss="") -%}
 <span class="tip"><button type="button" class="tipbtn uk-tipicon{% if state %} uk-c-{{ state }}{% endif %}"
  aria-label="About {{ label }}" aria-describedby="tip-{{ id }}">{{ icon(name) }}</button
-><span class="tipbox" role="tooltip" id="tip-{{ id }}">{% if caller is defined %}{{ caller() }}{% else %}{{ text }}{% endif %}</span></span>
+><span class="tipbox" role="tooltip" id="tip-{{ id }}">{% if caller is defined %}{{ caller() }}{% else %}{{ text }}{% endif %}{{ gloss_end(gloss) }}</span></span>
 {%- endmacro %}
 
 {# a toggletip: an "i" button that opens a panel on click (and on keyboard
@@ -94,21 +121,21 @@
    link inside it is reachable by Tab. tips.js adds Escape and click-outside
    closing and places the panel in the viewport. Block content (a list)
    needs the toggletip outside any <p>: a <ul> closes an open <p>. #}
-{% macro toggletip(id, label, text="", title="") -%}
+{% macro toggletip(id, label, text="", title="", gloss="") -%}
 <span class="uk-tt"><button type="button" class="uk-tt-btn" aria-expanded="false"
  aria-controls="tt-{{ id }}" aria-label="More about {{ label }}">i</button
-><span class="uk-tt-pop" id="tt-{{ id }}">{% if title %}<strong class="uk-tt-title">{{ title }}</strong>{% endif %}{% if caller is defined %}{{ caller() }}{% else %}{{ text }}{% endif %}</span></span>
+><span class="uk-tt-pop" id="tt-{{ id }}">{% if title %}<strong class="uk-tt-title">{{ title }}</strong>{% endif %}{% if caller is defined %}{{ caller() }}{% else %}{{ text }}{% endif %}{{ gloss_end(gloss, "uk-tt-line") }}</span></span>
 {%- endmacro %}
 
 {# a section title with its explainer beside it (not inside the heading, so
    the heading's accessible name stays the title alone). `after` is markup
    that follows the tip (a badge, a count); `aside` sits at the right edge
    (an action). rich=True makes the explainer a toggletip. #}
-{% macro heading(text, id="", tiptext="", level=2, after="", aside="", cls="", rich=False, tip_label="") -%}
+{% macro heading(text, id="", tiptext="", level=2, after="", aside="", cls="", rich=False, tip_label="", gloss="") -%}
 {%- set body %}{% if caller is defined %}{{ caller() }}{% else %}{{ tiptext }}{% endif %}{% endset -%}
 {%- set lbl = tip_label or (text | lower) -%}
 <div class="uk-heading{% if cls %} {{ cls }}{% endif %}"><h{{ level }}{% if id %} id="h-{{ id }}"{% endif %}>{{ text }}</h{{ level }}>
-{%- if body | trim %}{% if rich %}{{ toggletip(id, lbl, body) }}{% else %}{{ tip(id, lbl, body) }}{% endif %}{% endif %}
+{%- if body | trim %}{% if rich %}{{ toggletip(id, lbl, body, gloss=gloss) }}{% else %}{{ tip(id, lbl, body, gloss=gloss) }}{% endif %}{% endif %}
 {%- if after %}{{ after }}{% endif %}
 {%- if aside %}<span class="uk-heading-aside">{{ aside }}</span>{% endif %}</div>
 {%- endmacro %}
@@ -122,10 +149,10 @@
    together (uk-badge-pair) so a wrapping line never splits them. An `id`
    names the badge (FluBNFUI.setBadge updates it in place) and its tip
    ("tip-<id>"). #}
-{% macro badge(state, text, tiptext="", id="", icon_name="") -%}
+{% macro badge(state, text, tiptext="", id="", icon_name="", gloss="") -%}
 {%- set body %}{% if caller is defined %}{{ caller() }}{% else %}{{ tiptext }}{% endif %}{% endset -%}
 {%- set b %}<span class="uk-badge uk-badge--{{ state }}"{% if id %} id="{{ id }}"{% endif %} data-state="{{ state }}">{{ icon(icon_name or STATE_ICONS.get(state, "dot")) }}<span class="uk-badge-t">{{ text }}</span></span>{% endset -%}
-{%- if body | trim %}<span class="uk-badge-pair">{{ b }}{{ tip(id or ("b-" ~ (text | lower | replace(" ", "-"))), text, body) }}</span>
+{%- if body | trim %}<span class="uk-badge-pair">{{ b }}{{ tip(id or ("b-" ~ (text | lower | replace(" ", "-"))), text, body, gloss=gloss) }}</span>
 {%- else %}{{ b }}{% endif %}
 {%- endmacro %}
 
@@ -157,14 +184,14 @@
    `tip_label` names the "?" where the line itself would read wrong.
    cls="uk-alert--two-line" keeps the icon by the title when a second
    line follows it. #}
-{% macro alert(kind, text, title="", tiptext="", id="", action="", live=none, hidden=False, tip_label="", cls="") -%}
+{% macro alert(kind, text, title="", tiptext="", id="", action="", live=none, hidden=False, tip_label="", cls="", gloss="") -%}
 {%- set body %}{% if caller is defined %}{{ caller() }}{% else %}{{ tiptext }}{% endif %}{% endset -%}
 {%- set role = live if live is not none else ("alert" if kind == "error" else "status") -%}
 {%- set icons = {"error": "error", "warn": "warning", "info": "info", "ok": "check"} -%}
 <div class="uk-alert uk-alert--{{ kind }}{% if cls %} {{ cls }}{% endif %}"{% if id %} id="{{ id }}"{% endif %}{% if role %} role="{{ role }}"{% endif %}{% if hidden %} hidden{% endif %}>{{ icon(icons.get(kind, "info")) }}<span class="uk-alert-text">{% if title %}<strong>{{ title }}</strong> {% endif %}{{ text }}
 {#- the "?" names the alert mid-sentence: its first word lowered unless
     the title starts with a name (KEEP_NAMES) or an acronym #}
-{%- if body | trim %}{% set t = (title or text) | string | trim(" .") %}{% set w = t.split(" ", 1)[0] %}{% set k = namespace(keep=w[1:] != w[1:] | lower) %}{% for n in KEEP_NAMES if not k.keep and t.startswith(n) and not (t ~ " ")[n | length].isalpha() %}{% set k.keep = true %}{% endfor %} {{ tip(id or "alert", tip_label or (t if k.keep else (t[:1] | lower) ~ t[1:]), body) }}{% endif %}</span>
+{%- if body | trim %}{% set t = (title or text) | string | trim(" .") %}{% set w = t.split(" ", 1)[0] %}{% set k = namespace(keep=w[1:] != w[1:] | lower) %}{% for n in KEEP_NAMES if not k.keep and t.startswith(n) and not (t ~ " ")[n | length].isalpha() %}{% set k.keep = true %}{% endfor %} {{ tip(id or "alert", tip_label or (t if k.keep else (t[:1] | lower) ~ t[1:]), body, gloss=gloss) }}{% endif %}</span>
 {%- if action %}<span class="uk-alert-action">{{ action }}</span>{% endif %}</div>
 {%- endmacro %}
 
@@ -186,14 +213,17 @@
    cls: "" (tiles that wrap), "uk-stats--kv" (label and value columns),
    "uk-stats--row" (one compact row). `state` (ok, warn, error) colors the
    value; say the state in words too (a badge in `after`). `tip_label`
-   names the "?" where lowercasing the label would not ("relWIS"). #}
+   names the "?" where lowercasing the label would not ("relWIS").
+   `anchor` is the label's own id, for a link to land on (Methods'
+   Glossary: "g-<key>"); on the label, since a "uk-stats--kv" row draws
+   no box of its own to scroll to. #}
 {% macro stats(cls="", label="") -%}
 <dl class="uk-stats{% if cls %} {{ cls }}{% endif %}"{% if label %} aria-label="{{ label }}"{% endif %}>{{ caller() }}</dl>
 {%- endmacro %}
-{% macro stat(label, value, unit="", tiptext="", id="", state="", after="", tip_label="") -%}
+{% macro stat(label, value, unit="", tiptext="", id="", state="", after="", tip_label="", gloss="", anchor="") -%}
 {%- set body %}{% if caller is defined %}{{ caller() }}{% else %}{{ tiptext }}{% endif %}{% endset -%}
-<div class="uk-stat{% if state %} uk-stat--{{ state }}{% endif %}"><dt>{{ label }}
-{%- if body | trim %}{{ tip(id or ("s-" ~ (label | lower | replace(" ", "-"))), tip_label or (label | lower), body) }}{% endif %}</dt><dd><span class="uk-stat-v"{% if id %} id="{{ id }}"{% endif %}>{{ value }}</span>{% if unit %} <span class="uk-stat-u">{{ unit }}</span>{% endif %}{% if after %} {{ after }}{% endif %}</dd></div>
+<div class="uk-stat{% if state %} uk-stat--{{ state }}{% endif %}"><dt{% if anchor %} id="{{ anchor }}"{% endif %}>{{ label }}
+{%- if body | trim %}{{ tip(id or ("s-" ~ (label | lower | replace(" ", "-"))), tip_label or (label | lower), body, gloss=gloss) }}{% endif %}</dt><dd><span class="uk-stat-v"{% if id %} id="{{ id }}"{% endif %}>{{ value }}</span>{% if unit %} <span class="uk-stat-u">{{ unit }}</span>{% endif %}{% if after %} {{ after }}{% endif %}</dd></div>
 {%- endmacro %}
 
 {# a control that is off for a reason: the button is disabled and described
@@ -276,7 +306,7 @@
    (<p class="eqnote md-eqnote">); a figure's values go in its caption
    badge. tiptext (or a call block) still gives the chip a "?", for a
    reading that has no line of its own. #}
-{% macro namechip(text, id, tiptext="", tip_label="") -%}
+{% macro namechip(text, id, tiptext="", tip_label="", gloss="") -%}
 {%- set body %}{% if caller is defined %}{{ caller() }}{% else %}{{ tiptext }}{% endif %}{% endset -%}
-<span class="uk-name">{{ text }}{% if body | trim %}{{ tip(id, tip_label or (text | lower), body) }}{% endif %}</span>
+<span class="uk-name">{{ text }}{% if body | trim %}{{ tip(id, tip_label or (text | lower), body, gloss=gloss) }}{% endif %}</span>
 {%- endmacro %}

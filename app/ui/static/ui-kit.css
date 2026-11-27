@@ -18,7 +18,7 @@
    CONTENTS
      1. utilities: visually hidden text, the icon, the "?" hit area
      2. heading with its tip; the icon tip
-     3. toggletip
+     3. toggletip; the glossary link an explainer ends with
      4. badge
      5. alert
      6. empty state
@@ -118,6 +118,14 @@ html:not(.uk-js) .uk-tt:focus-within > .uk-tt-pop{position:static;
 .uk-tt-pop > :last-child{margin-bottom:0}
 .uk-tt-line{display:block}
 .uk-tt-line + .uk-tt-line{margin-top:.3rem}
+/* the glossary: an explainer whose subject is a glossary word ends with
+   "More in the glossary" on its own line (the macros' `gloss` key); a
+   rich one links each word it defines (tips.term). A link set in words
+   is underlined, so it never rests on color alone; the line's link is a
+   target 1.6rem tall, which follows the text size */
+.uk-gloss{display:block;margin-top:.3rem}
+a.uk-term{text-decoration:underline;text-underline-offset:.15em}
+.uk-gloss > a.uk-term{display:inline-flex;align-items:center;min-height:1.6rem}
 
 /* ---- 4. badge: a status set in the line like text, with no box. A
    state that asks something of the reader (warn, error) or is under way

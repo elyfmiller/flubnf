@@ -41,7 +41,7 @@
  <div class="dsboxes">
   <div class="dsbox dt-zone">
    <div class="dt-zonehead"><span class="dt-zonetitle">Weekly CSV</span>
-    {% call tips.tip(fid ~ "-about", "the file") %}<span class="ncline">Weekly rows of date, group and value, population optional; a file with no group column is one series. Dates as YYYY-MM-DD, M/D/YYYY or M/D/YY; up to {{ dataset_upload_mb() }} MB.</span><span class="ncline">For a true retrospective, give the data as each week saw it: an as_of column in this file, or snapshot files beside it (optional), one per as_of, named by its date (2024-10-05.csv).</span>
+    {% call tips.tip(fid ~ "-about", "the file", gloss="snapshot") %}<span class="ncline">Weekly rows of date, group and value, population optional; a file with no group column is one series. Dates as YYYY-MM-DD, M/D/YYYY or M/D/YY; up to {{ dataset_upload_mb() }} MB.</span><span class="ncline">For a true retrospective, give the data as each week saw it: an as_of column in this file, or snapshot files beside it (optional), one per as_of, named by its date (2024-10-05.csv).</span>
 {% endcall %}</div>
    <label class="dsdrop" for="{{ fid }}-file" data-drop="one">
     <input type="file" name="file" id="{{ fid }}-file" data-one accept="{{ accept }}">
