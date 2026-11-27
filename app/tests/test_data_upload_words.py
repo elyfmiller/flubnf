@@ -265,7 +265,5 @@ def test_a_value_column_chosen_in_the_mapping_stands():
 def test_the_buttons_tip_says_what_save_only_does():
     tpl = (ROOT / "app/ui/templates/_dataset_check.html").read_text(
         encoding="utf-8")
-    assert ('"Forecast this and Replay this store the dataset, then open'
-            in tpl)
-    assert ('("; Save only stores it and stays here" if where == "data" '
-            'else "")') in tpl
+    assert '"Each stores the dataset. Set up forecast then opens' in tpl
+    assert '("; Save only stays here" if where == "data" else "")' in tpl

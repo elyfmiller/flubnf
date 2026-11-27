@@ -17,6 +17,7 @@ from __future__ import annotations
 import json
 import shutil
 from datetime import date
+from html import unescape
 
 import pytest
 
@@ -52,16 +53,22 @@ def test_the_check_says_when_the_data_are_too_short_for_the_groundhog(
     monkeypatch.setattr(pipeline, "_pf_engine_state", lambda: "absent")
     j = check(short_bytes())
     assert j["ok"]
-    html = " ".join(j["html"].split())
-    # the notice, then its fix (shown in the check; P4, F54); two groups,
-    # so a donor week counts once in each (review 3, finding 14)
+    html = " ".join(unescape(j["html"]).split())
+    # the outcome first, with its fix (shown in the check; P4, F54; the
+    # 2026-11-27 user review, B5), then the Groundhog's count under it;
+    # two groups, so a donor week counts once in each (review 3, finding 14)
+    assert ("Can't forecast yet. Add a population column and set up the "
+            "engine so the Liu-West filter can fit it, or give about 1 more "
+            "earlier season of data.") in html
+    assert html.index("Can't forecast yet.") < html.index(
+        "Too little history for the Groundhog")
     assert ("Too little history for the Groundhog: at the newest week it "
             "finds 20 group-weeks like it in earlier seasons and needs 30, "
-            "so it "
-            "will not forecast this data on its own. Add a population "
-            "column and set up the engine so the Liu-West filter can fit "
-            "it, or give about 1 more earlier season of data.") in html
-    assert "Too little history" not in check(TEMPLATE.read_bytes())["html"]
+            "so it will not forecast this data on its own.") in html
+    assert "Ready to use" not in html
+    ok = " ".join(check(TEMPLATE.read_bytes())["html"].split())
+    assert "Too little history" not in ok
+    assert "Can forecast with" in ok
 
 
 def _models(html: str) -> list:
@@ -76,9 +83,16 @@ def _models(html: str) -> list:
 
 
 def _fix(html: str) -> str:
-    html = " ".join(html.split())
-    i = html.index("so it will not forecast this data on its own.")
-    return html[i + 46:html.index("</span>", i)].strip()
+    """The fix: in the check's outcome line, after "Can't forecast yet."
+    or "Can forecast some horizons only, with <model>."; or, when another
+    model can forecast, after the Groundhog's count under it."""
+    import re
+    html = " ".join(unescape(html).split())
+    m = (re.search(r"(?:Can't forecast yet\.|Can forecast some horizons "
+                   r"only, with [^.<]+\.) ([^<]+)</span>", html)
+         or re.search(r"will not forecast this data on its own\. "
+                      r"([^<]+)</p>", html))
+    return m.group(1).strip() if m else ""
 
 
 def one_series_bytes() -> bytes:
@@ -155,11 +169,11 @@ def test_replay_stays_on_where_the_groundhog_has_no_donors():
     ds = stored(one_series_bytes(), "Flu")
     html = " ".join(client.get(f"/retro?dataset={ds.id}").text.split())
     assert ">Groundhog donors: enough in 0 of 38 weeks<" in html
-    assert '<button class="gold" data-guard="console-run">Replay</button>' \
+    assert '<button class="gold" id="dsr-run" aria-describedby="dsr-runwhy" data-guard="console-run">Replay</button>' \
         in html
     ok = stored(TEMPLATE.read_bytes(), "Kids")
     html = " ".join(client.get(f"/retro?dataset={ok.id}").text.split())
-    assert '<button class="gold" data-guard="console-run">Replay</button>' \
+    assert '<button class="gold" id="dsr-run" aria-describedby="dsr-runwhy" data-guard="console-run">Replay</button>' \
         in html
 
 

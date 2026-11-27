@@ -183,7 +183,7 @@ def test_the_replay_badge_counts_its_weeks_and_replay_stays_on():
     assert ">Groundhog donors: enough in 0 of 38 weeks<" in form
     assert 'class="uk-badge uk-badge--warn" id="dsr-donors"' in form
     # informs only: a week without donors ends "no forecast"
-    assert '<button class="gold" data-guard="console-run">Replay</button>' \
+    assert '<button class="gold" id="dsr-run" aria-describedby="dsr-runwhy" data-guard="console-run">Replay</button>' \
         in form
     ok = stored(TEMPLATE.read_bytes(), "Kids")
     w0, w1 = DU.replay_window(ok.forecast_dates())
@@ -192,7 +192,7 @@ def test_the_replay_badge_counts_its_weeks_and_replay_stays_on():
     form = replay_form(ok)
     assert f">Groundhog donors: enough in {n} of {len(weeks)} weeks<" in form
     assert 0 < n < len(weeks)
-    assert '<button class="gold" data-guard="console-run">Replay</button>' \
+    assert '<button class="gold" id="dsr-run" aria-describedby="dsr-runwhy" data-guard="console-run">Replay</button>' \
         in form
     # what the page's script reads: every forecast week's count
     data = re.search(r'<script type="application/json" id="dsr-donor-data">'
@@ -373,8 +373,8 @@ def test_init_drives_both_lines_on_the_form_as_served(tmp_path, monkeypatch):
       set('[name="engine"]', "all"); out.push(both());
       set('[data-knob="pf.replicates"]', "5", "input");
       set('[data-knob="pf.particles"]', "2,000", "input"); out.push(both());
-      var g = fm.querySelector('[name="groups"]');
-      g.options[0].selected = false; g.fire("change"); out.push(both());
+      var g = fm.querySelector('input[name="groups"]');
+      g.checked = false; g.fire("change"); out.push(both());
       set('[data-knob="run.season_start"]', %(ss)s); out.push(both());
       set('[data-knob="pf.replicates"]', "1e4", "input"); out.push(both());
       set('[data-knob="pf.replicates"]', "2.5", "input"); out.push(both());

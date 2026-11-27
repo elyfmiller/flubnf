@@ -264,7 +264,9 @@
         out.innerHTML = busyBar('Checking ' + what);
       }
       fetch('/data/datasets/check?where=' + encodeURIComponent(
-        form.dataset.where || 'data'), {method: 'POST', body: fd,
+        form.dataset.where || 'data') + (form.dataset.then ?
+        '&then=' + encodeURIComponent(form.dataset.then) : ''),
+        {method: 'POST', body: fd,
         headers: {'Accept': 'application/json'}})
         .then(function (r) { return r.json(); })
         .then(function (j) {

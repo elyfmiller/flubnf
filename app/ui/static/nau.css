@@ -762,6 +762,16 @@ progress::-moz-progress-bar{background:var(--accent-ink);border-radius:99px}
 .ck{display:flex;gap:.5rem;align-items:center;font-size:.85rem;color:var(--ink);
   margin:.12rem 0;cursor:pointer}
 .ck input{width:auto;accent-color:var(--gold-bright)}
+/* the location and group pickers (Forecast, and the Retrospective's Your
+   data): the pick's live count ("12 of 53") in quiet words inside the
+   label, written by the page script (no box: only a control has one);
+   the filter over the list, as wide as it; a filtered-out box hidden */
+.fc-count{margin-left:.3rem;color:var(--mut);font-size:var(--fs-label);
+  font-weight:500;font-variant-numeric:tabular-nums}
+.fc-count:empty{display:none}
+.fc-locfilter{width:100%;margin:0 0 .3rem}
+.checklist .ck[hidden]{display:none}
+.fc-nomatch{margin:.2rem 0;color:var(--mut);font-size:var(--fs-label)}
 /* run progress: --accent-ink fill (3:1 against the track in light) */
 .runbar{height:14px;border-radius:99px;background:var(--track);
   border:1px solid var(--line);overflow:hidden;margin:.45rem 0}
@@ -1125,12 +1135,6 @@ kbd{display:inline-block;min-width:1.5em;padding:.02rem .38em;border:1px solid v
 .dsfirst abbr{text-decoration:none}
 .dsup-actions{margin-top:.4rem}
 .dsup-actions button{margin-top:.3rem}
-details.dsup-fold{margin:.2rem 0 .5rem}
-details.dsup-fold>summary{cursor:pointer;color:var(--gold);font-size:.9rem;
-  font-weight:600;list-style:none}
-details.dsup-fold>summary::-webkit-details-marker{display:none}
-details.dsup-fold>summary::before{content:"\25B8"}
-details.dsup-fold[open]>summary::before{content:"\25BE"}
 /* a long unbroken name (up to 80 characters) wraps, in the table and as
    the browser's heading, instead of widening both */
 .dstable td.dsname,#h-ds-browse{overflow-wrap:anywhere}
@@ -1142,6 +1146,8 @@ details.dsup-fold[open]>summary::before{content:"\25BE"}
 .srcpick{align-items:flex-end;margin-bottom:.4rem}
 .srcpick > span{min-width:0;max-width:100%}
 .srcpick select{width:auto;min-width:min(12rem,100%);max-width:100%}
+/* beside a dataset picker: the link to the Data tab's upload box */
+.srcpick-upload{align-self:center;font-size:.92rem;padding-bottom:.15rem}
 /* storage panel headline: total disk use beside its scope note */
 .stotal{display:flex;gap:.6rem;align-items:baseline;flex-wrap:wrap;
   margin:.1rem 0 .5rem;max-width:none}
@@ -1365,9 +1371,6 @@ form.rerun-run{margin:.6rem 0 .2rem;gap:.2rem}
   svg.cumchart .svgt-sm{font-size:26px}
   svg.cumchart .svgt-md{font-size:30px}
 }
-#dsr-groups option:checked{color:var(--ink);background:linear-gradient(
-  color-mix(in srgb,var(--gold-bright) 30%,var(--card)),
-  color-mix(in srgb,var(--gold-bright) 30%,var(--card)))}
 .rd-pick{display:flex;flex-wrap:wrap;gap:.5rem 1rem;align-items:center;
   margin:.2rem 0 .4rem}
 .rd-pick select{width:auto;min-width:12rem;max-width:100%;margin:0}

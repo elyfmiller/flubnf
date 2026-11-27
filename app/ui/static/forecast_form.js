@@ -18,7 +18,16 @@
    and Weeks to drop are at their defaults (either moves what it finds).
    With several groups a week counts once in each, so the line says
    group-weeks (the page's unit, datasets_ui.donor_unit). It informs
-   only: Run models stays on.
+   only.
+
+   A dataset's Run (runWhy; dataset form only): off, with the reason under
+   it, when no model the form runs can forecast the anchor week: the
+   donor model alone (chosen, or the only one the dataset can run) with
+   fewer donor weeks than it needs at every horizon (the page's "best",
+   datasets_ui.donor_best), at the default donor window and Weeks to drop.
+   Anything else leaves Run on; the run itself says what it skipped.
+   Also off while the Dataset picker above the form names another dataset
+   than the one the form holds, until Use opens it (stale).
 
    ES5 (docs/UI-KIT.md); reads the form, posts nothing. */
 (function (root) {
@@ -151,6 +160,19 @@
       (o.unit === "group-weeks" ? "group-weeks" : "weeks") + ").";
   }
 
+  // why Run is off (o: what readDonor returns), or "" when something can
+  // run: the donor model alone, short at every horizon of the anchor week
+  function runWhy(o) {
+    if (!o || !o.groundhogOnly || !o.windowDefault || !o.dropDefault)
+      return "";
+    if (typeof o.best !== "number" || !(o.need > 0) || o.best >= o.need)
+      return "";
+    // the notes above say why each model cannot (the donor line, the
+    // filter's lock); this line says what is left to choose, if anything
+    return "Run is off: no model can forecast this week." +
+      (o.pfOk ? " Choose a model with the filter." : "");
+  }
+
   // a model setting at its default: blank, or the same number
   function atDefault(form, key) {
     var el = form.querySelector('[data-knob="' + key + '"]');
@@ -168,9 +190,18 @@
     var a = date ? (date.getAttribute("data-anchor") || "") : "";
     var model = form.querySelector("#model-pick");
     var c = a && counts.weeks.hasOwnProperty(a) ? counts.weeks[a] : null;
+    var best = counts.best || {};
+    var b = a && best.hasOwnProperty(a) ? best[a] : null;
+    var gh = !!model && model.value !== "pf";
     return {count: typeof c === "number" ? c : null, need: counts.need,
+            best: typeof b === "number" ? b : null,
+            pfOk: counts.pf_ok !== false,
             unit: counts.unit === "group-weeks" ? "group-weeks" : "weeks",
-            groundhog: !!model && model.value !== "pf",
+            groundhog: gh,
+            // the donor model without the filter: chosen alone, or Both on
+            // a dataset the filter cannot fit
+            groundhogOnly: gh && (model.value !== "all" ||
+                                  counts.pf_ok === false),
             windowDefault: atDefault(form, "groundhog.bandwidth"),
             dropDefault: atDefault(form, "run.weeks_to_drop")};
   }
@@ -186,6 +217,16 @@
     if (!form) return null;
     var line = doc.getElementById("fc-est");
     var alert = doc.getElementById("fc-ds-donors");
+    var run = doc.getElementById("fc-run"), why = doc.getElementById("fc-runwhy");
+    // the Dataset picker (outside the form) and the dataset the form holds
+    var src = doc.getElementById("fc-source");
+    var held = form.querySelector('input[name="dataset"]');
+    function stale() {
+      if (!src || !held || src.value === held.value) return "";
+      var o = src.options[src.selectedIndex];
+      return "Run is off: press Use to open " + (o ? o.text : "that dataset") +
+        " first.";
+    }
     var counts = null, data = doc.getElementById("fc-donor-data");
     if (data) {
       try { counts = JSON.parse(data.textContent || "null"); }
@@ -198,14 +239,20 @@
         if (t) t.textContent = w;
         line.hidden = !w;
       }
+      var o = counts ? readDonor(form, counts) : null;
       if (alert) {
-        var d = donorText(readDonor(form, counts));
+        var d = donorText(o);
         var s = alert.querySelector(".uk-alert-text");
         if (s && d) s.textContent = d;
         alert.hidden = !d;
       }
+      if (run && why) {
+        var r = stale() || runWhy(o);
+        run.disabled = !!r;
+        why.textContent = r;
+      }
     }
-    if (!line && !alert) return null;
+    if (!line && !alert && !why) return null;
     var timer = null;
     function soon() {
       clearTimeout(timer);
@@ -213,6 +260,7 @@
     }
     ["change", "input", "click", "fc-form-change", "ms-reset"].forEach(
       function (ev) { form.addEventListener(ev, soon); });
+    if (src) src.addEventListener("change", soon);
     Array.prototype.forEach.call(form.querySelectorAll("details[data-scope]"),
       function (d) { d.addEventListener("ms-refilter", soon); });
     // deferred, this runs before DOMContentLoaded and the panel's script
@@ -225,6 +273,7 @@
 
   var FluBNFForecastForm = {runWords: runWords, readRun: readRun,
                             donorText: donorText, readDonor: readDonor,
+                            runWhy: runWhy,
                             whole: whole, bind: bind, MODELS: MODELS};
   root.FluBNFForecastForm = FluBNFForecastForm;
   if (typeof module !== "undefined" && module.exports)

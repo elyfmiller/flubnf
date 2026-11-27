@@ -108,7 +108,7 @@
     catch (e) { data = null; }
     var first = form.querySelector('[name="first"]');
     var last = form.querySelector('[name="last"]');
-    var groups = form.querySelector('[name="groups"]');
+    var groups = form.querySelectorAll('input[name="groups"]');
     var engine = form.querySelector('[name="engine"]');
     var line = document.getElementById("dsr-donor-line");
     var badge = document.getElementById("dsr-donors");
@@ -127,13 +127,13 @@
     var quick = parseFloat(form.getAttribute("data-gh-quick")) || 0;
 
     function nGroups() {
-      if (!groups) return 1;
+      if (!groups.length) return 1;
       var n = 0;
-      for (var j = 0; j < groups.options.length; j++) {
-        if (groups.options[j].selected) n++;
+      for (var j = 0; j < groups.length; j++) {
+        if (groups[j].checked) n++;
       }
-      // none picked replays every group (datasets_ui.replay_start)
-      return n || groups.options.length || 1;
+      // none ticked replays every group (datasets_ui.replay_start)
+      return n || groups.length;
     }
 
     function update() {

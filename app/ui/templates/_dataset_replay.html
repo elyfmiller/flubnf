@@ -1,17 +1,19 @@
 {# The Retrospective tab's "Your data" tab (app/ui/datasets_ui.py
-   retro_context): with no dataset the shared upload box alone ("Replay
-   this" stores a file and reopens this tab on it); else the settings of a
-   replay of one dataset (picked by a plain GET form, like the Forecast
-   tab's, so the weeks and groups are rendered without script) beside its
-   replays. Never among the FluSight seasons. Tips imported by retro.html,
-   which links the tab's sheet. #}
-{% import "_dataset_upload.html" as dsup %}
+   retro_context): with no dataset a pointer to the Data tab's upload box
+   (its "Save and set up replay" stores a file and reopens this tab on it);
+   else the settings of a replay of one dataset (picked by a plain GET
+   form, like the Forecast tab's, sent by its Use button, so the weeks and
+   groups are rendered without script; a choice alone never loads a page,
+   and Replay waits for Use) beside its replays.
+   Never among the FluSight seasons. Tips imported by retro.html, which
+   links the tab's sheet. #}
 {% set dr = dataset_replay %}{% set d = dr.ds %}
 {% set about = "Each week of the range is forecast with only the data before it and scored against the dataset's later weeks, relative to an in-house persistence baseline (not FluSight-baseline). Replays are kept with the dataset, apart from the FluSight seasons, and never published." %}
 {% if not d %}
 <div class="card" id="dataset-replay">
  {% call tips.heading("Your data", "rt-ds-about", rich=True, tip_label="replaying your own data") %}<span class="uk-tt-line">A weekly CSV of your own, replayed week by week.</span><span class="uk-tt-line">{{ about }}</span>{% endcall %}
- {{ dsup.box("replay") }}
+ {% set up %}<a class="btn gold" href="/data?then=replay#datasets">Upload a dataset</a>{% endset %}
+ {{ tips.empty("No datasets yet", "folder", action=up, id="dsr-own-none", tiptext="A weekly CSV of your own: date, group and value, population optional. It is checked on the Data tab, then opens here to replay.") }}
 </div>
 {% else %}
 <div id="dataset-replay">
@@ -25,16 +27,13 @@
 <div class="cols">
  <div><div class="card"><h2>Settings</h2>
   {# which of your datasets; a plain GET form, like the Forecast tab's #}
-  <form method="get" action="/retro" class="row srcpick">
+  <form method="get" action="/retro" class="row srcpick" id="dsr-srcform">
    <span><label for="dsr-ds">Dataset</label>
    <select name="dataset" id="dsr-ds">{% for sid, sname in dr.datasets %}
     <option value="{{ sid }}"{% if sid == d.id %} selected{% endif %}>{{ sname }}</option>{% endfor %}</select></span>
    <button class="quiet">Use</button>
+   <a class="srcpick-upload" href="/data?then=replay#datasets">Upload a dataset</a>
   </form>
-  <details class="dsup-fold" id="dsr-upload">
-   <summary>Upload another</summary>
-   {{ dsup.box("replay") }}
-  </details>
   <form method="post" action="/retro/dataset/run" id="dsr-form"{{ d.est | xmlattr }}>
    <input type="hidden" name="dataset" value="{{ d.id }}">
    {# what each replayed week sees, as a badge: vintage-true, or the final
@@ -50,17 +49,71 @@
     <span><label for="dsr-last">To</label><select name="last" id="dsr-last">{% for w in d.dates %}
      <option{% if w == d.default_last %} selected{% endif %}>{{ w }}</option>{% endfor %}</select></span>
    </div>
-   <label for="dsr-groups">Groups</label>
-   {# as tall as its groups (2 to 6 rows): no empty box below the list #}
-   <select name="groups" id="dsr-groups" multiple size="{{ [2, [6, d.groups | length] | min] | max }}">{% for g in d.groups %}
-    <option selected>{{ g }}</option>{% endfor %}</select>
+   {# the groups as the Forecast tab picks them: a fold with a filter over
+      one box per group (all ticked), and "all N groups" to tick or clear
+      them; only the groups' own boxes post (none ticked replays every
+      group: datasets_ui.replay_start) #}
+   <div class="lblrow"><label id="dsr-groups-lbl">Groups <span id="dsr-gcount" class="fc-count"></span></label></div>
+   {% call tips.fold("Pick groups", id="dsr-grouppick", open=True, cls="fc-locpick") %}
+   {# shown by its script, which is what filters (without script Enter in
+      it would press Replay) #}
+   <input type="search" id="dsr-gfilter" class="fc-locfilter" placeholder="Filter" autocomplete="off"
+     aria-label="Filter the groups" aria-controls="dsr-checklist" hidden>
+   <div class="checklist" id="dsr-checklist" role="group" aria-labelledby="dsr-groups-lbl">
+    <label class="ck"><input type="checkbox" id="dsr-gall" checked> <b>all {{ d.groups | length }} groups</b></label>
+    {% for g in d.groups %}<label class="ck"><input type="checkbox" class="dsr-gone" name="groups" value="{{ g }}" checked> {{ g }}</label>
+    {% endfor %}<p class="fc-nomatch" id="dsr-gnomatch" hidden>No match</p>
+   </div>
+   {% endcall %}
+   <script>
+    (function () {
+      var all = document.getElementById('dsr-gall'),
+          ones = Array.prototype.slice.call(document.querySelectorAll('.dsr-gone')),
+          filt = document.getElementById('dsr-gfilter'),
+          none = document.getElementById('dsr-gnomatch'),
+          count = document.getElementById('dsr-gcount');
+      if (filt) {
+        filt.hidden = false;
+        // Enter in the filter is the filter's own: never the form's Replay
+        filt.addEventListener('keydown', function (e) {
+          if (e.key === 'Enter') e.preventDefault();
+        });
+        filt.addEventListener('input', function () {
+          var q = filt.value.toLowerCase(), shown = 0;
+          ones.forEach(function (c) {
+            var hit = !q || c.value.toLowerCase().indexOf(q) >= 0;
+            c.parentNode.hidden = !hit; if (hit) shown++;
+          });
+          if (none) none.hidden = shown > 0;
+        });
+      }
+      if (!all || !count) return;
+      function paint() {
+        var n = ones.filter(function (c) { return c.checked; }).length;
+        all.checked = n === ones.length;
+        all.indeterminate = n > 0 && n < ones.length;
+        // none ticked replays every group (datasets_ui.replay_start)
+        count.textContent = n === ones.length ? 'all ' + n :
+          n ? n + ' of ' + ones.length :
+          'none ticked: all ' + ones.length + ' replay';
+      }
+      // the box's own change bubbles to the form, whose script redoes
+      // the time line
+      all.addEventListener('change', function () {
+        ones.forEach(function (c) { c.checked = all.checked; });
+        paint();
+      });
+      ones.forEach(function (c) { c.addEventListener('change', paint); });
+      paint();
+    })();
+   </script>
    <label for="dsr-engine">Models</label>
    <select name="engine" id="dsr-engine">{% for e, text in dr.engine_names.items() %}
     <option value="{{ e }}"{% if e == "all" and not (d.pf and dr.pf_state == "ready") %} disabled{% endif %}>{{ text }}</option>{% endfor %}</select>
    {# the engine build's badge on its own line under the select #}
    {% if d.pf and dr.pf_state == "ready" %}{% set eb_ds %}{% with eb_id = "dsr", eb_short = true %}{% include "_engine_build.html" %}{% endwith %}{% endset %}
    {% if eb_ds | trim %}<p class="rt-under">{{ eb_ds | trim }}</p>{% endif %}{% endif %}
-   <div class="lblrow"><label class="ck" for="dsr-fs"><input type="checkbox" name="flusurv" value="1" id="dsr-fs"> Add FluSurv-NET donors (US flu hospitalizations only)</label></div>
+   <div class="lblrow"><label class="ck" for="dsr-fs"><input type="checkbox" name="flusurv" value="1" id="dsr-fs"> Add FluSurv-NET donors (US flu hospital data only)</label></div>
    {# the shared Model settings panel (weeks to drop is in its fit window),
       ids prefixed dsr-; its counts-only rows follow the data's kind #}
    {% with knob_panel = dr.knob_panel %}{% include "_model_settings.html" %}{% endwith %}
@@ -77,7 +130,30 @@
     <div id="dsr-est"{% if not d.est_text %} hidden{% endif %}>{{ tips.meta([("clock", d.est_text, "Time")], label="Replay time") }}</div>
    </div>
    <script type="application/json" id="dsr-donor-data">{{ d.donors_json | safe }}</script>
-   <button class="gold" data-guard="console-run">Replay</button>
+   <button class="gold" id="dsr-run" aria-describedby="dsr-runwhy" data-guard="console-run">Replay</button>
+   {# a Dataset choice not yet opened with Use: Replay waits for it, so the
+      form's own dataset never replays unseen; the line is a live region
+      kept on the page (empty when there is nothing to say) and describes
+      the button #}
+   <p class="rt-under dsr-runwhy" id="dsr-runwhy" role="status"></p>
+   <script>
+    (function () {
+      var pick = document.getElementById('dsr-ds'),
+          run = document.getElementById('dsr-run'),
+          why = document.getElementById('dsr-runwhy'),
+          held = {{ d.id | tojson }};
+      if (!pick || !run || !why) return;
+      function sync() {
+        var stale = pick.value !== held;
+        run.disabled = stale;
+        why.textContent = stale ? 'Replay is off: press Use to open ' +
+          pick.options[pick.selectedIndex].text + ' first.' : '';
+      }
+      pick.addEventListener('change', sync);
+      window.addEventListener('pageshow', sync);
+      sync();
+    })();
+   </script>
   </form>
   {# estimate.js (FluBNFEstimate) is in retro.html's head, on both tabs #}
   <script src="/static/dataset_replay.js" defer></script>
