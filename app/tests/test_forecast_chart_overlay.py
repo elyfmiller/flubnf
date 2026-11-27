@@ -598,6 +598,60 @@ def test_save_figure_writes_the_location_date_models_and_legend(tmp_path):
     assert got["disabled"] is False
 
 
+# a draw that waits on its data: Ohio drawn together, then the pager moves
+# to Utah (its fetch never answers) and a model's button is pressed, and
+# Save figure is clicked before either draw is done
+PENDING = r"""
+(async function(){
+  await new Promise(function(r){ setTimeout(r, 0); });
+  FIDX = FLOCS.indexOf('Ohio'); await drawFan();
+  var drawn = chart(), reacts = calls.length;
+  fetch = function(){ return new Promise(function(){}); };
+  delete SERIES['Utah'];
+  FIDX = FLOCS.indexOf('Utah'); drawFan();
+  els['fan-view'].children[1].onclick();
+  await new Promise(function(r){ setTimeout(r, 0); });
+  await els['fan-save'].onclick();
+  var s = saved[0], f = fig(s.fig.data, s.fig.layout);
+  console.log(JSON.stringify({
+    moved: [FLOCS[FIDX], FMODEL], reacted: calls.length - reacts,
+    drawn: drawn, saved: f, title: s.fig.layout.title.text,
+    sub: s.fig.layout.title.subtitle.text, clicked: clicked}));
+})();
+"""
+
+
+@pytestmark_node
+def test_save_figure_writes_what_is_drawn_while_a_draw_waits(tmp_path):
+    """FIDX and the view move at once, the chart only when its data has
+    come: the image is the chart on screen, under its own location's name,
+    never the next location's name over the last one's lines."""
+    _hub_run()
+    page = _page()
+    names = _const(page, "MNAMES")
+    drv = tmp_path / "pending.js"
+    tok = {"page": _tokens(DARK), "probe": _tokens(DARK, LIGHT_PROBE)}
+    drv.write_text("var ROOT = {}, TOK = " + json.dumps(tok) + ";\n"
+                   + STUB + FIG + ZS._fan_script(page) + "\n" + PENDING,
+                   encoding="utf-8")
+    out = subprocess.run([ZS.NODE, str(drv)], capture_output=True,
+                         text=True, encoding="utf-8", timeout=60)
+    assert out.returncode == 0, out.stderr[-1500:]
+    got = json.loads(out.stdout.strip().splitlines()[-1])
+    # the pager and the switch have moved; no chart was drawn since
+    assert got["moved"] == ["Utah", MEMBERS[0]] and got["reacted"] == 0
+    # the image: Ohio together, as on screen
+    assert got["title"] == "Ohio"
+    assert got["sub"] == (f"Data as of {FD} · "
+                          + " and ".join(names[m] for m in MEMBERS))
+    assert [(m["name"], m["x"], m["tip"]) for m in got["saved"]["medians"]] \
+        == [(m["name"], m["x"], m["tip"]) for m in got["drawn"]["medians"]]
+    assert got["saved"]["observed"] == got["drawn"]["observed"]
+    assert got["saved"]["yrange"] == got["drawn"]["yrange"]
+    assert got["clicked"][0]["download"] == (
+        f"flubnf_forecast_Ohio_{FD}_models.png")
+
+
 def _rgba(hex_: str, a: float) -> str:
     n = int(hex_.lstrip("#"), 16)
     return f"rgba({n >> 16 & 255},{n >> 8 & 255},{n & 255},{a})"
@@ -655,5 +709,7 @@ def test_the_card_uses_the_kits_switch_and_keeps_the_flusight_lines():
     assert ('<div class="uk-seg" role="group" aria-label="models shown" '
             'id="fan-view"></div>') in card
     assert 'class="seg"' not in card and "mbtn" not in t
-    # the FluSight comparators still drawn on the hub chart
-    assert "if(SHOWOFF) traces.push(...offTraces(loc, xs, ox, oy));" in t
+    # the FluSight comparators still drawn on the hub chart, when switched
+    # on (the card draws with the switch's state)
+    assert "if(off) traces.push(...offTraces(loc, xs, ox, oy));" in t
+    assert "fanFigure(loc,FMODEL,SHOWOFF)" in t
