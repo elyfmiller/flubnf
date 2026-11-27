@@ -675,7 +675,7 @@ def test_a_status_inside_a_link_reads_as_a_link():
 #: the tabs' own counts and kinds that are not controls, by sheet: the same
 #: look as a quiet mark (plain words with no box)
 TAB_WORDS = {
-    "forecast.css": (".fc-count", ".ms-n",
+    "forecast.css": (".fc-count", ".ms-n", ".fc-ms-state",
                      ".ms-row.ms-changed > .lblrow > label::after"),
     "models.css": (".md-tag",),
     "home.css": (".hm-facts li",),
@@ -716,6 +716,13 @@ def test_the_tabs_own_words_keep_their_other_signal():
                       "margin-left": "calc(-.5rem - 3px)"}
     assert _rule(fcr, ".ms-row.ms-changed")["margin-left"] == "-.5rem"
     assert fc[".fc-count"]["color"] == "var(--mut)"
+    # the Model settings summary's count of changed settings: quiet words
+    # beside the fold's title, gone while every setting is at its default;
+    # the summary is the kit fold's row, never a filled button
+    assert fc[".fc-ms-state"]["color"] == "var(--mut)"
+    assert fc[".fc-ms-state:empty"] == {"display": "none"}
+    assert not [s for s, d in fcr if "ms-panel" in s
+                and {"background", "background-color", "border"} & set(d)]
     # the location presets are one select: no chip rules are left
     assert not [s for s, _ in fcr if "fc-chip" in s]
     # Storage: the ledger's count beside its heading is quiet words, as
@@ -936,10 +943,13 @@ def test_a_mark_on_a_filled_surface_takes_that_surface_s_text_color():
                  ".uk-seg > [aria-current]"):
         assert _rule(kit, host + " .uk-badge") == {"color": "inherit"}, host
         assert _rule(kit, host + " .uk-tag") == {"color": "inherit"}, host
-    # the open Model settings button (nau.css) wears a badge on its fill
-    opened = _rule(nau, ".adv[open] > summary.advbtn")
-    assert _rule(nau, ".adv[open] > summary.advbtn .uk-badge") == {
-        "color": "inherit"}
+    # a tab chosen in a switch is that switch's fill too
+    for kind in (".uk-badge", ".uk-tag"):
+        assert _rule(kit, '.uk-seg > [role="tab"][aria-selected="true"] '
+                     + kind) == {"color": "inherit"}
+    # the Model settings toggle is a fold's row with no fill (it was a
+    # filled pill that wore a badge on its fill)
+    assert not [s for s, _ in nau if "advbtn" in s]
     tip = _rule(nau, ".tipbox")
     seg = _rule(kit, '.uk-seg > button[aria-pressed="true"]')
     quiet = _rule(kit, '.uk-seg--quiet > button[aria-pressed="true"]')
@@ -954,8 +964,6 @@ def test_a_mark_on_a_filled_surface_takes_that_surface_s_text_color():
             return _rgb(T[_token(value)])
         card = _rgb(T["card"])
         pairs = {
-            "the open Model settings button": (c(opened["color"]),
-                                               c(opened["background"])),
             "a tooltip": (c(tip["color"]), c(tip["background"])),
             "a switch's chosen side": (c(seg["color"]), c(seg["background"])),
             "the quiet switch's current page": (
@@ -970,8 +978,8 @@ def test_a_mark_on_a_filled_surface_takes_that_surface_s_text_color():
     assert seen >= 16
     # why the rules are there: left in its own color, a mark would not
     # hold on these fills (measured when they were written: the muted word
-    # on the open button's accent fill fell under 3:1 in some theme, and
-    # the dim theme's red on an alert's tint under 4.5:1). Not pinned: a
+    # on the old open Model settings button's accent fill fell under 3:1 in
+    # some theme, and the dim theme's red on an alert's tint under 4.5:1). Not pinned: a
     # theme that improves those pairs must not fail this test
 
 

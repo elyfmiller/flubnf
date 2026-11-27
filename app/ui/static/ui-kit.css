@@ -169,8 +169,7 @@ a:hover > .uk-badge > .uk-badge-t{text-decoration-thickness:2px}
    surface's text color and its state rests on its icon and its word: an
    alert's tint (the dim theme's red is under 4.5:1 there), a tooltip (the
    inverted surface), the chosen side of a segmented switch. A filled
-   surface outside the kit states the same beside its own rule (nau.css,
-   the open Model settings button) */
+   surface outside the kit states the same beside its own rule */
 .uk-alert .uk-badge,.uk-alert .uk-tag,.uk-alert .uk-name,
 .tipbox .uk-badge,.tipbox .uk-tag,.tipbox .uk-name,
 .uk-seg > [aria-pressed="true"] .uk-badge,.uk-seg > [aria-current] .uk-badge,

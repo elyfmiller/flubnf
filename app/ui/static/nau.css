@@ -1162,25 +1162,6 @@ footer.buildline{text-align:center;padding:.6rem 0 1rem}
 
 /* Forecast form modes (Real-time / Vintage: the kit's uk-seg) */
 #fcform.mode-realtime #vintage-pick{display:none}
-details.adv{margin:.7rem 0 .4rem}
-details.adv>summary{cursor:pointer;color:var(--gold);font-size:.9rem;list-style:none}
-details.adv>summary::-webkit-details-marker{display:none}
-details.adv>summary::before{content:"\25B8"}
-details.adv[open]>summary::before{content:"\25BE"}
-
-/* the Advanced settings fold reads as a control, not a footnote */
-.adv > summary.advbtn{display:inline-block;padding:.38rem .9rem;border:1.5px solid var(--accent);
- border-radius:999px;color:var(--accent-ink);font-weight:600;cursor:pointer;list-style:none;margin-top:.6rem}
-.adv > summary.advbtn::-webkit-details-marker{display:none}
-/* open: the card's color on --accent-ink, 5:1+ in every theme and mode
-   (white on raw cyan was 2.1:1) */
-.adv[open] > summary.advbtn{background:var(--accent-ink);
- border-color:var(--accent-ink);color:var(--card)}
-/* its "default" or "modified" mark (a kit badge) brings no fill of its
-   own: on the filled button it takes the button's color, and its state
-   rests on its icon and its word (the muted and the warning colors are
-   under 2:1 on this fill) */
-.adv[open] > summary.advbtn .uk-badge{color:inherit}
 /* the Model settings panel (templates/_model_settings.html): one fold
    per stage, its fields in a bare fieldset (its badges and fixed list:
    static/tabs/forecast.css) */

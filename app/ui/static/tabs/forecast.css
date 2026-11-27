@@ -171,9 +171,16 @@
 .fc-di[hidden]{display:none}
 
 /* ---- 4. the Model settings panel ---- */
-/* the summary's badge (default / modified) beside its title; brought to
-   the window's top when opened near its foot (model_settings.js) */
-.fc-ms-state{margin-left:.45rem}
+/* the panel is a disclosure row (the kit's fold: a chevron and the
+   words), never a button: only Run models is filled. Its count of
+   changed settings ("3 changed") follows the title in quiet words, and
+   says nothing while every setting is at its default. The summary is
+   brought to the window's top when opened near its foot
+   (model_settings.js) */
+details.ms-panel{margin:.7rem 0 .4rem}
+details.ms-panel > summary{min-height:24px}
+.fc-ms-state{color:var(--mut);font-size:var(--fs-label);font-weight:500}
+.fc-ms-state:empty{display:none}
 details[data-scope] > summary{scroll-margin-top:.75rem}
 /* a refusal's reason under the head */
 .fc-ms-refused{margin:.4rem 0 .2rem}
