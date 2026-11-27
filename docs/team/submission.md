@@ -3817,6 +3817,15 @@ and CDC's rules. The season's facts are in
 
 ## Decided
 
+- 2026-11-27 (18:55 UTC), Ely: run a sensitivity screen of the
+  seeding assumptions (the 18% attack rate, s0 0.85) after the weight
+  screen (For other lanes, same day). Look for a US serology source and
+  citable literature for the attack rate to replace the Vietnam proxy
+  (Vinh et al. 2021); if a better US candidate is found, test it over
+  the season so far, with a switch in mid-season possible if it helps.
+  Ely: this has been a concern for a while; the first priority was a
+  model ready for the season.
+
 - 2026-11-27 (17:44 UTC), Ely: the rule for changing the Oracle weight
   is the one in For other lanes (11-27, the weight screen on the Windows
   PC, item 3), as written ("the rule looks fine, go ahead"). The Model
@@ -4051,6 +4060,50 @@ and CDC's rules. The season's facts are in
   against the hub schema), then the submission lane copies it to the fork.
 
 ## For other lanes
+
+- 2026-11-27 (18:55 UTC), Submission to Model: THE SEEDING ASSUMPTIONS,
+  A SENSITIVITY SCREEN, AFTER THE WEIGHT SCREEN (Ely, Decided, same day).
+  Not before the weight screen's replays and scores are done.
+  Why: two fixed inputs of the Oracle SIHRS have no US source. The attack
+  rate 0.18 (the midpoint of ATTACK_RATE_RANGE 0.10 to 0.26; Vinh et al.
+  2021, Vietnam serology; the code's own note: "the weakest link ...
+  headline results need a sensitivity arm") and s0 0.85 (S0_RANGE 0.70
+  to 0.95; "run s0 as a sensitivity axis over S0_RANGE and report the
+  arm"). Neither arm is in these notes or model.md.
+  What each moves (checked in the code, flubnf/sihrs_fit.py and
+  app/core/engines/pf.py): the attack rate enters only the seed, i0 =
+  first week x attack rate / (gamma x pinned season admissions), so i0
+  scales with it exactly; rho*mult is not written into the model, and
+  mult stays fitted (loguniform 0.002 to 1). s0 sets the starting
+  susceptible pool and, with Reff fitted, how fast R falls as infections
+  accumulate (R(t) = Reff x S(t) / (s0 N)).
+  1. Two research knobs first: the attack rate and s0 are hard-coded
+     (resolve_state takes the range midpoint and S0_DEFAULT); a knob each,
+     recorded in the run record like the others, defaults unchanged.
+  2. Arms, one at a time around the live form (stage-rule seed, w 0.25,
+     k 0.7, the live cap): attack rate 0.10 and 0.26 at s0 0.85; s0 0.70
+     and 0.95 at 0.18; and the US candidate(s) this lane is looking for
+     (Ely: a US serology source to replace the Vietnam proxy), each value
+     taken from the literature and fixed BEFORE any score, so the screen
+     tests a cited value rather than tuning one.
+  3. Data, cheapest first:
+     a. This season so far: each arm replayed on the 2026-27 as-of weeks
+        from the first round (as-of 2026-10-03) on, the hub's archived
+        vintages; a round took 820 s on the public engine here, so about
+        2 hours per arm for eight weeks. Scored on the settled cells as
+        truth arrives; relevant but low power (one wave).
+     b. The three past seasons (the weight screen's 84 weeks, hub
+        09c96ec8): about 19 to 20 hours per arm; the US candidate first,
+        then the range ends.
+  4. Rule, to be written, confirmed by Ely and frozen before any score
+     once the candidate is chosen. This lane's proposal: a better-cited
+     value needs to be no worse, not better: switch to the US candidate
+     (from the next round after the result) if, on the three past
+     seasons, the natural and log relWIS differences against 0.18 have
+     95% intervals with upper ends at or below +0.010, and the season so
+     far does not point the other way. The range ends are reported, not
+     ranked: they answer "does the assumption matter", the question the
+     code's note asks.
 
 - 2026-11-27 (17:39 UTC), Submission to Model: THE ORACLE WEIGHT SCREEN
   ON THE WINDOWS PC. Replaces item 1 of the 11-26 request below (Ely,
