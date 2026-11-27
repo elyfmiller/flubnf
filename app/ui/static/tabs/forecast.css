@@ -21,7 +21,6 @@
         marks */
 
 /* ---- 1. settings card ---- */
-/* the dataset's truth badge under its picker */
 /* what a past week of a dataset sees: Vintage mode only */
 .fc-pastnote{margin:.3rem 0 .1rem;color:var(--mut);font-size:.9rem}
 #fcform:not(.mode-vintage) .fc-pastnote{display:none}
