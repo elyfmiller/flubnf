@@ -1308,16 +1308,6 @@ tr[aria-current="true"] td{font-weight:600}
 svg .dg-h-ink{fill:color-mix(in srgb,var(--slate) 55%,var(--ink))}
 
 /* polish: forecast-output-runs */
-/* the Forecast chart's model buttons (forecast.html, built by script):
-   the last pill-shaped switch, kept only while that chart keeps its
-   switch; every other switch is the kit's uk-seg. Delete with it
-   (app/tests/test_no_pills.py lists it) */
-.seg{display:flex;flex-wrap:wrap;gap:.4rem;margin:.45rem 0}
-.seg button{margin:0;padding:.15rem .7rem;border-radius:99px;
-  font-size:.85rem;font-weight:600}
-/* unselected: outlined; selected keeps the global .gold fill */
-.seg button:not(.gold){background:transparent;
-  color:var(--ink);border:1px solid var(--gold)}
 /* Forecast pager rows: every control on one line (a stray button
    margin-top dropped "expand" below the arrows); scoped to this page's
    pagers so other tabs' carousels keep their look */
@@ -1512,10 +1502,9 @@ pre.sberr{white-space:pre-wrap;overflow-wrap:anywhere;background:var(--bg);
 /* round3: forecast tab and run pages */
 /* US (national), the 53rd location, set apart at the end of the list */
 .ck.ck-national{border-top:1px solid var(--line);padding-top:.3rem;margin-top:.3rem}
-/* the fan card's model buttons, and the FluSight comparator switch beside them */
+/* the fan card's models switch, and the FluSight comparator switch beside them */
 .fanbar{display:flex;flex-wrap:wrap;align-items:center;justify-content:space-between;
   gap:.2rem 1rem}
-.fanbar .seg{margin:.45rem 0}
 .fanoff{display:inline-flex;align-items:center;gap:.35rem}
 .fanoff .ck{margin:0}
 
