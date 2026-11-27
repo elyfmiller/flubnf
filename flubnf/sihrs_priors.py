@@ -80,30 +80,56 @@ ATTACK_RATE_NOTE = (
 # s0 — initial susceptible fraction. NO source gives a per-state US value.
 # ---------------------------------------------------------------------------
 # A BOUNDED SENSITIVITY AXIS, not a known constant (R0*s0 is
-# product-identified, so it cannot be fitted). It is CIRCULATING-STRAIN
-# susceptibility, far above "has no antibodies" because of drift (all-strain
-# seroprevalence implied R0 of 3-6). Literature (S0_SOURCES): the estimator
-# (Xiong 2025: relative reduction in R is exactly s0), HAI 1:40 understates
-# protection (Memoli 2016), US susceptibility rose 45% under COVID
-# restrictions (Wang 2023), seroconversion threshold bias (Wu 2014), the
-# current US panel (Li 2025).
+# product-identified, so it cannot be fitted; Cope 2018 find the fitted
+# product of R0 and initial susceptibility near 1.0). It is CIRCULATING-STRAIN
+# susceptibility at August 1, far above "has no antibodies" because of drift
+# (all-strain seroprevalence implied R0 of 3-6). Literature (S0_SOURCES):
+# - the estimator: Xiong 2026, s0 = Re/R0 = 1 - the relative reduction in R
+#   from population immunity (the reduction is the immune effect, not s0);
+# - pre-season serology against the drifted 2025-26 H3N2 subclade K: Hong
+#   Kong, 16.5% immune and R0 reduced 17.7%, so s0 about 0.82-0.84 (Cheng
+#   2026); Portugal, 14.8% at HAI titre >= 40 (Guiomar 2026);
+# - titre to protection: 50% protection at about 1:18-1:36 (Hobson 1972) or
+#   1:17 (Coudeville 2010), so a 1:40 cut-off overstates s0; HAI alone is an
+#   incomplete correlate (Memoli 2016); seroconversion threshold bias (Wu
+#   2014); US susceptibility up 45.1% (relative) under COVID restrictions
+#   (Wang 2023);
+# - the one US model-inferred value, onset S 0.645-0.706 over nine seasons
+#   (Yang 2015), is weakly identified (its immunity period "was less
+#   constrained") and serves as a lower bound;
+# - consistency: with one-year waning (OMEGA_PER_WEEK) and a seasonal attack
+#   rate a centred six months before August 1, the immune pool at August 1
+#   is about 0.96 a, so s0 about 0.83-0.88 for a in 0.124-0.18 (vaccination,
+#   left out, lowers it; drift raises it).
+# No US serosurvey gives a population share susceptible to the circulating
+# strain (searched 2026-11-27, docs/team/submission.md).
 S0_RANGE = (0.70, 0.95)
 S0_DEFAULT = 0.85
 S0_SOURCES = {
-    "estimator_titer_to_s0": "10.1101/2025.07.10.25331265",   # Xiong et al. 2025
+    # Xiong et al. 2026, Lancet Infect Dis 26(8):766-777 (medRxiv
+    # 10.1101/2025.07.10.25331265 before publication)
+    "estimator_titer_to_s0": "10.1016/S1473-3099(26)00061-7",
+    # Cheng et al. 2026, Euro Surveill 31(10):2600185 (Hong Kong, 2025)
+    "preseason_serology_hong_kong": "10.2807/1560-7917.ES.2026.31.10.2600185",
+    # Guiomar et al. 2026, Euro Surveill 31(6):2600070 (Portugal, Aug 2025)
+    "preseason_serology_portugal": "10.2807/1560-7917.ES.2026.31.6.2600070",
+    "hai_titre_protection_challenge": "10.1017/s0022172400022610",  # Hobson et al. 1972
+    "hai_titre_protection_meta": "10.1186/1471-2288-10-18",  # Coudeville et al. 2010
     "hai_40_protection_correlate": "10.1128/mbio.00417-16",   # Memoli et al. 2016
-    "us_susceptibility_shift_covid": "10.1002/jmv.29186",     # Wang et al. 2023
     "seroconversion_threshold_bias": "10.1371/journal.ppat.1004054",  # Wu et al. 2014
-    "cdc_us_longitudinal_panel": "10.1038/s41467-025-66431-2",  # Li et al. 2025
-    "serocatalytic_tooling": "10.1371/journal.pcbi.1012777",   # Hoze et al. 2025
+    "us_susceptibility_shift_covid": "10.1002/jmv.29186",     # Wang et al. 2023
+    "us_model_inferred_onset_s": "10.1073/pnas.1415012112",   # Yang, Lipsitch, Shaman 2015
+    "r0_s0_not_identifiable": "10.1371/journal.pcbi.1006377",  # Cope et al. 2018
 }
 S0_NOTE = (
-    "No published source gives a per-state US s0. Xiong et al. 2025 supply the "
-    "correct estimator (relative reduction in R, i.e. exactly s0 since "
-    "R_eff = R0*s0); Li et al. 2025 supply the most current US-representative "
-    "titer panel (723 participants, 10 HHS regions, 2021-2024) from which such "
-    "an estimate could be built. Until that is done, run s0 as a sensitivity "
-    "axis over S0_RANGE and report the arm."
+    "No published source gives a per-state US s0, and no US serosurvey gives "
+    "the population share susceptible to the circulating strain. Xiong et al. "
+    "2026 supply the estimator (s0 = Re/R0, one minus the relative reduction "
+    "in R from population immunity). Pre-season serology against the 2025-26 "
+    "H3N2 subclade K gives about 0.82-0.84 in Hong Kong (Cheng et al. 2026) "
+    "and at least 0.85 in Portugal (Guiomar et al. 2026, 14.8% at HAI titre "
+    ">= 40); the model's one-year waning gives about 0.83-0.88. Run s0 as a "
+    "sensitivity axis over S0_RANGE and report the arm."
 )
 
 # Hospitalization under-detection by age (Reed 2015). CONTEXT ONLY: never
@@ -293,12 +319,15 @@ def provenance_table() -> pd.DataFrame:
               "See initial_infected_fraction()."),
         Param("s0", S0_DEFAULT, "fraction", "literature",
               S0_SOURCES["estimator_titer_to_s0"],
-              "SENSITIVITY AXIS, not a known constant. Xiong et al. 2025 give "
-              "the estimator (relative reduction in R == s0, since "
-              "R_eff = R0*s0); Memoli 2016 the HAI>=1:40 ~50%-protection "
-              "correlate; Wang 2023 the +45.1% US susceptibility shift during "
-              "COVID; Li et al. 2025 the current US panel. No per-state US "
-              "value exists -- do NOT fit it (R0*s0 is product-identified).",
+              "SENSITIVITY AXIS, not a known constant. Xiong et al. 2026 give "
+              "the estimator (s0 = Re/R0, one minus the relative reduction "
+              "in R); Cheng et al. 2026 (Hong Kong) and Guiomar et al. 2026 "
+              "(Portugal) pre-season serology against the drifted 2025-26 "
+              "H3N2, about 0.82-0.85; Hobson 1972 and Coudeville 2010 the "
+              "titre-protection link; Yang et al. 2015 the US model-inferred "
+              "lower bound; Wang 2023 the +45.1% (relative) US susceptibility "
+              "shift during COVID. No per-state US value exists -- do NOT "
+              "fit it (R0*s0 is product-identified; Cope et al. 2018).",
               S0_RANGE[0], S0_RANGE[1]),
     ]
     return pd.DataFrame([r.__dict__ for r in rows])

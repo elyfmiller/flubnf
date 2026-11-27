@@ -956,13 +956,19 @@ def harvest_bibliography() -> list:
          "href": doi(P.UNDERDETECTION_SOURCE),
          "label": f"doi:{P.UNDERDETECTION_SOURCE}"},
     ]
-    for key, who in (("estimator_titer_to_s0", "Xiong et al. 2025"),
-                     ("cdc_us_longitudinal_panel", "Li et al. 2025")):
+    for key, who in (
+            ("estimator_titer_to_s0",
+             "Xiong et al. 2026, the estimator (s0 = Re/R0, one minus the "
+             "relative reduction in R from population immunity)"),
+            ("preseason_serology_hong_kong",
+             "Cheng et al. 2026, pre-season serology, Hong Kong, 2025"),
+            ("preseason_serology_portugal",
+             "Guiomar et al. 2026, pre-season serology, Portugal, 2025")):
         src = P.S0_SOURCES.get(key)
         if src:
             items.append({
                 "what": "Initial susceptibility",
-                "text": (f"{who}, serological basis for the bounded s0 "
+                "text": (f"{who}; the basis for the bounded s0 "
                          f"sensitivity axis "
                          f"({P.S0_RANGE[0]}-{P.S0_RANGE[1]}, default "
                          f"{P.S0_DEFAULT}); no published source gives a "
