@@ -262,6 +262,12 @@ def forecast_page(request: Request, source: str = "", tab: str = ""):
         # the shipped models only: a legacy run's retired blend is not drawn
         from app.core.report_v2 import toggle_models
         fanq = {m: fanq[m] for m in toggle_models(fanq)}
+        # the 95% ranges from the run's own files (results.json keeps
+        # 10% to 90%): the chart's overlay draws them
+        from app.core.runs import APP_STATE as _state
+        fanq = _fa.widen_fans(
+            fanq, _fa.wide_levels(_state / "workroots" / rid if rid else ""),
+            res.get("forecast_date", ""))
     # the FluSight hub's own forecasts for the same week (a vintage run's
     # comparison; none recorded = no toggle)
     official = _official_overlay(
@@ -353,6 +359,10 @@ def forecast_page(request: Request, source: str = "", tab: str = ""):
         "run_est": run_est,
         "elapsed0": _console_elapsed(),
         "series_json": _script_json(series), "fanq_json": _script_json(fanq),
+        # the chart's axis words, value kind, first location and drawing
+        # order (forecast_aids.fan_chart)
+        "fan_chart_json": _script_json(_fa.fan_chart(
+            fanq, label=_fa.HUB_VALUE_LABEL, first_label=US_CHOICE)),
         "model_names_json": _script_json(templating._model_names()),
         "member_colors_json": _script_json(_member_colors()),
         "season_colors_json": _script_json(_season_colors()),

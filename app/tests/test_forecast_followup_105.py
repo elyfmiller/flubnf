@@ -408,11 +408,15 @@ DRIVE = r"""
     FMODEL = 'analogue'; FIDX = Object.keys(FANQ.analogue).indexOf(PICK[i]);
     await drawFan();
     var c = calls.filter(function(c){ return c.id === 'fanplot'; }).pop();
-    var first = function(name){
-      var t = c.traces.filter(function(t){ return t.name === name; })[0];
+    var by = function(f){
+      var t = c.traces.filter(f)[0];
       return t ? [t.x[0], t.y[0], t.x.length] : null; };
+    var first = function(name){
+      return by(function(t){ return t.name === name; }); };
     var named = function(m){ return MNAMES[m] || m; };
-    out[PICK[i]] = {fan: first('median'), ens: first(named('FluSight-ensemble')),
+    // the member's median line is named after the member, marked by meta
+    out[PICK[i]] = {fan: by(function(t){ return t.meta === 'median'; }),
+                    ens: first(named('FluSight-ensemble')),
                     base: first(named('FluSight-baseline'))};
   }
   console.log(JSON.stringify(out));

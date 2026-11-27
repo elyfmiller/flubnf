@@ -135,6 +135,10 @@
 .fc-pos{color:var(--mut);font-size:var(--fs-label);
   font-variant-numeric:tabular-nums}
 
+/* the Forecasts card's models switch (the kit's uk-seg) beside the
+   FluSight switch */
+.fanbar .uk-seg{margin:.45rem 0}
+
 /* the data panel's view switch (the kit's uk-seg) and the points toggle
    beside it */
 .fc-dview{display:flex;flex-wrap:wrap;align-items:center;gap:.4rem .6rem;

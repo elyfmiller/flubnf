@@ -187,10 +187,13 @@ def test_num_class_right_aligns_everywhere():
 def test_fan_bands_derive_from_the_displayed_member():
     for src, name in ((FORECAST_T, "forecast"), (MODEL_T, "model")):
         assert "rgba(255,199,44" not in src, name   # the hardcoded analogue
-        assert "fillcolor:rgba(mc,.2)" in src, name
         assert "line:{color:mc,width:2.5}" in src, name
         assert "function memberColor(m)" in src, name
-    assert "memberColor(FMODEL)" in FORECAST_T      # the selected model
+    # the Forecast tab draws each shown member's ranges in its own color,
+    # one alpha per range
+    assert "const mc=memberColor(m)" in FORECAST_T
+    assert "fillcolor:rgba(mc,a)" in FORECAST_T
+    assert "fillcolor:rgba(mc,.2)" in MODEL_T
     assert "memberColor(MNAME)" in MODEL_T          # this page's model
 
 

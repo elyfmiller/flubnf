@@ -49,6 +49,7 @@ from starlette.concurrency import run_in_threadpool
 from app.core import runs as _runs
 from app.core.runs import GROUNDHOG_OWN_DATA, Ledger
 from app.ui import forms, pipeline, retro_seasons, shared, templating, versions
+from app.ui import forecast_aids as _fa
 from app.ui.dataset_upload import (TOO_MANY_FILES, _LONE, _capped_form,
                                    _files_of, _form_columns, _kind_field,
                                    _lone_snapshot, _message_view,
@@ -826,6 +827,11 @@ def forecast_page(request: Request, ds):
                     and all(isinstance(v, dict) for v in qs.values())}
             if good:
                 fanq[m] = good
+        # the 95% ranges from the run's export files (results.json keeps
+        # 10% to 90%), as the hub's page reads its report's
+        fanq = _fa.widen_fans(
+            fanq, _fa.wide_levels(_runs.APP_STATE / "workroots" / rid, ds)
+            if rid else {}, res.get("forecast_date", ""))
     sel = [g for g in form["locations"] if g in ds.groups][:8] or ds.groups[:1]
     series = {n: ds.series(n) for n in sel}
     rows = _ledger_for(ds.id)
@@ -856,6 +862,11 @@ def forecast_page(request: Request, ds):
         "elapsed0": shared._console_elapsed(),
         "series_json": templating._script_json(series),
         "fanq_json": templating._script_json(fanq),
+        # the chart's axis words, value kind, first group and drawing
+        # order (forecast_aids.fan_chart)
+        "fan_chart_json": templating._script_json(_fa.fan_chart(
+            fanq, label=_fa.dataset_value_label(ds, res), kind=ds.kind,
+            national=ds.national_group or "", dataset=ds.name)),
         "model_names_json": templating._script_json(
             {**templating._model_names(), **MEMBER_NAMES}),
         "member_colors_json": templating._script_json(
