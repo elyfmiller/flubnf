@@ -397,7 +397,7 @@
       against the last run (the script below; display only) #}
    {% set lr = (aids.last_run if (aids is defined and aids and not dataset) else none) %}
    <div class="fc-runrow">
-    <button class="gold" data-guard="console-run" id="fc-run">Run models</button>
+    <button class="gold" id="fc-run" data-guard="console-run">Run models</button>
     {# a dataset week no model can forecast: Run is off and says why
        (static/forecast_form.js, from the donor counts above) #}
     {% if dataset %}<p class="fc-runwhy" id="fc-runwhy" role="status" hidden></p>{% endif %}

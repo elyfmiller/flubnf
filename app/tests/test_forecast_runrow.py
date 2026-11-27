@@ -332,7 +332,7 @@ def test_the_form_carries_the_estimate_and_the_line(hub, monkeypatch):
     # in the Run row, after Run models; no "?"
     row = html[html.index('<div class="fc-runrow">'):]
     row = row[:row.index('<div id="fc-est"')]
-    assert '<button class="gold" data-guard="console-run" id="fc-run">Run models</button>' \
+    assert '<button class="gold" id="fc-run" data-guard="console-run">Run models</button>' \
         in row
     assert "uk-tip" not in line
     # the two scripts, each loaded once
@@ -381,7 +381,7 @@ def test_a_fault_in_the_line_leaves_the_page(hub, monkeypatch):
     monkeypatch.setattr(RS, "_own_cost_ratio", boom)
     html = _page().text
     assert 'id="fc-est"' not in html and "data-est-" not in html
-    assert '<button class="gold" data-guard="console-run" id="fc-run">Run models</button>' \
+    assert '<button class="gold" id="fc-run" data-guard="console-run">Run models</button>' \
         in html
 
 
@@ -687,7 +687,7 @@ def test_a_thin_week_says_the_groundhog_has_too_little_history():
     # script turns it off where nothing can run: test_run_is_off_...),
     # no reason button, and the line has no "?"
     form = _form_html(html)
-    assert '<button class="gold" data-guard="console-run" id="fc-run">Run models</button>' \
+    assert '<button class="gold" id="fc-run" data-guard="console-run">Run models</button>' \
         in form
     assert "uk-reason" not in form and "reason_button" not in form
     alert = form[form.index('id="fc-ds-donors"'):]
