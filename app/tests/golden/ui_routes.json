@@ -77,6 +77,7 @@
   ["POST", "/retro/run", "retro_run", "APIRoute", "console"],
   ["POST", "/retro/import", "retro_import", "APIRoute", "console"],
   ["GET", "/retro/{season}", "retro_results", "APIRoute", "console"],
+  ["POST", "/retro/{season}/rescore", "retro_rescore", "APIRoute", "console"],
   ["GET", "/api/retro/{season}/playback/{asof}", "api_retro_playback", "APIRoute", "console"],
   ["GET", "/api/retro/{season}/mapswap/{asof}", "api_retro_mapswap", "APIRoute", "console"],
   ["GET", "/retro/{season}/report", "retro_season_report", "APIRoute", "console"],
