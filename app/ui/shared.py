@@ -282,7 +282,7 @@ def relwis_chip(value, cells=None, member: str = "") -> str:
             f' vs FluSight baseline, ratio of sums{cov}')
 
 
-def _pf_member_label(o: dict) -> str:
+def _pf_member_label(o: dict, run_id: str = "") -> str:
     """The mechanistic member's name on one ledger row, as the run page
     names it (runs.pf_member_name: by whether the run applied the Oracle
     step), one name for every fact of the row: its fits, its skip and its
@@ -290,10 +290,11 @@ def _pf_member_label(o: dict) -> str:
     from app.core.runs import pf_member_name
     # a modified run never claims the shipped member's name
     tail = " (modified)" if (o or {}).get("knobs") else ""
-    return pf_member_name(o or {}) + tail
+    return pf_member_name(o or {}, run_id) + tail
 
 
-def _outcome_items(outcome_json, deleted: bool = False) -> list:
+def _outcome_items(outcome_json, deleted: bool = False,
+                   run_id: str = "") -> list:
     """One run's outcome as facts, for pages that draw each one with the UI
     kit (the Storage ledger): [{"chip", "text", "state", "tip"}]. "chip" is
     the fact as _outcome_chips writes it; "text" the short word or figure
@@ -302,7 +303,8 @@ def _outcome_items(outcome_json, deleted: bool = False) -> list:
     figure's text carries its verdict icon after the number. Fixed phrases
     and numbers only: raw error strings stay on the run page. deleted:
     Storage deleted the run's files, said once in place of its files and
-    report."""
+    report. run_id: the row's, which dates it for the member's name
+    (runs.pf_member_name)."""
     import json as _json
 
     from markupsafe import Markup
@@ -324,7 +326,7 @@ def _outcome_items(outcome_json, deleted: bool = False) -> list:
         from app.core.runs import _verdict
         return Markup(chip.replace("</span>", "</span>"
                                    + _verdict(float(v), "st-verdict"), 1))
-    pf_name = _pf_member_label(o)
+    pf_name = _pf_member_label(o, run_id)
     if "pf_cells" in o:
         n = o["pf_cells"]
         add(f"{pf_name}: {n} fit{'s' if n != 1 else ''}")

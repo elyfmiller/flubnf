@@ -494,7 +494,8 @@ def runs_page(request: Request):
         r["modified"] = _runs.is_modified(r.get("spec", ""))
         # the outcome as facts the page draws as chips and badges
         r["facts"] = _outcome_items(r.get("outcome", ""),
-                                    deleted=_files_deleted(r["run_id"]))
+                                    deleted=_files_deleted(r["run_id"]),
+                                    run_id=r["run_id"])
         # a 'running' row with no live worker = the app was closed mid-run
         if r["status"] == "running" and not (_status.get("running") or "").endswith(r["run_id"]):
             r["status"] = "interrupted"

@@ -407,3 +407,66 @@ def test_the_run_page_finds_its_row_however_many_runs_followed(tmp_path, monkeyp
     page = TestClient(srv_.app).get(f"/runs/{old}").text
     assert "the old run&#39;s own error" in page or "the old run's own error" in page
     assert _json.loads(led.row(old)["spec"])["forecast_date"] == "2098-01-03"
+
+
+def _row_at(tmp_path, monkeypatch, run_id, status, outcome):
+    """A ledger row under a given run id (its start), as an older console
+    wrote it."""
+    import sqlite3
+    monkeypatch.setattr(runs_mod, "APP_STATE", tmp_path)
+    led = Ledger()
+    rid = led.open_run(RunSpec(engine="all", forecast_date="2026-03-07",
+                               locations=["Ohio"]), Path("pending"), {})
+    led.close_run(rid, status, outcome)
+    db = sqlite3.connect(tmp_path / "ledger.sqlite")
+    db.execute("UPDATE runs SET run_id=? WHERE run_id=?", (run_id, rid))
+    db.commit()
+    db.close()
+    ui_shared._invalidate_scans()
+    return run_id
+
+
+@pytest.mark.parametrize("run_id, status, outcome, name, step", [
+    # started before the Oracle step came in: the filter alone, however
+    # the run ended
+    ("20260909T111312-10b795", "error", {"pf_cells": 2, "error": "boom"},
+     "filter", "not applied (a run from before the step)"),
+    ("20260909T111312-10b795", "ok", {"pf_cells": 2, "pf_relwis": 0.5},
+     "filter", "not applied (a run from before the step)"),
+    # started after it, ended between its fits and the step: the member
+    # it was running, with or without the recorded intent
+    ("20261001T101010-abcdef", "error", {"pf_cells": 2, "error": "boom"},
+     "oracle", "on (console default)"),
+    ("20261127T101010-abcdef", "stopped", {"pf_cells": 2,
+                                           "oracle_wanted": True},
+     "oracle", "on (console default)"),
+])
+def test_a_rows_member_name_is_dated_by_when_the_run_started(
+        tmp_path, monkeypatch, run_id, status, outcome, name, step):
+    """Rows that record neither the Oracle step's bank nor what they asked
+    of it are dated by their start (runs.ORACLE_STEP_SINCE): before the
+    step came in, the Particle filter alone whatever their end; after it,
+    an errored or stopped row keeps the Oracle SIHRS. Storage's chips, the
+    run page's results, its failed fits and its settings all agree."""
+    from app.core import runs
+    from app.core.site_build import PF_LABEL_FILTER, PF_LABEL_ORACLE
+    want, other = ((PF_LABEL_FILTER, PF_LABEL_ORACLE) if name == "filter"
+                   else (PF_LABEL_ORACLE, PF_LABEL_FILTER))
+    outcome = dict(outcome, pf_failures={"Ohio_r1": "fit failed"})
+    assert runs.pf_member_name(outcome, run_id) == want
+    chips = " ".join(str(i["text"]) for i in ui_shared._outcome_items(
+        outcome, run_id=run_id))
+    assert chips.startswith(f"{want}: 2 fits") and other not in chips
+    rid = _row_at(tmp_path, monkeypatch, run_id, status, outcome)
+    html = client.get(f"/runs/{rid}").text
+    assert f'<th scope="row">{want} fits</th>' in html
+    assert other not in html.split('class="results"', 1)[1].split(
+        "</table>", 1)[0]
+    assert f"{want} fit that failed" in html
+    settings = dict(runs.spec_settings(
+        json.dumps({"forecast_date": "2026-03-07", "engine": "all"}),
+        outcome, run_id=run_id))
+    assert settings["Oracle step"] == step
+    storage = client.get("/storage").text
+    row = storage.split(f'href="/runs/{rid}"', 1)[1].split("</tr>", 1)[0]
+    assert f"{want}: 2 fits" in row and other not in row

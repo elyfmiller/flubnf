@@ -105,7 +105,7 @@ def _outcome_dict(outcome) -> dict:
     return outcome if isinstance(outcome, dict) else {}
 
 
-def spec_settings(spec, outcome=None) -> list:
+def spec_settings(spec, outcome=None, run_id: str = "") -> list:
     """The settings that produced a console run, as (label, value) pairs.
 
     One formatter for the progress card, the run page and the weekly report.
@@ -113,7 +113,8 @@ def spec_settings(spec, outcome=None) -> list:
     unreadable spec yields [] rather than raising. `outcome` (the ledger's
     outcome, dict or JSON), when given, makes the list say what RAN rather
     than what was asked: the data file read, and a PF member that did not
-    run (no engine on this machine) is not listed as run.
+    run (no engine on this machine) is not listed as run. `run_id` dates
+    the run for pf_member_name (a run from before the Oracle step).
     """
     d = _spec_dict(spec)
     if not d:
@@ -135,8 +136,8 @@ def spec_settings(spec, outcome=None) -> list:
     # before it, ran the filter alone, and the engine row is built from
     # that name (HUB_MEMBER_NAMES the other member's)
     from app.core.site_build import PF_LABEL_ORACLE
-    ran_as = pf_member_name(o) if o else PF_LABEL_ORACLE
-    pf_pre_step = bool(o) and _before_the_step(o)
+    ran_as = pf_member_name(o, run_id) if o else PF_LABEL_ORACLE
+    pf_pre_step = bool(o) and _before_the_step(o, run_id)
     words = {"all": "both models ({pf} and {analogue})", "pf": "{pf}"}
     if ran_as != PF_LABEL_ORACLE and not pf_absent and engine in words:
         names = {**HUB_MEMBER_NAMES, "pf": ran_as}
@@ -514,18 +515,26 @@ ANCHOR_NOTE_KEYS = (("pf", "pf_anchor_notes"),
 HUB_MEMBER_NAMES = {"pf": "Oracle SIHRS", "analogue": "Groundhog"}
 
 
-def pf_member_name(outcome: dict) -> str:
+#: when the Oracle step came into the console: the commit that added it
+#: and outcome["oracle"] (ba53035e, 2026-09-22 19:53:44 -07:00), in a run
+#: id's own form (the machine's local time; the lab's clock is -07:00).
+#: A run that started before it ran the filter alone, however it ended
+ORACLE_STEP_SINCE = "20260922T195344"
+
+
+def pf_member_name(outcome: dict, run_id: str = "") -> str:
     """The mechanistic member's name on one run, from its ledger outcome,
     by the season trees' rule (site_build.PF_LABEL_ORACLE and
     PF_LABEL_FILTER): the member when the run applied the Oracle step (its
     bank label) or asked for it (oracle_wanted, which the pipeline records
     before the fits: a run that ended between them and the step), the
     filter alone when it ran without it (oracle = none, or a run from
-    before the step: _before_the_step). Any other run (its filter never
-    ran, or it ended in an error before recording either) is named for the
-    member it was to run; a run on a dataset as the dataset pages name its
-    member (custom_run.MEMBER_LABELS). Storage's ledger and the run page
-    name the member this one way, in every fact of the run."""
+    before the step: _before_the_step, which `run_id` dates). Any other
+    run (its filter never ran, or it ended in an error after the step came
+    in, before recording either) is named for the member it was to run; a
+    run on a dataset as the dataset pages name its member
+    (custom_run.MEMBER_LABELS). Storage's ledger and the run page name the
+    member this one way, in every fact of the run."""
     from app.core.site_build import PF_LABEL_FILTER, PF_LABEL_ORACLE
     o = outcome if isinstance(outcome, dict) else {}
     if o.get("dataset"):
@@ -536,19 +545,26 @@ def pf_member_name(outcome: dict) -> str:
         return PF_LABEL_FILTER if ox.startswith("none") else PF_LABEL_ORACLE
     if "oracle_wanted" in o:
         return PF_LABEL_ORACLE if o["oracle_wanted"] else PF_LABEL_FILTER
-    return PF_LABEL_FILTER if _before_the_step(o) else PF_LABEL_ORACLE
+    return (PF_LABEL_FILTER if _before_the_step(o, run_id)
+            else PF_LABEL_ORACLE)
 
 
-def _before_the_step(o: dict) -> bool:
-    """Whether an outcome is a run's from before the Oracle step existed:
-    its filter ran and the run finished, recording neither the step's bank
-    (oracle) nor what it asked of the step (oracle_wanted), both of which
-    every run since records. A run that ended in an error records no bank
-    either, as it may have stopped between its fits and the step, so it is
-    never taken for one (it keeps the member's name)."""
-    return (not o.get("oracle") and "oracle_wanted" not in o
-            and not o.get("error")
-            and ("pf_cells" in o or o.get("pf_relwis") is not None))
+def _before_the_step(o: dict, run_id: str = "") -> bool:
+    """Whether an outcome is a run's from before the Oracle step existed.
+    Its filter ran, and it records neither the step's bank (oracle) nor
+    what it asked of the step (oracle_wanted), as every run since does.
+    A run that started before ORACLE_STEP_SINCE (`run_id`'s start) is
+    one, however it ended. After it, or undated, a run that finished is
+    one too (a console not yet restarted on the step's build), but one
+    that ended in an error is not: it may have stopped between its fits
+    and the step, so it keeps the member's name."""
+    if o.get("oracle") or "oracle_wanted" in o or not (
+            "pf_cells" in o or o.get("pf_relwis") is not None):
+        return False
+    started = str(run_id or "")[:15]
+    if is_run_id(run_id) and started < ORACLE_STEP_SINCE:
+        return True
+    return not o.get("error")
 
 
 def anchor_notes_row(o: dict, names: dict, skip=()):
@@ -840,13 +856,14 @@ def _results_table(body: str, d: dict, heading: bool,
 
 
 def results_html(outcome, spec, heading: bool = True,
-                 deleted: bool = False) -> str:
+                 deleted: bool = False, run_id: str = "") -> str:
     """One run's results as a small table: run type, each member's relWIS
     with its cells, Oracle SIHRS fits and failures, submissions, report. Markup from
     fixed phrases and numbers only; unreadable input yields "". The table
     carries its own "Results" heading with the relWIS convention in a "?"
     tip; heading=False leaves both to the page (results_tip). deleted: Storage
-    deleted the run's files, so its files and report read "deleted"."""
+    deleted the run's files, so its files and report read "deleted".
+    `run_id` dates the run for pf_member_name."""
     if isinstance(outcome, str):
         try:
             o = json.loads(outcome or "{}")
@@ -864,7 +881,7 @@ def results_html(outcome, spec, heading: bool = True,
     rows = [("Run type", MODE_LABELS.get(mode, mode))]
     # the mechanistic member by what this run ran, as Storage names it, in
     # every row of the table
-    pf_name = pf_member_name(o)
+    pf_name = pf_member_name(o, run_id)
     names = {**HUB_MEMBER_NAMES, "pf": pf_name}
     for name, key, cells_key in _RESULT_ROWS:
         if key == "pf_relwis":
