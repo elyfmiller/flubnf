@@ -175,6 +175,39 @@ def test_a_current_run_that_fails_after_its_fits_keeps_the_members_name(
                                 "oracle_wanted": False}) == PF_LABEL_FILTER
 
 
+def test_a_current_run_stopped_after_its_fits_keeps_the_members_name(
+        tmp_path, monkeypatch):
+    """Stopped between the filter's fits and the Oracle step, a run ends
+    "stopped" with fits, no bank and no error: its recorded intent keeps
+    the Oracle SIHRS name on Storage's row and its run page. A run from
+    before the step, which finished with fits and no record, still reads
+    as the Particle filter alone."""
+    import app.core.engines.pf as pf_engine
+    from app.core import runs
+    from app.core.site_build import PF_LABEL_FILTER, PF_LABEL_ORACLE
+
+    def stop(*a, **k):
+        raise pf_engine.RunStopped("stopped by user")
+
+    row, outcome, w = _fake_run(
+        monkeypatch, tmp_path, {"Ohio_r0": "ok", "Texas_r0": "ok"},
+        {"Ohio": SAMPLES, "Texas": SAMPLES}, apply_week=stop)
+    assert row["status"] == "stopped"
+    assert outcome["pf_cells"] == 2 and "oracle" not in outcome
+    assert "error" not in outcome and outcome["oracle_wanted"] is True
+    assert runs.pf_member_name(outcome) == PF_LABEL_ORACLE
+    chips = ui_shared._outcome_chips(json.dumps(outcome))
+    assert chips.startswith(f"{PF_LABEL_ORACLE}: 2 fits")
+    ui_shared._invalidate_scans()
+    html = client.get(f"/runs/{row['run_id']}").text
+    assert PF_LABEL_FILTER not in html
+    # the old run's shape, finished before the step: the filter alone
+    old = {"pf_cells": 2, "pf_relwis": 0.8, "submissions": {"a": "x"}}
+    assert runs.pf_member_name(old) == PF_LABEL_FILTER
+    assert ui_shared._outcome_chips(json.dumps(old)).startswith(
+        f"{PF_LABEL_FILTER}: 2 fits")
+
+
 def test_all_pf_fits_failed_still_ships_the_groundhog(
         tmp_path, monkeypatch):
     """All Oracle SIHRS fits fail: only the Oracle SIHRS file is lost; the Groundhog
