@@ -6,6 +6,39 @@ pages (TEAM.md, team/README.md, FLUSIGHT-2026-27.md). Works on `dev`.
 
 ## Now
 
+- 2026-11-27: the first batch of the 2026-11-27 user review's "Now"
+  items is in five pull requests into `dev`, merged in this order, each
+  with a merge commit: #11 (a test that the two models' hard-wired names
+  cannot spread: 91 files, 845 lines), #12 (one upload place on the Data
+  tab, a check that says what can forecast, Run off when nothing can,
+  the Use button kept with Run waiting for it, one group picker), #13
+  (no pill-shaped controls left; Model settings as a disclosure row; the
+  chosen segment's focus ring), #14 (the Forecast chart: models together,
+  50/80/95 ranges, labelled axis, US first, Save figure) and #15 (Output's
+  Your data always shown, Delete apart in a quiet danger style, plain
+  progress steps, rescore by POST with a Rescore button, one Storage
+  address, one name for the mechanistic member).
+  - Merging: #13 conflicts with #12 in `app/ui/static/tabs/forecast.css`
+    and `app/tests/test_ui_kit.py`, and #14 with both in
+    `forecast.css`; each resolution keeps both sides (the shared picker
+    rules live in `nau.css`). After the five, one commit deletes the old
+    `.seg` pill styles and their allowance in `test_no_pills.py` and
+    lowers the ratchet to 89 files and 840 lines. All five merged with
+    that commit pass the full suite on macOS apart from the 23 tests that
+    fail on `dev` on this Mac too.
+  - Each branch had a review of the merged tree, its findings fixed and
+    checked again before the pull requests opened.
+  - Left of the review's "Now" items: named presets and the form's
+    opening state, a "Mark as submitted" record with Home's status, the
+    season's submitted rounds scored, one run label, the influenza
+    filter's label and assumptions line, plain outcome lines and the
+    glossary, the Sandbox loader and Check (its filter change is the
+    Engine lane's), and a one-page guide for newcomers. Presets, the
+    submitted record and the filter's wording wait on Ely's answers:
+    which settings and which files were submitted each round (a draft
+    table from these notes and the Submission lane's branch is with Ely),
+    and the sentence on what the filter assumes for sample counts.
+
 - 2026-11-12: the 2026-11-14 round's files are in
   (cdcepi/FluSight-forecast-hub#4060, both members; the hub's validation
   passed). Both members ran with the tail cap at 10x on the `larger`
@@ -1094,6 +1127,21 @@ pages (TEAM.md, team/README.md, FLUSIGHT-2026-27.md). Works on `dev`.
 
 ## Decided
 
+- 2026-11-27 (Ely):
+  - **Saved figures** from the Forecast chart are always light, whatever
+    the console's theme.
+  - **The chart's Both view** scales its y axis to the observed values,
+    the medians and the 50% ranges (1.1 times their largest); a model's
+    wider 95% band is cut at the top and the legend says so.
+  - **A Rescore button** on the Retrospective season page; opening the
+    page never rescores.
+  - **"Particle filter alone"** names the mechanistic member of runs from
+    before the Oracle step (no longer "PF"); a current run that fails
+    keeps "Oracle SIHRS".
+  - **The joke progress lines stay deleted.**
+  - **Left as they are:** the 2024-25 US card's "ORACLE SIHRS" title and
+    the confirmation before a large (1.4 GB) delete.
+
 - 2026-11-11 (Ely):
   - **Tail cap for the 2026-11-14 round:** 10x, at the `larger` level
     for both members, mode shrink. The default level stays `mean`.
@@ -1201,6 +1249,15 @@ pages (TEAM.md, team/README.md, FLUSIGHT-2026-27.md). Works on `dev`.
   Edit below them only.
 
 ## For other lanes
+
+- Model (2026-11-27): on the 2026-11-21 run the Groundhog's US 75th
+  percentile reaches about 93k by Dec 19 while the observed series tops
+  out near 13.7k; the Forecast chart's Both view shows it plainly now.
+  Worth a look at the US width.
+- Submission (2026-11-27): `dev`'s submission notes stop at 2026-11-11;
+  rounds 11-14 to 11-28 are on `assited_dev/bold-sagan-kfw8gg` only, and
+  round 11-28's merge (#4237) is not recorded. The presets the console
+  will open on need each round's submitted settings and files.
 
 - All lanes (2026-10-29): `main` refuses a merge pushed by hand; merge a
   `dev` to `main` pull request with `gh pr merge <n> --merge --repo
