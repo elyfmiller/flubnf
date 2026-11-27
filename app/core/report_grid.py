@@ -145,9 +145,9 @@ def _moved(filed: list, own: list) -> bool:
 def attach_submitted(grid: dict | None, sub: dict) -> dict | None:
     """The grid with each panel's submitted fans ("submitted": model ->
     {"times", "q"}) where the file differs from the panel's own, the
-    model's before the upper-tail cap (Ely, 2026-10-28: a switch per
-    location between the two). Unchanged where nothing moved, rounding to
-    whole admissions included."""
+    model's before the upper-tail cap (Ely, 2026-10-28). Unchanged where
+    nothing moved, rounding to whole admissions included: only a location
+    the cap changed carries a "cap applied" link."""
     if not grid or not sub:
         return grid
     panels = []
@@ -163,6 +163,12 @@ def attach_submitted(grid: dict | None, sub: dict) -> dict | None:
                 s[m] = {"times": list(f["times"]), "q": q}
         panels.append(dict(p, submitted=s) if s else p)
     return dict(grid, panels=panels)
+
+
+def any_capped(grid: dict | None) -> bool:
+    """Whether the cap changed any location's file (the report-wide
+    Submitted / Before cap switch shows only then)."""
+    return any(p.get("submitted") for p in (grid or {}).get("panels") or [])
 
 
 def shown(panel: dict) -> dict:
@@ -309,20 +315,35 @@ def tail_ratios(panel: dict) -> dict:
 
 
 def _times(x: float) -> str:
-    """A ratio as the figure prints it: 8.3x below ten, 15x above."""
-    return f"{x:.1f}\u00d7" if x < 10 else f"{x:.0f}\u00d7"
+    """A ratio as the figure prints it: 8.3x below ten, 15x from ten up
+    (9.97 too: never "10.0x")."""
+    return f"{x:.1f}\u00d7" if round(x, 1) < 10 else f"{x:.0f}\u00d7"
 
 
 def flag_key(when: str = "the last target week") -> str:
-    """The flag words, explained once per page (a paper copy has no
-    hover). `when`: the last target week ("Oct 31")."""
+    """The flag words, explained once per page. `when`: the last target
+    week ("Oct 31"). The tail figures have their own line (tail_key)."""
     return ("falls: a 4-week-ahead median below the latest count · "
             f"disagree: by {when} one model's median is outside the "
-            "other's 95% interval · h3 97.5%: each model's own 4-week-ahead "
-            "97.5% quantile (before any upper-tail cap) over the mean of the "
-            f"last three weeks, red above {TAIL_X:.0f}\u00d7, then the "
-            "submitted file's where the cap moved it · Submitted / Before "
-            "cap: which of the two a location's chart shows")
+            "other's 95% interval")
+
+
+def tail_key(when: str = "the last target week",
+             capped: bool = False) -> str:
+    """The one legend line for the figures beside each location's name
+    (_tail), in plain words under the legend: what "h3 97.5%" and each
+    model's figure are, when one turns red, and (`capped`: the cap changed
+    some location's file) what the arrow is. `when`: the last target week
+    ("Dec 19")."""
+    cap = (", before the cap" if capped else "")
+    arrow = (' <b class="g-tail-f">\u2192</b> marks the same figure in the '
+             "submitted file, after the cap." if capped else "")
+    return ('<p class="g-tailkey"><b>h3 97.5%</b> is the top of each '
+            "model's 95% range for the last forecast week (h3, ending "
+            f"{_html.escape(when)}), as a multiple of the average of the "
+            f"last three weeks of data{cap}; "
+            '<span class="g-tail-over">red</span> above '
+            f"{TAIL_X:.0f}\u00d7.{arrow}</p>")
 
 
 #: the flag key without a date (kept for callers that have no grid)
@@ -560,10 +581,22 @@ def _latest(p: dict) -> str:
             '</span>')
 
 
+def tail_words(m: str, x: float, over: bool, filed) -> str:
+    """One model's figure spelled out (M-E12's form): "97.5% at h3 = 24x
+    the last three weeks' average (name), above 15x, submitted 11x"."""
+    return (f"97.5% at h3 = {_times(x)} the last three weeks' average "
+            f"({_SHORT.get(m, m)})"
+            + (f", above {TAIL_X:.0f}\u00d7" if over else "")
+            + (f", submitted {_times(filed)}" if filed is not None else ""))
+
+
 def _tail(p: dict, colors: dict) -> str:
     """Beside the name: each model's horizon-3 97.5% quantile over the
-    recent level (tail_ratios), after its colour's dot, red above TAIL_X.
-    A legend switch hides its model's figure. "" without a level."""
+    recent level (tail_ratios), after its colour's dot, red above TAIL_X,
+    then the submitted file's where the cap moved it. Each figure carries
+    its words for assistive tech (tail_words; the marks are hidden from
+    it) and the hover says them all. A legend switch hides its model's
+    figure. "" without a level."""
     rs = tail_ratios(p)
     if not rs:
         return ""
@@ -572,56 +605,98 @@ def _tail(p: dict, colors: dict) -> str:
         if m not in rs:
             continue
         x, over, filed = rs[m]
-        then = (f'<span class="g-tail-f">\u2192{_times(filed)}</span>'
+        words = tail_words(m, x, over, filed)
+        then = (f'<span class="g-tail-f" aria-hidden="true">'
+                f'\u2192{_times(filed)}</span>'
                 if filed is not None else "")
-        vals.append(f'<span class="g-tail-v" data-s="{m}"><i style="'
+        vals.append(f'<span class="g-tail-v" data-s="{m}">'
+                    f'<span class="uk-sr">{_html.escape(words)}</span>'
+                    f'<i aria-hidden="true" style="'
                     f'background:{model_color(m, colors)}"></i>'
-                    f'<span class="{"g-tail-over" if over else "g-tail-own"}">'
-                    f'{_times(x)}</span>{then}</span>')
-        why.append(f"{_SHORT[m]} {x:.1f}\u00d7"
-                   + (f", {filed:.1f}\u00d7 as submitted"
-                      if filed is not None else ""))
-    title = ("Each model's own 4-week-ahead (h3) 97.5% quantile, before "
-             "any upper-tail cap, over the mean of the last three weeks, "
-             "then the submitted file's where the cap moved it: "
-             + "; ".join(why) + f". Red above {TAIL_X:.0f}\u00d7")
-    return (f'<span class="g-tail" title="{_html.escape(title)}">'
-            f'<span class="g-tail-l">h3 97.5%</span>{"".join(vals)}</span>')
+                    f'<span class="{"g-tail-over" if over else "g-tail-own"}"'
+                    f' aria-hidden="true">{_times(x)}</span>{then}</span>')
+        why.append(words)
+    return (f'<span class="g-tail" title="{_html.escape("; ".join(why))}">'
+            '<span class="g-tail-l" aria-hidden="true">h3 97.5%</span>'
+            f'{"".join(vals)}</span>')
 
 
-def ba_switch(key: str) -> str:
-    """A location's switch between its submitted forecast (as it opens)
-    and the model's own before the upper-tail cap (Ely, 2026-10-28: to
-    review how much the output stage moves the width). Every switch for
-    the same key moves together (report_v2's handler)."""
-    k = _html.escape(str(key))
-    return ('<span class="uk-seg g-ba" role="group" '
-            'aria-label="Which forecast to show">'
-            f'<button type="button" data-ba-key="{k}" data-ba="s" '
-            'aria-pressed="true" title="what went to the hub">Submitted'
-            '</button>'
-            f'<button type="button" data-ba-key="{k}" data-ba="b" '
-            'aria-pressed="false" title="the model\'s own, before the '
-            'upper-tail cap">Before cap</button></span>')
+def cap_switch() -> str:
+    """The report-wide switch (the kit's segmented switch): every chart
+    shows the submitted file (as it opens) or each model's own forecast
+    before the upper-tail cap (Ely, 2026-10-28: to review how much the
+    output stage moves the width). report_v2's handler moves every
+    location's charts and detail parts."""
+    return ('<span class="uk-seg" id="capswitch" role="group" '
+            'aria-label="Charts: the submitted file, or each model&#x27;s '
+            'own forecast before the cap">'
+            '<button type="button" data-ba-all="s" aria-pressed="true" '
+            'title="what went to the hub">Submitted</button>'
+            '<button type="button" data-ba-all="b" aria-pressed="false" '
+            'title="each model&#x27;s own forecast, before the upper-tail '
+            'cap">Before cap</button></span>')
+
+
+def cap_moves(panel: dict) -> list:
+    """Each model the cap moved on this panel, in the figures' order, as
+    (model, its own h3 97.5%, the submitted file's): [] where the file
+    is the model's own."""
+    s = panel.get("submitted") or {}
+    own = panel.get("before") or panel.get("models") or {}
+    return [(m, float(own[m]["q"][3][4]), float(s[m]["q"][3][4]))
+            for m in reversed(MODELS) if m in s and m in own]
+
+
+def cap_parts(panel: dict, uid: str) -> tuple:
+    """A changed location's "cap applied" link and its line, ("", "") for
+    a location the cap did not change. The link shows the location before
+    the cap (report_v2's handler: every link for one location moves
+    together, whatever the report-wide switch says); the line gives each
+    moved model's h3 97.5% before and after, in admissions and as a
+    multiple of the last three weeks' average. `uid`: unique per place
+    (the panel, the feature, a detail section)."""
+    moves = cap_moves(panel)
+    if not moves:
+        return "", ""
+    from flubnf.tailcap import recent_level
+    key = _html.escape(str(panel.get("data_key", panel.get("key", ""))))
+    lid = "gcap-" + _html.escape(str(uid))
+    r = recent_level([v for _, v in panel.get("observed") or []])
+    bits = []
+    for m, b, a in moves:
+        name = _SHORT.get(m, m)
+        if b == a:
+            bits.append(f"{name} {_fmt(b)}, unchanged")
+            continue
+        x = f" ({_times(b / r)} \u2192 {_times(a / r)})" if r > 0 else ""
+        bits.append(f"{name} {_fmt(b)} \u2192 {_fmt(a)}{x}")
+    where = _html.escape(str(panel.get("name") or panel.get("key") or ""))
+    link = (f'<button type="button" class="g-capbtn" data-cap-key="{key}" '
+            f'aria-expanded="false" aria-controls="{lid}">cap applied'
+            + (f'<span class="uk-sr"> to {where}</span>' if where else "")
+            + "</button>")
+    line = (f'<p class="g-capline" id="{lid}" data-cap-line="{key}" hidden>'
+            "Shown before the cap. h3 97.5%, before \u2192 submitted: "
+            + _html.escape("; ".join(bits)) + ".</p>")
+    return link, line
 
 
 def _figure(p: dict, title: str, fl: str, idx: int, colors: dict,
             cls: str = "gpanel", anchor: bool = True, **size) -> str:
-    """One panel: the name and latest count, then the flags at the right,
-    the switch where the file differs from the model's own, then the
-    chart (the drawing as it opens, the submitted fans). `anchor` is kept
-    for callers."""
+    """One panel: the name and latest count, the tail figures, a "cap
+    applied" link where the file differs from the model's own, then the
+    flags at the right and the link's line (closed), then the chart (the
+    drawing as it opens, the submitted fans). `anchor` is kept for
+    callers."""
     svg, _clipped = panel_svg(shown(p), idx, colors, **size)
     key = _html.escape(str(p.get("key", "")))
     flags_html = f'<span class="g-flags">{fl}</span>' if fl else ""
     data_key = str(p.get("data_key", p.get("key", "")))
-    # on a line of its own, at its own width
-    ba = ('<span class="g-nl"></span>' + ba_switch(data_key)
-          if p.get("submitted") else "")
+    link, line = cap_parts(dict(p, data_key=data_key), p.get("key", ""))
     return (f'<figure class="{cls}" id="g-{key}" '
             f'data-key="{_html.escape(data_key)}">'
             f'<figcaption><b>{title}</b>{_latest(p)}{_tail(p, colors)}'
-            f'{flags_html}{ba}'
+            f'{link}{flags_html}{line}'
             f'</figcaption>{svg}</figure>')
 
 
@@ -645,6 +720,15 @@ def reference_date(asof: str) -> str:
                 + timedelta(days=7)).isoformat()
     except ValueError:
         return ""
+
+
+def _when(grid: dict | None) -> str:
+    """The grid's last target week as "Dec 19"."""
+    times = (grid or {}).get("times") or []
+    try:
+        return _md(times[-1]) if times else "the last target week"
+    except (TypeError, ValueError):
+        return "the last target week"
 
 
 def _drawn(panels) -> tuple:
@@ -681,17 +765,20 @@ def grid_html(grid: dict | None, colors: dict, details=()) -> str:
         return ""
     panels = grid["panels"]
     label = grid.get("last_season_label", "")
-    times = grid.get("times") or []
-    when = _md(times[-1]) if times else "the last target week"
+    when = _when(grid)
     pages = [panels[i:i + PER_PAGE] for i in range(0, len(panels), PER_PAGE)]
     drawn = _drawn(panels)
+    # the tail figures' legend line, once, on the first page
+    key_line = (tail_key(when, any_capped(grid))
+                if any(tail_ratios(shown(p)) for p in panels) else "")
     out = ['<section class="card rp-grid" id="all-locations" '
            'aria-labelledby="h-grid">',
            '<div class="uk-heading"><h2 id="h-grid">All locations</h2></div>']
     for k, page in enumerate(pages, 1):
         out.append('<div class="gpage">'
                    f'<div class="g-head" title="{_html.escape(flag_key(when))}">'
-                   f'{_legend(colors, label, drawn)}</div>'
+                   f'{_legend(colors, label, drawn)}'
+                   f'{key_line if k == 1 else ""}</div>'
                    '<div class="g-cells">')
         for i, p in enumerate(page):
             key = str(p.get("key", ""))
@@ -753,11 +840,20 @@ def grid_css() -> str:
    align-self:center;-webkit-print-color-adjust:exact;print-color-adjust:exact}
  .g-tail-over{color:var(--bad);font-weight:700}
  .g-tail-f{color:var(--mut)}
- /* the switch: Submitted (as it opens) or the model's own before the cap */
- .g-nl{flex-basis:100%;height:0}
- .g-ba{margin:.15rem 0 .1rem}
- .g-ba > button{padding:.05rem .5rem;font-size:var(--fs-micro);
-   font-weight:650}
+ /* the legend line for those figures, on a line of its own */
+ .g-tailkey{flex-basis:100%;margin:.15rem 0 0;color:var(--mut);
+   font-size:var(--fs-label);line-height:1.4}
+ .g-tailkey b{color:var(--ink);font-weight:650}
+ /* a location the cap changed: a text link that shows it before the
+    cap, and its line of figures under the name (closed until then) */
+ .g-capbtn{background:none;border:0;padding:0;margin:0;font:inherit;
+   font-size:var(--fs-micro);font-weight:650;color:var(--gold);
+   text-decoration:underline;text-underline-offset:2px;cursor:pointer;
+   white-space:nowrap}
+ .g-capbtn:hover{color:var(--ink)}
+ .g-capline{flex-basis:100%;margin:.1rem 0 .15rem;color:var(--mut);
+   font-size:var(--fs-micro);line-height:1.35;
+   font-variant-numeric:tabular-nums}
  html.g-off-pf .g-tail [data-s="pf"],
  html.g-off-analogue .g-tail [data-s="analogue"]{display:none}
  /* a panel's flag: its word in its state's color with no box, as the
@@ -803,6 +899,9 @@ def grid_css() -> str:
   .gpanel{padding:1mm 1.5mm 0;border-radius:2mm}
   .gpanel figcaption{font-size:8pt}
   .g-cur,.g-flag,.g-tail{font-size:7pt}
+  .g-tailkey{font-size:6.6pt}
+  /* paper keeps the submitted drawing: no link, no before line */
+  .g-capbtn,.g-capline{display:none!important}
   .g-svg{width:100%;height:auto}
   .g-flag{cursor:auto}
  }

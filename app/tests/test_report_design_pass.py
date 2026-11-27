@@ -276,8 +276,9 @@ def test_the_map_folds_and_the_us_panel_stays(tmp_path):
 
 
 def test_each_changed_location_switches_in_its_detail_too(tmp_path):
-    """The detail's fan and numbers come in both versions behind one
-    switch (the numbers follow the fan's); every switch for a location
+    """The detail's fan and numbers come in both versions (the numbers
+    follow the fan's), set by the report-wide switch or the location's
+    "cap applied" link at the fan's heading; every link for a location
     moves together; ids stay unique."""
     from app.tests.test_report_grid import _filed
     b = _bundle()
@@ -287,12 +288,15 @@ def test_each_changed_location_switches_in_its_detail_too(tmp_path):
     sec = html[html.index('<section class="state" id="st-OH"'):]
     sec = sec[:sec.index("</section>")]
     assert sec.count('data-ba-for="OH"') == 2            # the fan, the numbers
-    assert sec.count('data-ba-key="OH" data-ba="b"') == 1   # one switch
+    assert sec.count('data-cap-key="OH"') == 1           # one link
+    assert 'aria-controls="gcap-st-OH"' in sec and 'id="gcap-st-OH"' in sec
     assert 'id="num-OH"' in sec and 'id="num-OH-before"' in sec
     assert sec.count('<div data-ba-v="b" hidden>') == 2
-    # the panel's switch is the same key, and the handler moves them all
-    assert html.count('data-ba-key="OH" data-ba="b"') == 2
-    assert "window.rpBA = set;" in html and "Plotly.Plots.resize" in html
-    # without the files, no switch anywhere
+    assert "data-ba-key" not in html                     # no per-card pair
+    # the panel's link is the same key, and the handler moves them all
+    assert html.count('data-cap-key="OH"') == 2
+    assert "window.rpBA = {all: all, cap: cap};" in html
+    assert "Plotly.Plots.resize" in html
+    # without the files, no switch and no link anywhere
     plain = _render(tmp_path / "plain")
-    assert 'data-ba-key="' not in plain
+    assert 'data-ba-all="' not in plain and 'data-cap-key="' not in plain

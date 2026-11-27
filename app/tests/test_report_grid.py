@@ -443,7 +443,9 @@ def test_each_panel_names_its_h3_97_5_over_the_recent_level():
     assert ">8.5\u00d7</span>" in cap and "g-tail-over" not in cap
     assert 'data-s="analogue"' in cap               # the legend switch hides it
     assert "8.5 times the recent level" in G.panel_label(p)
-    assert "h3 97.5%" in G.flag_key("Jan 31")
+    # one legend line says what the figure is; the flag key no longer does
+    assert "h3 97.5%" in G.tail_key("Jan 31")
+    assert "h3 97.5%" not in G.flag_key("Jan 31")
 
 
 def test_over_fifteen_times_reads_red():
@@ -454,9 +456,11 @@ def test_over_fifteen_times_reads_red():
     assert not at[1] and G._times(at[0]) == "15\u00d7"
     over = G.tail_ratios(_wide(q975=15 * 3 + 1, obs=3.0))["analogue"]
     assert over[1]
-    assert "before any upper-tail cap" in G.flag_key("Jan 31")
+    assert "red</span> above 15\u00d7" in G.tail_key("Jan 31")
+    assert "before the cap" in G.tail_key("Jan 31", capped=True)
     html = G._figure(_wide(q975=600.0), "X", "", 0, COLORS)
-    assert '<span class="g-tail-over">30\u00d7</span>' in html
+    assert ('<span class="g-tail-over" aria-hidden="true">30\u00d7</span>'
+            in html)
     css = G.grid_css()
     assert ".g-tail-over{color:var(--bad)" in css
     assert 'html.g-off-analogue .g-tail [data-s="analogue"]' in css
@@ -522,12 +526,12 @@ def test_a_location_opens_on_its_file_and_keeps_the_models_own(tmp_path):
     shown = G.shown(oh2)
     assert shown["models"]["pf"]["q"][3][4] == 30.0
     assert shown["before"]["pf"]["q"][3][4] == 46.0
-    # the switch, Submitted pressed; the drawing is the file's
+    # no switch on the panel (one report-wide switch): a "cap applied"
+    # link, closed; the drawing is the file's
     html = G._figure(oh2, "Ohio", "", 0, COLORS)
-    assert ('data-ba-key="OH" data-ba="s" aria-pressed="true"' in html
-            and 'data-ba-key="OH" data-ba="b" aria-pressed="false"' in html)
-    assert ">Before cap</button>" in html
-    assert "data-ba-key" not in G._figure(al2, "Alabama", "", 0, COLORS)
+    assert "data-ba-key" not in html and ">Before cap<" not in html
+    assert 'data-cap-key="OH" aria-expanded="false"' in html
+    assert "data-cap-key" not in G._figure(al2, "Alabama", "", 0, COLORS)
     # the figure: the model's own, then the file's
     x, _over, filed = G.tail_ratios(shown)["pf"]
     assert filed is not None and filed < x
@@ -556,6 +560,9 @@ def test_an_older_bundles_rounding_is_not_a_move(tmp_path):
               for r in oh["models"]["pf"]["q"]]}}))
     g2 = G.attach_submitted(g, G.submitted_fans(tmp_path))
     assert not any(p.get("submitted") for p in g2["panels"])
+    assert not G.any_capped(g2)                     # no switch, no link
+    assert G.cap_parts(next(p for p in g2["panels"] if p["key"] == "OH"),
+                       "OH") == ("", "")
     # whole-admission grids compare exactly: one admission at h3 is a move
     g = _grid()
     oh = next(p for p in g["panels"] if p["key"] == "OH")
@@ -566,3 +573,4 @@ def test_an_older_bundles_rounding_is_not_a_move(tmp_path):
     g2 = G.attach_submitted(g, G.submitted_fans(tmp_path / "w"))
     oh2 = next(p for p in g2["panels"] if p["key"] == "OH")
     assert oh2["submitted"]["pf"]["q"][3][4] == f["q"][3][4] - 1
+    assert G.cap_moves(oh2) == [("pf", f["q"][3][4], f["q"][3][4] - 1)]
