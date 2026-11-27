@@ -121,6 +121,21 @@ def test_outcome_chips_name_the_mechanistic_member_by_what_the_row_ran():
                                          "oracle": "admissions-fbase@x"}))
     assert now["engine"] == runs.ENGINE_LABELS["all"]
     assert now["Oracle step"] == "on (console default)"
+    # the engine row is built from the member's name, never by editing
+    # the text: a filter-only run is the filter alone, not "... only"
+    pf_only = json.dumps({"forecast_date": "2098-01-03", "engine": "pf"})
+    solo = dict(runs.spec_settings(pf_only, {"pf_cells": 3}))
+    assert solo["engine"] == PF_LABEL_FILTER
+    solo = dict(runs.spec_settings(pf_only, {"pf_cells": 3,
+                                             "oracle": "admissions-fbase@x"}))
+    assert solo["engine"] == runs.ENGINE_LABELS["pf"]
+    # every row of the results table names the member one way: the
+    # anchor-notes row too
+    page = runs.results_html({"pf_cells": 3, "pf_relwis": 0.8,
+                              "pf_anchor_notes": {"Ohio": "anchored on "
+                                                  "2098-01-03"}}, spec)
+    assert f"{PF_LABEL_FILTER}: 1 location anchored earlier" in page
+    assert PF_LABEL_ORACLE not in page
     # asked, not yet run (the progress card): the console's default
     asked = dict(runs.spec_settings(spec))
     assert asked["engine"] == runs.ENGINE_LABELS["all"]

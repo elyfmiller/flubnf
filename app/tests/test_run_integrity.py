@@ -51,11 +51,14 @@ def _isolated_status():
     ui_shared._invalidate_scans()
 
 
-def _fake_run(monkeypatch, tmp_path, status_by_cell, collected, aux=None):
+def _fake_run(monkeypatch, tmp_path, status_by_cell, collected, aux=None,
+              apply_week=None):
     """Drive pipeline._run_all end to end with fake engines (injected PF
     statuses and samples, an analogue for every location, no truth). `aux`
-    is the Groundhog donor choice (None: shipped bank, "": bare analogue).
-    Returns (ledger row, outcome, workroot)."""
+    is the Groundhog donor choice (None: shipped bank, "": bare analogue);
+    `apply_week` replaces the stubbed Oracle step (one that raises ends the
+    run between the fits and the step). Returns (ledger row, outcome,
+    workroot)."""
     import app.core.engines.analogue as an_engine
     import app.core.engines.pf as pf_engine
     import app.core.floor as floor_mod
@@ -75,9 +78,9 @@ def _fake_run(monkeypatch, tmp_path, status_by_cell, collected, aux=None):
                                    for loc, s in collected.items()})
     import app.core.oracle as oracle_mod
     # the Oracle step needs a vintage this hub-free test lacks: stub it
-    monkeypatch.setattr(oracle_mod, "apply_week",
+    monkeypatch.setattr(oracle_mod, "apply_week", apply_week or (
                         lambda s, asof, wd, **kw: (s, {"applied": True,
-                                                       "bank": {"label": "stub"}}))
+                                                       "bank": {"label": "stub"}})))
     monkeypatch.setattr(an_engine, "run",
                         lambda spec: {loc: {h: dict(q)
                                             for h, q in AN_Q.items()}
@@ -124,6 +127,52 @@ def test_a_location_with_no_pf_member_is_absent_from_the_sihrs_file_only(
     assert outcome["analogue_aux"].startswith("flusurv+flusurv@")
     chips = ui_shared._outcome_chips(json.dumps(outcome))
     assert "analogue-only" not in chips and "withheld" not in chips
+    # the run records what it asked of the Oracle step, then its bank
+    assert outcome["oracle_wanted"] is True and outcome["oracle"] == "stub"
+
+
+def test_a_current_run_that_fails_after_its_fits_keeps_the_members_name(
+        tmp_path, monkeypatch):
+    """A run that errors between the filter's fits and the Oracle step
+    records fits and no bank, as a run from before the step does; it
+    recorded the step as wanted before its fits, so it keeps the member's
+    name on Storage's row, its run page and its settings, never the filter
+    alone. A row from before that record, ended in an error, is not taken
+    for a pre-step run either."""
+    from app.core import runs
+    from app.core.site_build import PF_LABEL_FILTER, PF_LABEL_ORACLE
+
+    def no_bank(*a, **k):
+        raise RuntimeError("the donor bank could not be built")
+
+    row, outcome, w = _fake_run(
+        monkeypatch, tmp_path, {"Ohio_r0": "ok", "Texas_r0": "ok"},
+        {"Ohio": SAMPLES, "Texas": SAMPLES}, apply_week=no_bank)
+    assert row["status"] == "error" and "donor bank" in outcome["error"]
+    assert outcome["pf_cells"] == 2 and "oracle" not in outcome
+    assert outcome["oracle_wanted"] is True
+    assert runs.pf_member_name(outcome) == PF_LABEL_ORACLE
+    chips = ui_shared._outcome_chips(json.dumps(outcome))
+    assert chips.startswith(f"{PF_LABEL_ORACLE}: 2 fits")
+    assert PF_LABEL_FILTER not in chips
+    ui_shared._invalidate_scans()
+    html = client.get(f"/runs/{row['run_id']}").text
+    assert f'<th scope="row">{PF_LABEL_ORACLE} fits</th>' in html
+    assert PF_LABEL_FILTER not in html
+    assert "a run from before the step" not in html
+    # the same shape from a run before the intent was recorded: its error
+    # keeps the member's name too
+    legacy = {k: v for k, v in outcome.items() if k != "oracle_wanted"}
+    assert runs.pf_member_name(legacy) == PF_LABEL_ORACLE
+    settings = dict(runs.spec_settings(row["spec"], legacy))
+    assert settings["engine"] == runs.ENGINE_LABELS["all"]
+    assert "before the step" not in settings["Oracle step"]
+    # a run that finished before the step still reads as the filter alone
+    done = {"pf_cells": 2, "pf_relwis": 0.8}
+    assert runs.pf_member_name(done) == PF_LABEL_FILTER
+    # and one that asked for no step, ended early, as the filter alone
+    assert runs.pf_member_name({"pf_cells": 2, "error": "x",
+                                "oracle_wanted": False}) == PF_LABEL_FILTER
 
 
 def test_all_pf_fits_failed_still_ships_the_groundhog(

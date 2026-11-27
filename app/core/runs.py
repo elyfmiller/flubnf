@@ -132,13 +132,15 @@ def spec_settings(spec, outcome=None) -> list:
                         + " (no PF engine on this machine)")
     # the mechanistic member as it ran (pf_member_name), as the run's
     # results and Storage name it: a run without the Oracle step, or from
-    # before it, ran the filter alone
+    # before it, ran the filter alone, and the engine row is built from
+    # that name (HUB_MEMBER_NAMES the other member's)
     from app.core.site_build import PF_LABEL_ORACLE
     ran_as = pf_member_name(o) if o else PF_LABEL_ORACLE
-    pf_pre_step = bool(o) and not o.get("oracle") and (
-        "pf_cells" in o or o.get("pf_relwis") is not None)
-    if ran_as != PF_LABEL_ORACLE:
-        engine_label = engine_label.replace(PF_LABEL_ORACLE, ran_as)
+    pf_pre_step = bool(o) and _before_the_step(o)
+    words = {"all": "both models ({pf} and {analogue})", "pf": "{pf}"}
+    if ran_as != PF_LABEL_ORACLE and not pf_absent and engine in words:
+        names = {**HUB_MEMBER_NAMES, "pf": ran_as}
+        engine_label = words[engine].format(**names)
     pairs = [("forecast date", str(d.get("forecast_date", "") or "unknown")),
              ("locations", locations_phrase(d.get("locations"))),
              ("engine", engine_label)]
@@ -516,12 +518,14 @@ def pf_member_name(outcome: dict) -> str:
     """The mechanistic member's name on one run, from its ledger outcome,
     by the season trees' rule (site_build.PF_LABEL_ORACLE and
     PF_LABEL_FILTER): the member when the run applied the Oracle step (its
-    bank label), the filter alone when it ran without it (oracle = none,
-    or a run from before the step, which records no bank). A run whose
-    filter never ran (skipped, no engine) is named for the member it was
-    to run; a run on a dataset as the dataset pages name its member
-    (custom_run.MEMBER_LABELS). Storage's ledger and the run page name the
-    member this one way, in every fact of the run."""
+    bank label) or asked for it (oracle_wanted, which the pipeline records
+    before the fits: a run that ended between them and the step), the
+    filter alone when it ran without it (oracle = none, or a run from
+    before the step: _before_the_step). Any other run (its filter never
+    ran, or it ended in an error before recording either) is named for the
+    member it was to run; a run on a dataset as the dataset pages name its
+    member (custom_run.MEMBER_LABELS). Storage's ledger and the run page
+    name the member this one way, in every fact of the run."""
     from app.core.site_build import PF_LABEL_FILTER, PF_LABEL_ORACLE
     o = outcome if isinstance(outcome, dict) else {}
     if o.get("dataset"):
@@ -530,8 +534,21 @@ def pf_member_name(outcome: dict) -> str:
     ox = str(o.get("oracle") or "")
     if ox:
         return PF_LABEL_FILTER if ox.startswith("none") else PF_LABEL_ORACLE
-    ran = "pf_cells" in o or o.get("pf_relwis") is not None
-    return PF_LABEL_FILTER if ran else PF_LABEL_ORACLE
+    if "oracle_wanted" in o:
+        return PF_LABEL_ORACLE if o["oracle_wanted"] else PF_LABEL_FILTER
+    return PF_LABEL_FILTER if _before_the_step(o) else PF_LABEL_ORACLE
+
+
+def _before_the_step(o: dict) -> bool:
+    """Whether an outcome is a run's from before the Oracle step existed:
+    its filter ran and the run finished, recording neither the step's bank
+    (oracle) nor what it asked of the step (oracle_wanted), both of which
+    every run since records. A run that ended in an error records no bank
+    either, as it may have stopped between its fits and the step, so it is
+    never taken for one (it keeps the member's name)."""
+    return (not o.get("oracle") and "oracle_wanted" not in o
+            and not o.get("error")
+            and ("pf_cells" in o or o.get("pf_relwis") is not None))
 
 
 def anchor_notes_row(o: dict, names: dict, skip=()):
@@ -845,8 +862,10 @@ def results_html(outcome, spec, heading: bool = True,
         return dataset_results_html(o, d, heading)
     mode = str(extra.get("mode") or "realtime")
     rows = [("Run type", MODE_LABELS.get(mode, mode))]
-    # the mechanistic member by what this run ran, as Storage names it
+    # the mechanistic member by what this run ran, as Storage names it, in
+    # every row of the table
     pf_name = pf_member_name(o)
+    names = {**HUB_MEMBER_NAMES, "pf": pf_name}
     for name, key, cells_key in _RESULT_ROWS:
         if key == "pf_relwis":
             name = pf_name
@@ -883,16 +902,16 @@ def results_html(outcome, spec, heading: bool = True,
     # the states chosen in Data issues: that row says what came of them
     from app.core import missing as _ms
     covered = set(_ms.choices_of(extra))
-    arow = anchor_notes_row(o, HUB_MEMBER_NAMES, skip=covered)
+    arow = anchor_notes_row(o, names, skip=covered)
     if arow:
         rows.append(arow)
-    nrow = zero_anchor_row(o, HUB_MEMBER_NAMES, skip=covered)
+    nrow = zero_anchor_row(o, names, skip=covered)
     if nrow:
         rows.append(nrow)
-    frow = no_donors_row(o, HUB_MEMBER_NAMES)
+    frow = no_donors_row(o, names)
     if frow:
         rows.append(frow)
-    drow = data_issues_row(o, extra, HUB_MEMBER_NAMES)
+    drow = data_issues_row(o, extra, names)
     if drow:
         rows.append(drow)
     from app.core import missing as _missing

@@ -719,6 +719,12 @@ def _run_all(spec: RunSpec) -> None:
             pf_engine.prepare(spec, workroot)
             _phase(f"filtering {len(spec.locations)} location(s) × "
                    f"{spec.replicates} replicate(s)")
+            # what the run asks of the Oracle step, recorded before the
+            # fits: a run that ends between them and the step (an error)
+            # is still named for the member it was running
+            # (runs.pf_member_name), never taken for one from before the step
+            from app.core import oracle as oracle_mod
+            outcome["oracle_wanted"] = oracle_mod.wanted(spec.extra)
             status = pf_engine.execute(workroot)
             fails = {k: v for k, v in status.items() if v != "ok"}
             outcome["pf_cells"] = len(status)
@@ -745,8 +751,7 @@ def _run_all(spec: RunSpec) -> None:
             # the Oracle step (app/core/oracle.py), before anything downstream
             # and before the floor. oracle = none is research: file withheld
             # in step 4, oracle.json records the step did not run.
-            from app.core import oracle as oracle_mod
-            if oracle_mod.wanted(spec.extra):
+            if outcome["oracle_wanted"]:
                 _phase("the Oracle step: the donor bank from the vintage")
                 pf_raw = pf_samples
                 pf_samples, oprov = oracle_mod.apply_week(
