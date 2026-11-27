@@ -17,19 +17,17 @@
      5. policies: the "every run" checklist, the scoring definitions */
 
 /* ---- 1. contents row: the bar stays in view while the page scrolls;
-   its chips wrap to a second row rather than hide ---- */
+   its links (plain links, no outline: they go somewhere, they set
+   nothing) wrap to a second row rather than hide ---- */
 .mt-tocbar{position:sticky;top:0;z-index:5;margin:0 0 var(--gap);
   padding:.4rem 0;background:var(--bg)}
-.mt-toc{display:flex;flex-wrap:wrap;gap:.35rem;font-size:var(--fs-label)}
-.mt-toc a{flex:none;padding:.2rem .7rem;border:1px solid var(--line);
-  border-radius:var(--r-pill);background:var(--card);color:var(--ink);
-  font-weight:600;white-space:nowrap}
-.mt-toc a:hover{border-color:var(--accent-ink);color:var(--accent-ink);
-  text-decoration:none}
-/* the section being read (the page's scrollspy sets aria-current) */
-.mt-toc a[aria-current]{border-color:var(--accent-ink);
-  background:color-mix(in srgb,var(--accent-ink) 12%,var(--card));
-  box-shadow:inset 0 0 0 1px var(--accent-ink)}
+.mt-toc{display:flex;flex-wrap:wrap;gap:.1rem 1.1rem;font-size:var(--fs-label)}
+.mt-toc a{flex:none;padding:.2rem 0;white-space:nowrap}
+/* the section being read (the page's scrollspy sets aria-current): the
+   ink, underlined in the accent */
+.mt-toc a[aria-current]{color:var(--ink);text-decoration:underline;
+  text-decoration-color:var(--accent-ink);text-decoration-thickness:2px;
+  text-underline-offset:.3em}
 /* the contents row and its Print / Save as PDF button (added by script) */
 .mt-tocbar{display:flex;align-items:center;gap:.4rem .8rem}
 .mt-toc{flex:1 1 auto;min-width:0}
@@ -37,9 +35,9 @@ button.mt-print{flex:none;margin:0;padding:.2rem .75rem;font-size:var(--fs-label
   white-space:nowrap}
 /* an anchor jump (and keyboard focus) lands below the sticky bar: its
    measured height (--mt-toc-h, set by the page script) plus a little air;
-   4.8rem (two rows of chips) without the script */
+   4.3rem (two rows of links) without the script */
 .mt-doc [id],.mt-doc :focus{scroll-margin-top:calc(var(--mt-toc-h,4.3rem) + .5rem)}
-/* a phone: the chips are one row that scrolls sideways, the bar stays
+/* a phone: the links are one row that scrolls sideways, the bar stays
    short, and the print button drops (a phone prints from its share menu) */
 @media (max-width:640px){
   .mt-toc{flex-wrap:nowrap;overflow-x:auto;scrollbar-width:none;
