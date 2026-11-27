@@ -20,6 +20,7 @@ from pathlib import Path
 import pytest
 
 from app.core import datasets as D
+from app.ui import pipeline
 
 from test_datasets_ui import client, isolated  # noqa: F401
 from test_dataset_upload_box import fact
@@ -273,10 +274,13 @@ def covid(folder="covid_snapshots"):
     return [(f"{folder}/{p.name}", p.read_bytes()) for p in COVID]
 
 
-def test_a_covid_snapshot_folder_is_one_vintage_true_dataset():
+def test_a_covid_snapshot_folder_is_one_vintage_true_dataset(monkeypatch):
     """A made-up COVID-19 admissions series, 6 weekly snapshot files as
     the snapshot zone posts them (a folder, without script too), its
     columns named week_ending, jurisdiction, admissions, population."""
+    # the status leads with what can forecast the file, which depends on
+    # the engine being there: set, so the test reads the same everywhere
+    monkeypatch.setattr(pipeline, "_pf_engine_state", lambda: "ready")
     j = _snap_post("/data/datasets/check?where=replay", covid()).json()
     assert j["ok"] and j["name"] == "covid_snapshots"
     assert j["status"] == "Can forecast: 2 groups, 18 weeks, 6 snapshot files."
@@ -341,7 +345,8 @@ def test_one_file_in_the_snapshot_zone_says_it_is_final_data():
     assert "read as final data" in client.get(r.headers["location"]).text
 
 
-def test_several_files_are_checked_together():
+def test_several_files_are_checked_together(monkeypatch):
+    monkeypatch.setattr(pipeline, "_pf_engine_state", lambda: "ready")
     j = _post("/data/datasets/check?where=replay", snaps()).json()
     assert j["ok"] and j["name"] == "flu"
     assert j["status"] == "Can forecast: 3 groups, 50 weeks, 8 snapshot files."

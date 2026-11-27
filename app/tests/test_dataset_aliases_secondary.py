@@ -86,9 +86,13 @@ def test_the_review_files_map_with_no_choice():
     assert rep.codes == ["weekday_end"]
 
 
-def test_the_upload_check_reads_them_as_ready():
+def test_the_upload_check_reads_them_as_ready(monkeypatch):
     from fastapi.testclient import TestClient
+    from app.ui import pipeline
     from app.ui import server as srv
+    # the status leads with what can forecast the file, which depends on
+    # the engine being there: set, so the test reads the same everywhere
+    monkeypatch.setattr(pipeline, "_pf_engine_state", lambda: "ready")
     client = TestClient(srv.app)
     for raw in (az_rsv_counties(), uk_deaths_sunday(),
                 au_flu(date(2023, 9, 2))):
