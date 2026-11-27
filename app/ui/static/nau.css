@@ -510,7 +510,7 @@ button.dm-step[disabled]{opacity:.4}
 .dm-fs-out{flex:none;min-width:3.4em;text-align:right;font-weight:700;
   font-variant-numeric:tabular-nums}
 button.dm-reset{min-height:24px;margin:0;padding:.12rem .65rem;border:1px solid var(--field-line);
-  border-radius:var(--r-pill);background:transparent;color:var(--nav-ink);
+  border-radius:var(--r-sm);background:transparent;color:var(--nav-ink);
   font-size:var(--fs-label);font-weight:600}
 button.dm-reset:hover{background:color-mix(in srgb,var(--nav-ink) 8%,transparent)}
 button.dm-reset[disabled]{opacity:.45}
@@ -732,8 +732,6 @@ code{background:var(--bg);padding:.12rem .35rem;border-radius:5px;font-size:.85e
 .relwis{font-variant-numeric:tabular-nums;font-weight:650}
 .hint{color:var(--mut);font-size:var(--fs-hint)}
 .big{font-size:var(--fs-big);font-weight:750;font-variant-numeric:tabular-nums}
-.pill{display:inline-block;padding:.1rem .55rem;border-radius:99px;
-  border:1px solid var(--line);font-size:var(--fs-micro)}
 progress{width:100%;height:12px;appearance:none;-webkit-appearance:none;
   border:1px solid var(--line);border-radius:99px;background:var(--track);
   overflow:hidden}
@@ -1304,8 +1302,10 @@ tr[aria-current="true"] td{font-weight:600}
 svg .dg-h-ink{fill:color-mix(in srgb,var(--slate) 55%,var(--ink))}
 
 /* polish: forecast-output-runs */
-/* view toggles (data view, fan model): small pills like the Real-time /
-   Vintage modes, so a selected view never reads as the primary action */
+/* the Forecast chart's model buttons (forecast.html, built by script):
+   the last pill-shaped switch, kept only while that chart keeps its
+   switch; every other switch is the kit's uk-seg. Delete with it
+   (app/tests/test_no_pills.py lists it) */
 .seg{display:flex;flex-wrap:wrap;gap:.4rem;margin:.45rem 0}
 .seg button{margin:0;padding:.15rem .7rem;border-radius:99px;
   font-size:.85rem;font-weight:600}

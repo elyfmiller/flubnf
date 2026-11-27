@@ -238,6 +238,8 @@ The short name of the formula or figure beside it: an equation's caption, as pla
 
 One choice among a few, joined in one outline: the chart's view, the map's model, a horizon. The children are buttons whose `aria-pressed` says which is on (a script flips it), or links with the current choice a `<span aria-current="true">`, or, where the switch shows one of several panels and its arrow keys move among them (the Sandbox's diagram views), tabs in a `role="tablist"` whose `aria-selected` says which shows; the choice is filled as a primary button is. It has no macro because its buttons are the page's own (ids, handlers); the kit only draws them.
 
+A choice is never drawn as a rounded pill: a switch is this one, a choice that leads elsewhere is a plain link, an on/off is a checkbox, a pick among many is a select, and a fold's toggle is the fold's own row (chevron and words, with a quiet count beside them). `app/tests/test_no_pills.py` renders the pages and fails on any button, link or fold summary drawn with the pill radius.
+
 ```jinja
 <div class="uk-seg" role="group" aria-label="Chart view">
  <button type="button" id="vb-mode-raw" aria-pressed="true">full series</button>
