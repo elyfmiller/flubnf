@@ -308,6 +308,7 @@ function mk(id){
   e.querySelectorAll = function(){ return e.children; };
   e.remove = function(){ e.removed = true; }; e.focus = function(){};
   e.click = function(){ clicked.push({href: e.href, download: e.download}); };
+  e.on = function(ev, fn){ (e.handlers = e.handlers || {})[ev] = fn; };
   e.content = {cloneNode: function(){ return mk('fragment'); }};
   return e;
 }
@@ -347,6 +348,7 @@ function fig(traces, layout){
   return {
     title: (layout.title || {}).text, ytitle: (ya.title || {}).text,
     yrange: ya.range || null, autorange: ya.autorange,
+    xrange: (layout.xaxis || {}).range || null,
     note: (layout.legend.title || {}).text || '',
     paper: layout.paper_bgcolor, plot: layout.plot_bgcolor,
     ink: layout.font.color, grid: layout.xaxis.gridcolor,
@@ -650,6 +652,119 @@ def test_save_figure_writes_what_is_drawn_while_a_draw_waits(tmp_path):
     assert got["saved"]["yrange"] == got["drawn"]["yrange"]
     assert got["clicked"][0]["download"] == (
         f"flubnf_forecast_Ohio_{FD}_models.png")
+
+
+@pytestmark_node
+def test_the_flusight_band_alone_past_the_top_is_not_called_cut(
+        tmp_path, monkeypatch):
+    """The cut note speaks of the models' own 95% shading: the FluSight
+    ensemble's band running past the top does not set it."""
+    from app.ui.routes import forecast as fc
+    _hub_run(narrow=True)
+    over = {loc: {str(h): {"0.05": 1.0, "0.25": 10.0, "0.5": 12.0,
+                           "0.75": 14.0, "0.95": 1e7} for h in (1, 2, 3, 4)}
+            for loc in OBS}
+    monkeypatch.setattr(fc, "_official_overlay", lambda d, locs: {
+        "FluSight-ensemble": over} if d == FD else {})
+    page = _page()
+    fanq = _const(page, "FANQ")
+    assert "FluSight-ensemble" in _const(page, "OFFQ")
+    got = _drive(tmp_path, page, "US")
+    both = got["views"]["both"]
+    top = both["yrange"][1]
+    assert top == pytest.approx(_top(fanq, "US"))   # the medians' top
+    # the ensemble's upper edge passes it, the models' own do not
+    assert max(v for y in both["tops"] for v in y if v is not None) == 1e7
+    for m in MEMBERS:
+        assert max(q["0.975"] for q in fanq[m]["US"].values()) <= top
+    assert both["note"] == got["saved"][0]["note"] == NOTE.format("95%")
+
+
+# the reader moves the card's axes, then saves: Plotly's relayout event
+# and the layout it leaves, as a double click (a fit), a zoom away from
+# the forecast weeks, a zoom over them, the tick policy's own relayout, and
+# a redraw after a zoom
+ZOOM = r"""
+(async function(){
+  await new Promise(function(r){ setTimeout(r, 0); });
+  FIDX = FLOCS.indexOf(PICK); await drawFan();
+  var gd = els['fanplot'], out = {};
+  function moved(ev, x, y){
+    gd.layout.xaxis.range = x && x.range; gd.layout.xaxis.autorange = x.auto;
+    gd.layout.yaxis.range = y && y.range; gd.layout.yaxis.autorange = y.auto;
+    gd.handlers['plotly_relayout'](ev); }
+  async function save(){ saved.length = 0; await els['fan-save'].onclick();
+    return fig(saved[0].fig.data, saved[0].fig.layout); }
+  out.drawn = chart();
+  moved({'xaxis.autorange': true, 'yaxis.autorange': true},
+        {range: ['2026-09-01', '2026-11-14'], auto: true},
+        {range: [0, 1e9], auto: true});
+  out.fit = await save();
+  moved({'xaxis.range[0]': '2026-09-01 00:00', 'yaxis.range[1]': ZY},
+        {range: ['2026-09-01 00:00', '2026-10-10 12:00'], auto: false},
+        {range: [0, ZY], auto: false});
+  out.past = await save();
+  moved({'xaxis.range[0]': '2026-10-10 00:00', 'yaxis.range[1]': ZY},
+        {range: ['2026-10-10 00:00', '2026-11-20 00:00'], auto: false},
+        {range: [0, ZY], auto: false});
+  out.over = await save();
+  await drawFan();
+  gd.handlers['plotly_relayout']({'xaxis.tickmode': 'linear',
+                                  'xaxis.dtick': 604800000});
+  out.ticks = await save();
+  moved({'yaxis.range[1]': ZY}, {range: null, auto: true},
+        {range: [0, ZY], auto: false});
+  await drawFan();
+  out.redrawn = await save();
+  console.log(JSON.stringify(out));
+})();
+"""
+
+
+@pytestmark_node
+def test_save_figure_keeps_the_readers_axes(tmp_path):
+    """A double click to fit saves everything with no cut note; a zoom
+    keeps its ranges, the note only where a model's band passes the saved
+    top within the saved weeks; the tick policy's relayout and a redraw
+    leave the card's own range."""
+    _hub_run()
+    page = _page()
+    fanq = _const(page, "FANQ")
+    top = _top(fanq, "Ohio")
+    zy = top / 2
+    tok = {"page": _tokens(DARK), "probe": _tokens(DARK, LIGHT_PROBE)}
+    drv = tmp_path / "zoom.js"
+    drv.write_text("var ROOT = {}, TOK = " + json.dumps(tok) + ";\n"
+                   + STUB + FIG + ZS._fan_script(page) + "\nvar PICK = "
+                   + '"Ohio", ZY = ' + json.dumps(zy) + ";\n" + ZOOM,
+                   encoding="utf-8")
+    out = subprocess.run([ZS.NODE, str(drv)], capture_output=True,
+                         text=True, encoding="utf-8", timeout=60)
+    assert out.returncode == 0, out.stderr[-1500:]
+    got = json.loads(out.stdout.strip().splitlines()[-1])
+    # the card: the rule's top, cut
+    assert got["drawn"]["yrange"] == pytest.approx([0, top])
+    assert got["drawn"]["note"] == NOTE.format("95%") + CUT
+    # a double click: fitted to everything, nothing cut
+    fit = got["fit"]
+    assert fit["yrange"] is None and fit.get("autorange") is not False
+    assert fit["xrange"] is None
+    assert fit["note"] == NOTE.format("95%")
+    # a zoom on the weeks before the forecast: its ranges, nothing cut there
+    past = got["past"]
+    assert past["yrange"] == pytest.approx([0, zy])
+    assert past["xrange"] == ["2026-09-01 00:00", "2026-10-10 12:00"]
+    assert past["note"] == NOTE.format("95%")
+    # a zoom over the forecast weeks under the bands' tops: cut, said so
+    over = got["over"]
+    assert over["yrange"] == pytest.approx([0, zy])
+    assert over["xrange"] == ["2026-10-10 00:00", "2026-11-20 00:00"]
+    assert over["note"] == NOTE.format("95%") + CUT
+    # the tick policy's relayout is not the reader's; a redraw resets
+    for k in ("ticks", "redrawn"):
+        assert got[k]["yrange"] == pytest.approx([0, top]), k
+        assert got[k]["xrange"] is None, k
+        assert got[k]["note"] == NOTE.format("95%") + CUT, k
 
 
 def _rgba(hex_: str, a: float) -> str:
