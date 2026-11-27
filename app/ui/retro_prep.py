@@ -474,18 +474,22 @@ def _ensure_results_job(root: Path, season: str,
             job["warm"].set()
             _results_jobs[key] = job
             return job
-        job = {"phase": "preparing", "t0": time.time(),
+        job = {"phase": "preparing", "t0": time.time(), "count": None,
                "done": threading.Event(), "error": "", "seconds": None,
                "season": season, "warm": threading.Event(),
                "inputs": retro.newest_samples_mtime(root)}
         _results_jobs[key] = job
 
+    def _set_phase(p):
+        # a new phase has no count until its first week starts
+        job["count"] = None
+        job["phase"] = p
+
     def _run():
         try:
             job["seconds"] = retro.finalize_season(
-                root, season,
-                phase_cb=lambda p: job.__setitem__("phase", p),
-                force=force)
+                root, season, phase_cb=_set_phase, force=force,
+                count_cb=lambda i, n: job.__setitem__("count", (i, n)))
             # warm the default view's (last week's) map cards
             wks = [p.parent.name for p in retro.season_sample_files(root)]
             if wks:
@@ -503,6 +507,14 @@ def _ensure_results_job(root: Path, season: str,
     threading.Thread(target=_run, daemon=True,
                      name=f"flubnf-results-{season}").start()
     return job
+
+
+def job_step(job: dict) -> str:
+    """A running finalize job's step as the preparing state says it: the
+    phase in plain words and, in a phase that goes week by week, the week
+    it is on (retro.finalize_words)."""
+    from app.core import retro
+    return retro.finalize_words(job.get("phase", ""), job.get("count"))
 
 
 def _job_covered(root: Path) -> dict | None:

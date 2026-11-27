@@ -55,7 +55,7 @@
 /* running: the label under the heading, the counts as tiles */
 .fc-running .runlabel{margin:.1rem 0 .35rem}
 /* running: the split's right column holds the place of the results, the
-   location tiles (or the results skeleton) and the quip */
+   location tiles (or the results skeleton) */
 .fc-runsplit{margin-top:.3rem}
 .fc-wait{display:flex;flex-direction:column;gap:.55rem;min-height:100%}
 .fc-wait > section[hidden]{display:none}
@@ -104,9 +104,6 @@
   background:linear-gradient(90deg,var(--track) 30%,var(--line) 50%,var(--track) 70%)
     0 0/300% 100%;animation:fc-shimmer 2.4s linear infinite}
 @keyframes fc-shimmer{from{background-position:100% 0}to{background-position:0 0}}
-/* the quip sits under the tiles, lower in the column's space */
-.fc-wait .fc-quip{margin:auto 0 .1rem;padding-top:.6rem;min-height:2.8em;
-  font-size:1.02rem}
 @media (prefers-reduced-motion:reduce){
   .fc-loc{transition:none}
   .fc-loc[data-state=live],.fc-skel-row i{animation:none}

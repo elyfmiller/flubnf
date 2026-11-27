@@ -214,6 +214,8 @@ def test_a_copy_is_changed_when_it_is_made(sandbox_root):
     assert rows["old"] <= long_ago + 1
 
 
-def test_quips_say_neither_posterior_nor_burning_in():
-    src = (STATIC / "quips.js").read_text().lower()
-    assert "posterior" not in src and "burning in" not in src
+def test_progress_lines_say_neither_posterior_nor_burning_in():
+    from app.core import retro
+    words = " ".join(retro.FINALIZE_WORDS.values()).lower()
+    assert "posterior" not in words and "burning in" not in words
+    assert not (STATIC / "quips.js").exists()

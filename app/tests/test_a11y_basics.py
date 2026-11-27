@@ -16,7 +16,6 @@ client = TestClient(srv.app)
 
 UI = Path(__file__).resolve().parents[1] / "ui"
 NAU = (UI / "static" / "nau.css").read_text()
-QUIPS = (UI / "static" / "quips.js").read_text()
 PLAYER = (UI / "static" / "player.js").read_text()
 SEASON_T = (UI / "templates" / "retro_season.html").read_text()
 FORECAST_T = (UI / "templates" / "forecast.html").read_text()
@@ -98,12 +97,12 @@ def test_player_labels_play_state_and_announces_weeks():
 
 # ------------------------------------------------------ motion accommodation
 
-def test_quips_hold_still_under_reduced_motion_and_on_click():
-    assert "prefers-reduced-motion" in QUIPS
-    # click-to-pause on the quip element itself
-    assert 'addEventListener("click"' in QUIPS
-    # a static line still paints when rotation never starts
-    assert "el.textContent = q[i++ % q.length];" in QUIPS
+def test_no_line_rotates_and_reduced_motion_quiets_the_fills():
+    # the run pages say the step and its count; no rotating line is left
+    # to hold still (the quips are gone)
+    assert not (UI / "static" / "quips.js").exists()
+    for page in (SEASON_T, FORECAST_T):
+        assert "flubnfQuips" not in page and "quip" not in page
     # and the css block quiets animated fills
     assert "@media (prefers-reduced-motion: reduce)" in NAU
 

@@ -66,7 +66,8 @@ def world(tmp_path, monkeypatch, pf_engine_ready):
     gate = threading.Event()
     gate.set()
 
-    def finalize_season(root, season, phase_cb=None, force=False):
+    def finalize_season(root, season, phase_cb=None, force=False,
+                        count_cb=None):
         finalized.append(Path(root))
         if not gate.wait(20):
             raise TimeoutError("the test never let the finalize end")

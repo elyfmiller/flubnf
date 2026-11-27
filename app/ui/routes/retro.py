@@ -480,8 +480,10 @@ _RESULTS_GRACE_S = 1.5
 
 @router.get("/api/retro/{season}/results_status")
 def api_retro_results_status(season: str, archive: str = ""):
-    """The preparing state's poll: is the finalize job still working, and in
-    which phase. Never starts work (the results page does)."""
+    """The preparing state's poll: is the finalize job still working, in
+    which phase, and its step as the page says it ("step": the phase in
+    plain words with the week it is on). Never starts work (the results
+    page does)."""
     if archive and not (_valid_season(season) and _valid_archive(archive)):
         return {"pending": False, "error": "unrecognized archive"}
     if not _valid_season(season):
@@ -490,6 +492,7 @@ def api_retro_results_status(season: str, archive: str = ""):
     job = _results_jobs.get(str(root))
     if job and not job["done"].is_set():
         return {"pending": True, "phase": job["phase"],
+                "step": retro_prep.job_step(job),
                 "elapsed_s": round(time.time() - job["t0"], 1)}
     return {"pending": False, "error": (job or {}).get("error", "")}
 
@@ -1252,6 +1255,7 @@ def retro_results(request: Request, season: str, week: str = "",
                 "model_name": _name_fn(names),
                 "knobs_modified": knobs_modified,
                 "preparing": {"phase": job["phase"],
+                              "step": retro_prep.job_step(job),
                               "elapsed_s": round(time.time() - job["t0"], 1)},
                 "archive": archive,
                 "archive_when": retro.stamp_human(archive) if archive else "",

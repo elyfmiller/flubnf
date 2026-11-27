@@ -358,12 +358,13 @@ def test_forecast_running_card_holds_the_results_place():
                              "started_utc": time.time() - 30})
     html = client.get("/forecast").text
     card = html.split('class="card fc-running"')[1].split("</script>")[0]
-    # settings left, the results' place right: the tiles, the skeleton
-    # shown until tiles arrive, and the quip inside that place
+    # settings left, the results' place right: the tiles and the skeleton
+    # shown until tiles arrive; no joke line beside them (the progress line
+    # and the stats say the step and the count)
     assert 'class="runsplit fc-runsplit"' in card
     assert 'id="fc-grid" hidden' in card and 'id="fc-skel"' in card
     wait = card.split('id="fc-wait"')[1]
-    assert 'id="quip"' in wait
+    assert 'id="quip"' not in wait and "quip" not in card
     assert "renderLocs(d.locations)" in html
     # the heading says the run is running: no badge repeats it, and none
     # waits beside it for the run to stop, since the progress readout
@@ -714,12 +715,12 @@ def test_season_report_header_carries_its_evidence_not_the_timing(tmp_path, monk
 def test_forecast_running_card_shows_a_live_elapsed_clock():
     r = client.get("/forecast")
     assert r.status_code == 200
-    assert '<script src="/static/quips.js">' in r.text
+    assert "quips.js" not in r.text
     ui_state._status.update({"running": "all:x", "run_label": "x",
                         "started_utc": time.time() - 30})
     html = client.get("/forecast").text
     assert 'id="elapsed"' in html
-    assert "flubnfQuips('quip')" in html          # the shared list, not a copy
+    assert "flubnfQuips" not in html              # no rotating joke line
     assert "d.elapsed_s" in html                  # re-anchored on every poll
     assert "elapsed0" not in html                 # the value, not the name
 
@@ -736,11 +737,12 @@ def test_retro_index_offers_pause_and_stop_while_running():
     assert f'action="/retro/{SEASON}/resume"' not in html
     # stopping is safe and carries no confirmation guard
     assert html.count('data-guard="') == 1
-    # the console's run treatment: bar, readout, estimate basis, quips
+    # the console's run treatment: bar, readout (the weeks done), estimate
+    # basis; no joke line
     assert 'class="runbar"' in html and 'class="rfill"' in html
     assert 'class="runstat rstat"' in html
     assert 'class="rbasis uk-sr"' in html    # for a screen reader (G28)
-    assert 'class="quip rquip"' in html
+    assert "quip" not in html
     assert 'src="/static/retro_progress.js"' in html
     assert "GUARD_BUSY" in html
 
@@ -797,7 +799,7 @@ def test_season_page_carries_controls_and_timing():
                    "slowest_week": W1, "slowest_s": 90.0})
     assert f'action="/retro/{SEASON}/pause"' in live
     assert f'action="/retro/{SEASON}/stop"' in live
-    assert 'class="runbar"' in live and 'class="quip rquip"' in live
+    assert 'class="runbar"' in live and "quip" not in live
 
     held = render({"status": "paused", "active": True, "done": 3, "total": 30,
                    "elapsed_s": 3725.0, "mean_s": 60.0, "weeks_measured": 3,
@@ -835,48 +837,16 @@ def test_season_page_carries_controls_and_timing():
     assert 'aria-label="Replay timing"' not in render(None)
 
 
-# ------------------------------------------------------------------- quips
+# ------------------------------------------- the step and its count, plainly
 
-def _quip_list(src: str, name: str) -> list:
-    return [ln.strip().strip(",").strip('"')
-            for ln in src.split(f"window.{name} = [")[1].split("];")[0]
-            .splitlines()
-            if ln.strip().startswith('"')]
-
-
-def test_quips_are_shared_and_in_voice():
-    src = (Path(__file__).resolve().parents[1] / "ui" / "static"
-           / "quips.js").read_text()
-    shared = _quip_list(src, "FLUBNF_QUIPS")
-    retro = _quip_list(src, "FLUBNF_RETRO_QUIPS")
-    quips = shared + retro
-    assert len(shared) >= 65                      # the original 50, plus more
-    # replay lines stay off the forecast page
-    assert "replaying last winter at one week per breath" in retro
-    assert not any("replay" in q for q in shared)
-    assert "teaching 10,000 particles to sneeze responsibly" in quips
-    assert len(set(quips)) == len(quips)          # no duplicates
-    for q in quips:
-        assert q == q.lower() or q[0].islower(), q
-        assert "!" not in q, q
-        assert q.isascii(), q                     # no emoji
-        assert len(q) < 70, q
-    # the replay voice actually arrived
-    assert any("season" in q or "week" in q or "winter" in q for q in quips)
-
-
-def test_both_run_pages_draw_from_the_shared_quip_list():
-    fc = (Path(__file__).resolve().parents[1] / "ui" / "templates"
-          / "forecast.html").read_text()
-    rt = (Path(__file__).resolve().parents[1] / "ui" / "templates"
-          / "retro.html").read_text()
-    assert '/static/quips.js' in fc and '/static/quips.js' in rt
-    assert "const quips=[" not in fc              # the inline copy is gone
-    ticker = (Path(__file__).resolve().parents[1] / "ui" / "static"
-              / "retro_progress.js").read_text()
-    assert "flubnfQuips" in ticker
-    # only the retrospective pages add the replay lines
-    assert "FLUBNF_RETRO_QUIPS" in ticker
-    assert "FLUBNF_RETRO_QUIPS" not in fc
-    # the paused card holds its quip still
-    assert "st.quips.pause()" in ticker
+def test_the_run_pages_load_no_joke_lines():
+    """The run pages say the step and its count in plain words (the
+    progress readouts); the rotating joke lines are gone, script and all."""
+    ui = Path(__file__).resolve().parents[1] / "ui"
+    assert not (ui / "static" / "quips.js").exists()
+    for name in ("forecast.html", "retro.html", "retro_season.html"):
+        t = (ui / "templates" / name).read_text()
+        assert "quips.js" not in t and "flubnfQuips" not in t, name
+        assert "quip" not in t, name
+    ticker = (ui / "static" / "retro_progress.js").read_text()
+    assert "flubnfQuips" not in ticker and "QUIPS" not in ticker

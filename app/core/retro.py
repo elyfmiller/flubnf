@@ -1246,12 +1246,14 @@ def scores_frame_current(df) -> bool:
 SCORED_MEMBERS = ("pf", FILTER_MEMBER, "analogue")
 
 
-def score_season(root: Path, season: str) -> pd.DataFrame:
+def score_season(root: Path, season: str, week_cb=None) -> pd.DataFrame:
     """Score every stored week vs settled truth: one row per (member,
     location, as-of, horizon) of SCORED_MEMBERS, under THE cell rule
     (scoring.cell_scored) with the per-cell metrics (scoring.cell_metrics)
     and the baseline's WIS and log-scale WIS on the same cell. Nothing is
     blended (older files' "ensemble" rows are not reproduced by a rescore).
+    `week_cb(i, n)` as week i of the n stored weeks starts (a progress
+    line's count; never fatal).
 
     Columns: model, location, fips, asof, horizon, wis, log_wis, cov50,
     cov80, cov95 (0/1), base_wis, base_log_wis, rel, scores_v."""
@@ -1259,7 +1261,9 @@ def score_season(root: Path, season: str) -> pd.DataFrame:
     from datetime import timedelta
     truth, n2f = scoring.load_truth()
     rows = []
-    for wk in season_sample_files(root):
+    files = season_sample_files(root)
+    for i, wk in enumerate(files, 1):
+        _tell(week_cb, i, len(files))
         asof = wk.parent.name; T = pd.Timestamp(asof)
         mq = week_member_quantiles(root, asof)
         by_model = {m: mq.get(m, {}) for m in SCORED_MEMBERS}
@@ -1479,7 +1483,7 @@ def _national_week(root: Path, sp: Path, levels: list) -> tuple:
     return asof, pf_nat, an_nat
 
 
-def national_aggregate(root: Path) -> dict | None:
+def national_aggregate(root: Path, week_cb=None) -> dict | None:
     """US-national relWIS constructed from the stored STATE forecasts,
     each member on its own, states treated as independent
     (national_week_quantiles: pf's draws summed by draw index, the
@@ -1500,7 +1504,9 @@ def national_aggregate(root: Path) -> dict | None:
     (a results page or a report that passed its checks before the delete
     began): nothing is written, neither the week caches nor this one, and
     retro_store.TreeBusy is raised, as the weeks read may be a part of the
-    season. A tree deleted meanwhile is not made again.
+    season. A tree deleted meanwhile is not made again. `week_cb(i, n)` as
+    week i of the n stored weeks starts, when it is worked out (a progress
+    line's count; never fatal).
     """
     from datetime import timedelta
     from app.core import scoring
@@ -1524,7 +1530,8 @@ def national_aggregate(root: Path) -> dict | None:
     truth, _n2f = scoring.load_truth()
     levels = [float(L) for L in QL]
     rows = []                       # (model, asof, horizon 0-based, metrics)
-    for wp in wks:
+    for i, wp in enumerate(wks, 1):
+        _tell(week_cb, i, len(wks))
         asof, pf_nat, an_nat = _national_week(root, wp, levels)
         T = pd.Timestamp(asof)
         for model, qs in (("pf", pf_nat), ("analogue", an_nat)):
@@ -1650,18 +1657,52 @@ def newest_samples_mtime(root: Path) -> int:
         return 0
 
 
-#: the finalize phases, in order, worded exactly as the preparing state
-#: shows them
+#: the finalize phases, in order (the job's phase, as the status poll
+#: names it)
 FINALIZE_PHASES = ("scoring cells", "building national aggregate",
                    "warming playback", "pruning intermediates")
+#: each phase in the preparing state's plain words; "preparing" is the
+#: job's state before its first phase. A phase that goes week by week
+#: adds its count (finalize_season's count_cb)
+FINALIZE_WORDS = {"preparing": "Starting",
+                  "scoring cells": "Scoring each week's forecasts",
+                  "building national aggregate":
+                      "Adding up the US national forecast",
+                  "warming playback": "Preparing each week's playback",
+                  "pruning intermediates": "Removing leftover fit files"}
+
+
+def finalize_words(phase: str, count=None) -> str:
+    """The preparing state's line for a phase: its plain words, then
+    "week i of n" while a count is known ("Scoring each week's forecasts:
+    week 3 of 28"); a phase not in FINALIZE_WORDS as given."""
+    words = FINALIZE_WORDS.get(phase, phase)
+    try:
+        i, n = count
+        return f"{words}: week {int(i)} of {int(n)}" if n else words
+    except (TypeError, ValueError):
+        return words
+
+
+def _tell(cb, *args) -> None:
+    """A progress callback, never fatal to the work it reports on."""
+    if cb:
+        try:
+            cb(*args)
+        except Exception:
+            pass
 
 
 def finalize_season(root: Path, season: str,
-                    phase_cb=None, force: bool = False) -> dict:
+                    phase_cb=None, force: bool = False,
+                    count_cb=None) -> dict:
     """Everything the results page needs, computed once: score the season
     (atomic scores.json; skipped when current and scoreable unless
     `force`), build the national aggregate, warm every playback payload,
-    prune. Returns seconds per phase; `phase_cb(phase)` at each transition.
+    prune. Returns seconds per phase; `phase_cb(phase)` at each transition
+    and, in the phases that go week by week (scoring, the national
+    aggregate when it is worked out, playback), `count_cb(i, n)` as week i
+    of n starts.
 
     Scoring must land first: the other caches are keyed on scores.json's
     mtime. Warming failures are not fatal (the week builds on first view)."""
@@ -1670,16 +1711,12 @@ def finalize_season(root: Path, season: str,
     seconds: dict = {}
 
     def _phase(name):
-        if phase_cb:
-            try:
-                phase_cb(name)
-            except Exception:
-                pass
+        _tell(phase_cb, name)
         return time.monotonic()
 
     if force or not (scores_current(root) and scores_scoreable(root)):
         t = _phase("scoring cells")
-        df = score_season(root, season)
+        df = score_season(root, season, week_cb=count_cb)
         # atomic: a viewer never sees a half-written scores.json
         tmp = root / "scores.json.tmp"
         df.to_json(tmp)
@@ -1688,13 +1725,15 @@ def finalize_season(root: Path, season: str,
 
     t = _phase("building national aggregate")
     try:
-        national_aggregate(root)
+        national_aggregate(root, week_cb=count_cb)
     except Exception:
         pass          # the page omits the row rather than failing the job
     seconds["national"] = round(time.monotonic() - t, 1)
 
     t = _phase("warming playback")
-    for w in sorted(p.parent.name for p in season_sample_files(root)):
+    weeks = sorted(p.parent.name for p in season_sample_files(root))
+    for i, w in enumerate(weeks, 1):
+        _tell(count_cb, i, len(weeks))
         try:
             playback.build_week(root, season, w)
         except Exception:

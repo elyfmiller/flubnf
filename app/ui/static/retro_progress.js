@@ -3,15 +3,15 @@
 // .rstat readout, every .rcount counter (one source, so no line disagrees),
 // the .rbasis text (what the estimate rests on: the readout's "?" on the
 // Retrospective tab, a visually hidden line on the season page), the
-// .rt-stall badge (shown while the connection is lost) and the .rquip
-// line. A script poll, never a meta refresh; no reload while the
-// caller's busy() is true (the guard modal).
+// .rt-stall badge (shown while the connection is lost). A script poll,
+// never a meta refresh; no reload while the caller's busy() is true (the
+// guard modal).
 // Rules: the percentage never regresses; the ETA is the server's RANGE,
 // shown as sent and decayed by the wall clock (no client smoothing: it once
 // pinned the display for hours); an unestimable ETA says so rather than
 // leaving a stale number; after 3 failed polls the clocks freeze and the
 // basis says the connection is lost (the next success clears it); paused
-// freezes the readouts, withdraws the ETA and stops the quips. Inside a
+// freezes the readouts and withdraws the ETA. Inside a
 // long Oracle week the readout names the week and its fits ("week
 // 2026-03-21 · 96 of 159 fits") and the bar moves by them.
 //
@@ -84,9 +84,6 @@
     cards.forEach(function (c) {
       S[c.dataset.season] = {
         card: c, disp: 0, lo: null, hi: null, etaAt: 0,
-        quips: root.flubnfQuips ? root.flubnfQuips(c.querySelector(".rquip"), undefined,
-                                     root.FLUBNF_RETRO_QUIPS)
-                                : {pause: function () {}, resume: function () {}},
         d: {status: c.dataset.status, done: +c.dataset.done,
             total: +c.dataset.total, elapsed_s: null,
             eta_lo_s: null, eta_hi_s: null, eta_basis: null,
@@ -156,8 +153,6 @@
       Object.keys(S).forEach(function (n) {
         var st = S[n], d = st.d, c = st.card;
         var paused = (d.status === "paused");
-        // quips hold while stalled too
-        if (paused || stalled) st.quips.pause(); else st.quips.resume();
         var r = readout(d, st.disp, now, st);
         st.disp = r.pct;                                  // never regress
         var fill = c.querySelector(".rfill");

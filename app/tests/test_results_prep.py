@@ -120,10 +120,15 @@ def _routed(monkeypatch, tmp_path):
 
 def test_finalize_builds_every_cache_and_times_each_phase(tmp_path, _stubbed):
     root = _mk_tree(tmp_path)
-    phases = []
+    phases, counts = [], []
     sec = retro.finalize_season(root, SEASON,
-                                phase_cb=phases.append)
+                                phase_cb=phases.append,
+                                count_cb=lambda i, n: counts.append((i, n)))
     assert phases == list(retro.FINALIZE_PHASES)
+    # scoring, the national aggregate (worked out here, not cached) and
+    # playback each count their weeks, 1 to n
+    n = len(retro.season_sample_files(root))
+    assert n and counts == [(i, n) for i in range(1, n + 1)] * 3
     for k in ("scoring", "national", "playback", "total"):
         assert k in sec and sec[k] >= 0.0, k
     # scores.json: real rows through the frozen formula
@@ -136,6 +141,24 @@ def test_finalize_builds_every_cache_and_times_each_phase(tmp_path, _stubbed):
     for w in (W1, W2):
         assert (root / "playback_cache" / f"{w}.json").is_file(), w
     assert retro.scores_current(root) and retro.scores_scoreable(root)
+
+
+def test_the_preparing_line_says_each_step_plainly_with_its_week():
+    """Every phase has plain words (no "cells", "aggregate" or
+    "intermediates" left bare), and a phase going week by week says the
+    week it is on."""
+    assert set(retro.FINALIZE_PHASES) < set(retro.FINALIZE_WORDS)
+    for phase in retro.FINALIZE_PHASES:
+        words = retro.finalize_words(phase)
+        assert words != phase and words[0].isupper(), phase
+    assert retro.finalize_words("preparing") == "Starting"
+    assert (retro.finalize_words("warming playback", (3, 28))
+            == "Preparing each week's playback: week 3 of 28")
+    # no count, or a count of nothing, leaves the words alone
+    assert (retro.finalize_words("scoring cells", None)
+            == retro.finalize_words("scoring cells", (0, 0))
+            == "Scoring each week's forecasts")
+    assert retro.finalize_words("refused") == "refused"
 
 
 def test_finalize_skips_scoring_when_current_unless_forced(tmp_path,
@@ -212,9 +235,11 @@ def test_slow_job_shows_the_preparing_state_and_status_endpoint(
     hold = threading.Event()
 
     def _slow(root, season, phase_cb=None,
-              force=False):
+              force=False, count_cb=None):
         if phase_cb:
             phase_cb("scoring cells")
+        if count_cb:
+            count_cb(3, 28)
         hold.wait(10)
         return {"total": 0.0}
 
@@ -222,15 +247,19 @@ def test_slow_job_shows_the_preparing_state_and_status_endpoint(
     monkeypatch.setattr(ui_retro, "_RESULTS_GRACE_S", 0.05)
     try:
         html = client.get(f"/retro/{SEASON}").text
-        # the preparing card, its live phase, and the poll wiring
+        # the preparing card, its step in plain words with the week it is
+        # on (no joke line), and the poll wiring
         assert "preparing results" in html
-        assert "scoring cells" in html
+        step = "Scoring each week&#39;s forecasts: week 3 of 28"
+        assert f'<span id="prep-step" aria-live="polite">{step}</span>' in html
+        assert "quip" not in html
         assert f"/api/retro/{SEASON}/results_status" in html
         assert "location.reload()" in html
         # nothing heavy rendered behind it
         assert "Download report" not in html
         st = client.get(f"/api/retro/{SEASON}/results_status").json()
         assert st["pending"] is True and st["phase"] == "scoring cells"
+        assert st["step"] == "Scoring each week's forecasts: week 3 of 28"
         assert st["elapsed_s"] >= 0.0
     finally:
         hold.set()
@@ -247,7 +276,7 @@ def test_one_job_per_root_even_under_concurrent_visits(tmp_path, _stubbed,
     hold = threading.Event()
 
     def _slow(root, season, phase_cb=None,
-              force=False):
+              force=False, count_cb=None):
         starts.append(1)
         hold.wait(10)
         return {"total": 0.0}
@@ -432,10 +461,10 @@ def test_rescore_forces_a_fresh_job_over_current_scores(tmp_path, _stubbed,
     forces = []
     real = retro.finalize_season
 
-    def _spy(root, season, phase_cb=None, force=False):
+    def _spy(root, season, phase_cb=None, force=False, count_cb=None):
         forces.append(force)
         return real(root, season,
-                    phase_cb=phase_cb, force=force)
+                    phase_cb=phase_cb, force=force, count_cb=count_cb)
 
     monkeypatch.setattr(retro, "finalize_season", _spy)
     html = client.get(f"/retro/{SEASON}?rescore=1").text

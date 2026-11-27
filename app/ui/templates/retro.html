@@ -1,6 +1,5 @@
 {% extends "base.html" %}{% block title %}FluBNF · Retrospective{% endblock %}
-{% block head %}<script src="/static/quips.js"></script>
-<script src="/static/estimate.js"></script>
+{% block head %}<script src="/static/estimate.js"></script>
 <script src="/static/retro_progress.js"></script>
 <link rel="stylesheet" href="/static/tabs/retro.css">{% endblock %}
 {% block content %}{% import "_tips.html" as tips %}
@@ -272,7 +271,6 @@
     <form method="post" action="/retro/{{ s.name }}/stop"><button class="quiet">Stop</button></form>
    </div>
    {% endif %}
-   {% if s.active %}<p class="quip rquip"></p>{% endif %}
    {% if s.archives %}
    {# archived runs: complete frozen trees; results, player and report work
       as for the live season #}

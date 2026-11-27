@@ -28,7 +28,6 @@
 </style>
 {% else %}<script src="/static/plotly.min.js"></script><script src="/static/charts.js"></script>
 <script src="/static/player.js"></script>
-<script src="/static/quips.js"></script>
 <script src="/static/retro_progress.js"></script>
 <link rel="stylesheet" href="/static/tabs/retro.css">{% endif %}{% endblock %}
 {% block export_title %}Season report{% endblock %}
@@ -108,25 +107,24 @@
 {%- endmacro %}
 {% if preparing %}
 {# preparing: scoring, the national aggregate and playback warming run as one
-   background job; poll its status and reload when it lands. The bar only
-   slides: the job has no honest denominator. #}
+   background job; poll its status and reload when it lands. The line says
+   the step in plain words and, while it goes week by week, the week it is
+   on (retro.finalize_words); the time beside it ticks here. The bar only
+   slides: the steps have no one honest denominator. #}
 <div class="rt-title"><h1><span class="accent">{{ season }}</span>: preparing results</h1>{{ knobs_badge() }}</div>
 <div class="card" data-season="{{ season }}">
  {{ tips.heading("Preparing the season results", "rs-prep") }}
- <p class="runstat" id="prep-stat" aria-live="polite">{{ preparing.phase }}&hellip;</p>
+ <p class="runstat" id="prep-stat"><span id="prep-step" aria-live="polite">{{ preparing.step or preparing.phase }}</span> · <span id="prep-time"></span></p>
  {{ tips.progress("Preparing", id="rs-prep-bar") }}
- <p class="quip rquip" id="prep-quip"></p>
 </div>
 <script>
  (function(){
-  var stat=document.getElementById('prep-stat');
+  var step=document.getElementById('prep-step'),time=document.getElementById('prep-time');
   var t0=Date.now()-({{ preparing.elapsed_s | round(1) }}*1000);
-  if(window.flubnfQuips)window.flubnfQuips(document.getElementById('prep-quip'),undefined,window.FLUBNF_RETRO_QUIPS);
-  var phase={{ preparing.phase | tojson }};
   function paint(){
     if(document.hidden)return;          // nothing to see: do no work
     var s=Math.round((Date.now()-t0)/1000);
-    stat.textContent=phase+'… '+(s>=60?Math.floor(s/60)+' min '+(s%60)+' s':s+' s');
+    time.textContent=s>=60?Math.floor(s/60)+' min '+(s%60)+' s':s+' s';
   }
   setInterval(paint,1000);paint();
   // polling: hidden tab -> 20 s heartbeat; never stack requests; poll at
@@ -142,7 +140,7 @@
      .then(function(r){return r.json();})
      .then(function(d){
        if(!d.pending){location.reload();return;}
-       if(d.phase)phase=d.phase;
+       if(d.step&&step.textContent!==d.step)step.textContent=d.step;
      })
      .catch(function(){})
      .then(function(){inflight=false;
@@ -243,7 +241,6 @@
  {# the settings this replay runs under, from its run record #}
  {% set live_set = settings_html(prog.settings) %}
  {% if live_set %}{% call tips.fold("Run settings", id="rs-live-set", cls="rsfold") %}{{ live_set | safe }}{% endcall %}{% endif %}
- <p class="quip rquip"></p>
 </div>
 <script>
  // reloads yield to an open guard modal (GUARD_BUSY)
