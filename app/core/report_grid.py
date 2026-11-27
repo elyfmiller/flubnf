@@ -131,11 +131,23 @@ def submitted_fans(folder) -> dict:
     return out
 
 
+def _moved(filed: list, own: list) -> bool:
+    """Whether a file's fan differs from the model's own: exactly, for a
+    grid kept in whole admissions (model_fan); by more than one admission
+    for an older bundle's grid, which kept the quantiles unrounded (to two
+    decimals), so no file matches it exactly."""
+    if all(float(v).is_integer() for r in own for v in r):
+        return filed != own
+    return any(abs(a - b) > 1.0
+               for ra, rb in zip(filed, own) for a, b in zip(ra, rb))
+
+
 def attach_submitted(grid: dict | None, sub: dict) -> dict | None:
     """The grid with each panel's submitted fans ("submitted": model ->
     {"times", "q"}) where the file differs from the panel's own, the
     model's before the upper-tail cap (Ely, 2026-10-28: a switch per
-    location between the two). Unchanged where nothing moved."""
+    location between the two). Unchanged where nothing moved, rounding to
+    whole admissions included."""
     if not grid or not sub:
         return grid
     panels = []
@@ -147,7 +159,7 @@ def attach_submitted(grid: dict | None, sub: dict) -> dict | None:
                 continue
             q = [[_whole(_q(by_t[str(x)], L)) for L in LEVELS]
                  for x in f["times"]]
-            if q != f["q"]:
+            if _moved(q, f["q"]):
                 s[m] = {"times": list(f["times"]), "q": q}
         panels.append(dict(p, submitted=s) if s else p)
     return dict(grid, panels=panels)

@@ -539,3 +539,30 @@ def test_a_location_opens_on_its_file_and_keeps_the_models_own(tmp_path):
     assert d["OH"]["topb"] >= 46 and "s" not in d["AL"]
     js = G.grid_js(g2, COLORS)
     assert "addEventListener('rp-ba'" in js and "p.topb" in js
+
+
+def test_an_older_bundles_rounding_is_not_a_move(tmp_path):
+    """An older bundle's grid kept unrounded quantiles (two decimals); a
+    file that only rounds them to whole admissions (half to even, or a
+    hair either way) is the model's own, so the location carries nothing
+    to switch; on a grid in whole admissions one admission is a move."""
+    g = _grid()
+    oh = next(p for p in g["panels"] if p["key"] == "OH")
+    oh["models"]["pf"]["q"] = [[r[0] + .5, r[1] + .4, r[2] - .45, r[3],
+                                r[4] + .3] for r in oh["models"]["pf"]["q"]]
+    _filed(tmp_path, dict(oh, models={"pf": {
+        "times": oh["models"]["pf"]["times"],
+        "q": [[float(round(v)) for v in r]
+              for r in oh["models"]["pf"]["q"]]}}))
+    g2 = G.attach_submitted(g, G.submitted_fans(tmp_path))
+    assert not any(p.get("submitted") for p in g2["panels"])
+    # whole-admission grids compare exactly: one admission at h3 is a move
+    g = _grid()
+    oh = next(p for p in g["panels"] if p["key"] == "OH")
+    f = oh["models"]["pf"]
+    q = [list(r) for r in f["q"]]
+    q[3][4] -= 1
+    _filed(tmp_path / "w", dict(oh, models={"pf": dict(f, q=q)}))
+    g2 = G.attach_submitted(g, G.submitted_fans(tmp_path / "w"))
+    oh2 = next(p for p in g2["panels"] if p["key"] == "OH")
+    assert oh2["submitted"]["pf"]["q"][3][4] == f["q"][3][4] - 1
