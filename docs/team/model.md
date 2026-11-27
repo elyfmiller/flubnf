@@ -52,6 +52,14 @@ until 2026-11-09 and on the Windows PC since then.
     engine here (Engine's 11-07 gate), so about 19 to 20 hours, ending
     Saturday 11-28 in the afternoon UTC. That is clear of round 12-05's
     window (data Wednesday 12-02, due Thursday 12-03).
+  - Started 17:52:58 UTC on repository eab21ba9. The pilot (2024-12-07,
+    Arizona and Ohio, 65 s) kept all three files. Its rebuilt member at
+    weight 0.25, narrowing 0.7 equals the stored member exactly (maximum
+    difference 0). Its weight 1 through the step is not the filter alone
+    (h3 median Arizona 540 against 375).
+  - score.py builds the arms (no truth), and scores and reports only once
+    a frozen PREREG.txt matches its sha256. The draft pre-registration
+    is with Ely and is not in the repository until it is frozen.
 
 - 2026-11-11 (07:10 UTC): THE CAP'S LEVEL ON THE ORACLE: IT RESPONDS AS THE
   GROUNDHOG DOES, SO NOTHING HERE ARGUES AGAINST `larger` FOR BOTH. Ely
