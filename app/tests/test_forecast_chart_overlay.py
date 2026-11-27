@@ -11,11 +11,15 @@ first, and Save figure.
     80% where the run kept no 95%), and the legend's title says what the
     shading holds. One model alone draws all three ranges, each named in
     the legend by its share.
+  * Together, the y axis tops out at 1.1 times the largest observed
+    value, median and 50% upper bound; a band past that is cut, and the
+    legend's title says so only then. One model alone shows all of it.
   * The hover gives the week, the median and the 50% and 95% ranges in
     whole counts; the y axis says what is counted.
   * The location list starts with the national series.
   * Save figure writes a PNG with the location, the data's date, the
-    models and the legend in it.
+    models and the legend in it, always in the light theme's colours (the
+    tokens of nau.css's light block), whatever the page wears.
 
 The page's own script runs under node against a stub page."""
 from __future__ import annotations
@@ -36,6 +40,7 @@ from app.core.runs import RunSpec
 from app.ui import forecast_aids as FA
 from app.ui import shared as ui_shared
 
+import css_cascade                                             # noqa: E402
 import test_fan_zero_anchor_start as ZS                         # noqa: E402
 from test_dataset_engines import grouped_bytes                  # noqa: E402
 from test_datasets_ui import client, isolated, upload           # noqa: F401
@@ -52,21 +57,25 @@ OBS = {"Ohio": [["2026-10-03", 120.0], ["2026-10-10", 150.0],
 MEMBERS = ("pf", "analogue")
 
 
-def _five(base: float, h: int) -> dict:
+def _five(base: float, h: int, narrow: bool = False) -> dict:
     """A stored horizon's five levels, fractional as results.json keeps
-    them."""
+    them; `narrow`: a tight spread, whose 95% range stays under the
+    overlay's top."""
     m = base * (1 + 0.1 * h)
+    if narrow:
+        return {"0.1": m * .97, "0.25": m * .99, "0.5": m,
+                "0.75": m * 1.02, "0.9": m * 1.04}
     return {"0.1": m * .6 + .4, "0.25": m * .8 + .3, "0.5": m + .2,
             "0.75": m * 1.25 + .1, "0.9": m * 1.6 + .45}
 
 
-def _models() -> dict:
+def _models(narrow: bool = False) -> dict:
     return {m: {loc: {str(h): _five(obs[-1][1] * (1.2 if m == "pf" else 1),
-                                    h) for h in (1, 2, 3, 4)}
+                                    h, narrow) for h in (1, 2, 3, 4)}
                 for loc, obs in OBS.items()} for m in MEMBERS}
 
 
-def _grid(models: dict) -> dict:
+def _grid(models: dict, narrow: bool = False) -> dict:
     """The bundle's grid (report_grid.grid_data's shape): per panel and
     model, [2.5%, 25%, 50%, 75%, 97.5%] by target week, whole numbers; US
     keyed "US" under the title "United States"."""
@@ -79,7 +88,8 @@ def _grid(models: dict) -> dict:
                 f = models[m][loc][str(h)]
                 q.append([float(round(f["0.1"] * .7)), round(f["0.25"]),
                           round(f["0.5"]), round(f["0.75"]),
-                          float(round(f["0.9"] * 1.5))])
+                          float(round(f["0.9"] * (1.02 if narrow
+                                                  else 1.5)))])
             ms[m] = {"times": TIMES, "q": q}
         panels.append({"key": "US" if loc == "US" else loc[:2].upper(),
                        "name": "United States" if loc == "US" else loc,
@@ -87,10 +97,10 @@ def _grid(models: dict) -> dict:
     return {"asof": FD, "times": TIMES, "panels": panels}
 
 
-def _hub_run(grid: bool = True) -> tuple[str, dict]:
+def _hub_run(grid: bool = True, narrow: bool = False) -> tuple[str, dict]:
     """A stored hub run of both members on FD (and its bundle's grid);
     (run id, its stored models)."""
-    models = _models()
+    models = _models(narrow)
     spec = RunSpec(engine="all", forecast_date=FD, locations=list(OBS))
     led = runs_mod.Ledger()
     rid = led.open_run(spec, Path("pending"), {})
@@ -101,7 +111,7 @@ def _hub_run(grid: bool = True) -> tuple[str, dict]:
         hz.CONVENTION_KEY: hz.STORED, "models": models}), encoding="utf-8")
     if grid:
         (wr / report_v2.BUNDLE_NAME).write_text(json.dumps({
-            "version": 8, "asof": FD, "grid": _grid(models)}),
+            "version": 8, "asof": FD, "grid": _grid(models, narrow)}),
             encoding="utf-8")
     led.close_run(rid, "ok", {})
     ui_shared._invalidate_scans()
@@ -262,10 +272,26 @@ def test_the_national_series_is_listed_first():
 pytestmark_node = pytest.mark.skipif(not ZS.NODE, reason="no node to run "
                                      "the page's script")
 
+#: the chart's tokens (nau.css, through the cascade): the page in the dark
+#: theme, and a span in the light block inside it (what Save figure reads)
+TOKENS = ("--card", "--ink", "--line", "--mut", "--model-analogue",
+          "--gold", "--official")
+DARK = 'html[data-theme="dark"]'
+LIGHT_PROBE = 'span[data-theme="light"]'
+
+
+def _tokens(*chain: str) -> dict:
+    cas = css_cascade.Cascade.page()
+    path = css_cascade.path(*chain)
+    return {t: cas.token(path, t) for t in TOKENS}
+
+
 # a page with every element the script reaches for; the chart calls, their
-# layouts and the saved image recorded
+# layouts, the elements made and the saved image recorded. getComputedStyle
+# answers with TOK.page for the page and TOK.probe for an element that
+# wears the light theme; the page's root carries ROOT's attributes
 STUB = r"""
-var calls = [], els = {}, saved = [], clicked = [];
+var calls = [], els = {}, saved = [], clicked = [], made = [];
 function mk(id){
   var e = {id: id, tag: '', hidden: id === 'fanx-modal', innerHTML: '',
     textContent: '', value: '', dataset: {}, selectedIndex: 0,
@@ -273,7 +299,7 @@ function mk(id){
     firstElementChild: null, onclick: null, onchange: null};
   e.classList = {toggle: function(){}, add: function(){},
                  remove: function(){}, contains: function(){ return false; }};
-  e.appendChild = function(c){ e.children.push(c);
+  e.appendChild = function(c){ e.children.push(c); c.parent = e.id;
     e.firstElementChild = e.firstElementChild || c; return c; };
   e.setAttribute = function(k, v){ e.attrs[k] = v; };
   e.getAttribute = function(k){ return e.attrs[k]; };
@@ -285,14 +311,18 @@ function mk(id){
   e.content = {cloneNode: function(){ return mk('fragment'); }};
   return e;
 }
-var document = {documentElement: {}, activeElement: null, body: mk('body'),
+var root = mk('html'); root.attrs = ROOT;
+var document = {documentElement: root, activeElement: null, body: mk('body'),
   getElementById: function(id){ return els[id] || (els[id] = mk(id)); },
-  createElement: function(tag){ var e = mk(''); e.tag = tag; return e; },
+  createElement: function(tag){ var e = mk(''); e.tag = tag; made.push(e);
+                                return e; },
   querySelector: function(){ return mk('q'); },
   querySelectorAll: function(){ return []; },
   contains: function(){ return true; }};
-function getComputedStyle(){
-  return {getPropertyValue: function(){ return '#123456'; },
+function getComputedStyle(el){
+  var t = (el && el.attrs && el.attrs['data-theme'] === 'light')
+    ? TOK.probe : TOK.page;
+  return {getPropertyValue: function(v){ return t[v] || ''; },
           fontSize: '16px'};
 }
 function matchMedia(){ return {matches: false}; }
@@ -310,21 +340,38 @@ var Plotly = {toImage: function(fig, opts){
   return Promise.resolve('data:image/png;base64,AAAA'); }};
 """
 
-# the drawn chart, view by view, at the location PICK
-DRIVE = r"""
-function chart(){
-  var c = calls.filter(function(c){ return c.id === 'fanplot'; }).pop();
+# a figure's parts the tests read
+FIG = r"""
+function fig(traces, layout){
+  var ya = layout.yaxis || {};
   return {
-    title: c.layout.title.text, ytitle: c.layout.yaxis.title.text,
-    note: (c.layout.legend.title || {}).text || '',
-    medians: c.traces.filter(function(t){ return t.meta === 'median'; })
+    title: (layout.title || {}).text, ytitle: (ya.title || {}).text,
+    yrange: ya.range || null, autorange: ya.autorange,
+    note: (layout.legend.title || {}).text || '',
+    paper: layout.paper_bgcolor, plot: layout.plot_bgcolor,
+    ink: layout.font.color, grid: layout.xaxis.gridcolor,
+    medians: traces.filter(function(t){ return t.meta === 'median'; })
       .map(function(t){ return {name: t.name, group: t.legendgroup,
-                                x: t.x, tip: t.customdata}; }),
-    bands: c.traces.filter(function(t){ return t.fill === 'tonexty'; })
+                                x: t.x, tip: t.customdata,
+                                color: t.line.color}; }),
+    bands: traces.filter(function(t){ return t.fill === 'tonexty'; })
       .map(function(t){ return {name: t.name, legend: t.showlegend,
-                                group: t.legendgroup, y: t.y}; }),
-    observed: c.traces[0].customdata};
+                                group: t.legendgroup, y: t.y,
+                                fill: t.fillcolor}; }),
+    tops: traces.filter(function(t, i){
+        return i + 1 < traces.length && traces[i + 1].fill === 'tonexty'; })
+      .map(function(t){ return t.y; }),
+    observed: traces[0].customdata, observedColor: traces[0].line.color};
 }
+function chart(id){
+  var c = calls.filter(function(c){ return c.id === (id || 'fanplot'); }).pop();
+  return fig(c.traces, c.layout);
+}
+"""
+
+# the drawn chart, view by view, at the location PICK; the expanded view;
+# Save figure from the Both view
+DRIVE = r"""
 (async function(){
   var out = {first: null, views: {}};
   await new Promise(function(r){ setTimeout(r, 0); });
@@ -336,6 +383,14 @@ function chart(){
     return o.textContent; })[0];
   FIDX = FLOCS.indexOf(PICK); await drawFan();
   out.views.both = chart();
+  // the expanded view, open
+  els['fanx-modal'].hidden = false; await drawFan();
+  out.expanded = chart('fanxplot');
+  els['fanx-modal'].hidden = true;
+  // a phone-wide card
+  els['fanplot'].clientWidth = 330; await drawFan();
+  out.narrow = chart().note;
+  delete els['fanplot'].clientWidth;
   // a model's button: that model alone, the location kept
   for (var i = 1; i < seg.children.length; i++){
     seg.children[i].onclick();
@@ -349,12 +404,20 @@ function chart(){
   seg.children[0].onclick();
   await new Promise(function(r){ setTimeout(r, 0); });
   await els['fan-save'].onclick();
-  out.saved = saved.map(function(s){ return {
-    title: s.fig.layout.title.text, sub: s.fig.layout.title.subtitle.text,
-    note: (s.fig.layout.legend.title || {}).text || '',
-    names: s.fig.data.map(function(t){ return t.name; }),
-    width: s.opts.width, height: s.opts.height, scale: s.opts.scale,
-    format: s.opts.format}; });
+  out.saved = saved.map(function(s){
+    var f = fig(s.fig.data, s.fig.layout);
+    f.sub = s.fig.layout.title.subtitle.text;
+    f.names = s.fig.data.map(function(t){ return t.name; });
+    f.width = s.opts.width; f.height = s.opts.height;
+    f.scale = s.opts.scale; f.format = s.opts.format;
+    return f; });
+  // the page's chart after the save: still the page's colours
+  await drawFan();
+  out.after = chart();
+  out.probes = made.filter(function(e){
+    return e.attrs['data-theme'] === 'light'; }).map(function(e){
+    return {attrs: e.attrs, hidden: e.hidden, parent: e.parent,
+            removed: !!e.removed}; });
   out.clicked = clicked;
   out.disabled = els['fan-save'].disabled;
   console.log(JSON.stringify(out));
@@ -362,14 +425,33 @@ function chart(){
 """
 
 
-def _drive(tmp_path, page: str, pick: str) -> dict:
+def _drive(tmp_path, page: str, pick: str, root: dict | None = None,
+           tok: dict | None = None) -> dict:
+    tok = tok or {"page": _tokens(DARK), "probe": _tokens(DARK, LIGHT_PROBE)}
     drv = tmp_path / "drive.js"
-    drv.write_text(STUB + ZS._fan_script(page) + "\nvar PICK = "
+    drv.write_text("var ROOT = " + json.dumps(root or {}) + ", TOK = "
+                   + json.dumps(tok) + ";\n" + STUB + FIG
+                   + ZS._fan_script(page) + "\nvar PICK = "
                    + json.dumps(pick) + ";\n" + DRIVE, encoding="utf-8")
     out = subprocess.run([ZS.NODE, str(drv)], capture_output=True,
                          text=True, encoding="utf-8", timeout=60)
     assert out.returncode == 0, out.stderr[-1500:]
     return json.loads(out.stdout.strip().splitlines()[-1])
+
+
+#: the legend's title together, and its words when a band is cut
+NOTE = "Shaded: {} of each model's forecasts fall here"
+CUT = "<br>(cut at the top; choose one model to see all of it)"
+
+
+def _top(fanq: dict, loc: str) -> float:
+    """The Both view's rule: 1.1 times the largest observed value in the
+    window, median and 50% upper bound of every model drawn."""
+    vals = [v for _, v in OBS[loc]]
+    for m in MEMBERS:
+        for q in fanq[m][loc].values():
+            vals += [q["0.5"], q["0.75"]]
+    return 1.1 * max(vals)
 
 
 @pytestmark_node
@@ -392,7 +474,7 @@ def test_both_models_together_then_one_with_all_three_ranges(tmp_path):
         names[m] + " median" for m in MEMBERS)
     assert sorted(b["group"] for b in both["bands"]) == sorted(MEMBERS)
     assert not any(b["legend"] for b in both["bands"])
-    assert both["note"] == "Shaded: 95% of each model's forecasts fall here"
+    assert both["note"].startswith(NOTE.format("95%"))
     fanq = _const(page, "FANQ")
     for b in both["bands"]:
         # the lower edge: the starting week, then 2.5% at each horizon
@@ -410,6 +492,50 @@ def test_both_models_together_then_one_with_all_three_ranges(tmp_path):
             ("80% of forecasts fall here", True),
             ("50% of forecasts fall here", True)]
         assert one["note"] == ""
+
+
+@pytestmark_node
+@pytest.mark.parametrize("loc", ["US", "Ohio"])
+def test_together_the_axis_tops_out_at_what_the_reader_compares(
+        tmp_path, loc):
+    """Wide 95% ranges: the top is the rule's, the bands run past it and
+    the legend says so; one model alone keeps all of its bands (no range
+    set, from 0); the expanded view and the saved figure share the rule."""
+    _hub_run()
+    page = _page()
+    fanq = _const(page, "FANQ")
+    got = _drive(tmp_path, page, loc)
+    top = _top(fanq, loc)
+    both = got["views"]["both"]
+    assert both["yrange"] == pytest.approx([0, top])
+    assert both["autorange"] is False
+    # the 95% upper edges pass it, so the title says the bands are cut
+    assert max(v for y in both["tops"] for v in y if v is not None) > top
+    assert both["note"] == NOTE.format("95%") + CUT
+    # a legend title never wraps: on a phone the note takes two lines
+    assert got["narrow"] == NOTE.format("95%") + CUT.replace(
+        "top; ", "top;<br>")
+    for other in (got["expanded"], got["saved"][0]):
+        assert other["yrange"] == pytest.approx([0, top])
+        assert other["note"] == both["note"]
+    for m in MEMBERS:
+        one = got["views"][m]
+        assert one["yrange"] is None and one.get("autorange") is not False
+        assert one["note"] == ""
+
+
+@pytestmark_node
+def test_the_cut_note_appears_only_when_a_band_passes_the_top(tmp_path):
+    _hub_run(narrow=True)
+    page = _page()
+    fanq = _const(page, "FANQ")
+    got = _drive(tmp_path, page, "US")
+    top = _top(fanq, "US")
+    both = got["views"]["both"]
+    assert both["yrange"] == pytest.approx([0, top])
+    assert max(v for y in both["tops"] for v in y if v is not None) <= top
+    assert both["note"] == got["narrow"] == NOTE.format("95%")
+    assert got["saved"][0]["note"] == NOTE.format("95%")
 
 
 @pytestmark_node
@@ -443,7 +569,7 @@ def test_without_a_95_range_the_overlay_draws_the_80(tmp_path):
     _hub_run(grid=False)
     got = _drive(tmp_path, _page(), "Ohio")
     both = got["views"]["both"]
-    assert both["note"] == "Shaded: 80% of each model's forecasts fall here"
+    assert both["note"].startswith(NOTE.format("80%"))
     assert "<br>80% range " in both["medians"][0]["tip"][1]
     one = got["views"]["pf"]
     assert [b["name"] for b in one["bands"]] == [
@@ -462,7 +588,7 @@ def test_save_figure_writes_the_location_date_models_and_legend(tmp_path):
     assert s["title"] == "Ohio"
     assert s["sub"] == (f"Data as of {FD} · "
                         + " and ".join(names[m] for m in MEMBERS))
-    assert s["note"] == "Shaded: 95% of each model's forecasts fall here"
+    assert s["note"].startswith(NOTE.format("95%"))
     assert {names[m] + " median" for m in MEMBERS} <= set(s["names"])
     assert (s["format"], s["width"], s["height"], s["scale"]) == (
         "png", 1200, 760, 2)
@@ -470,6 +596,56 @@ def test_save_figure_writes_the_location_date_models_and_legend(tmp_path):
         "href": "data:image/png;base64,AAAA",
         "download": f"flubnf_forecast_Ohio_{FD}_models.png"}]
     assert got["disabled"] is False
+
+
+def _rgba(hex_: str, a: float) -> str:
+    n = int(hex_.lstrip("#"), 16)
+    return f"rgba({n >> 16 & 255},{n >> 8 & 255},{n & 255},{a})"
+
+
+@pytestmark_node
+@pytest.mark.parametrize("contrast", [False, True])
+def test_the_saved_figure_is_light_with_the_dark_theme_on(tmp_path,
+                                                         contrast):
+    """The page wears the dark theme; the image takes nau.css's light
+    block (through a probe element in it, carrying the page's contrast
+    mode), the chart on screen keeps the dark one."""
+    _hub_run()
+    page = _page()
+    mcolors = _const(page, "MCOLORS")
+    hc = '[data-contrast="high"]' if contrast else ""
+    tok = {"page": _tokens(DARK + hc),
+           "probe": _tokens(DARK + hc, LIGHT_PROBE + hc)}
+    light = _tokens('html[data-theme="light"]' + hc)
+    assert tok["probe"] == light                # the light block's values
+    assert light["--card"] != tok["page"]["--card"]
+    if contrast:
+        assert light["--ink"] != _tokens('html[data-theme="light"]')["--ink"]
+    got = _drive(tmp_path, page, "US",
+                 root={"data-theme": "dark",
+                       **({"data-contrast": "high"} if contrast else {})},
+                 tok=tok)
+    s = got["saved"][0]
+    assert (s["paper"], s["plot"], s["ink"], s["grid"]) == (
+        light["--card"], light["--card"], light["--ink"], light["--line"])
+    assert s["observedColor"] == light["--ink"]
+    by = {m["group"]: m["color"] for m in s["medians"]}
+    # the Groundhog as the light theme draws it; the others' fixed colours
+    assert by["analogue"] == light["--model-analogue"]
+    assert by["pf"] == mcolors["pf"]
+    fills = {b["group"]: b["fill"] for b in s["bands"]}
+    assert fills["analogue"] == _rgba(light["--model-analogue"], .13)
+    # on screen, before and after the save: the page's own theme
+    for view in (got["views"]["both"], got["after"]):
+        assert (view["paper"], view["ink"]) == (tok["page"]["--card"],
+                                                tok["page"]["--ink"])
+        assert {m["group"]: m["color"] for m in view["medians"]}[
+            "analogue"] == tok["page"]["--model-analogue"]
+    # one probe, hidden, in the body while the image was built, then gone
+    assert got["probes"] == [{
+        "attrs": {"data-theme": "light",
+                  **({"data-contrast": "high"} if contrast else {})},
+        "hidden": True, "parent": "body", "removed": True}]
 
 
 def test_the_card_uses_the_kits_switch_and_keeps_the_flusight_lines():
