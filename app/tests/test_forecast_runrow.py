@@ -687,7 +687,7 @@ def test_a_thin_week_says_the_groundhog_has_too_little_history():
     # script turns it off where nothing can run: test_run_is_off_...),
     # no reason button, and the line has no "?"
     form = _form_html(html)
-    assert '<button class="gold" id="fc-run" data-guard="console-run">Run models</button>' \
+    assert '<button class="gold" id="fc-run" aria-describedby="fc-runwhy" data-guard="console-run">Run models</button>' \
         in form
     assert "uk-reason" not in form and "reason_button" not in form
     alert = form[form.index('id="fc-ds-donors"'):]
@@ -758,7 +758,7 @@ def test_run_is_off_where_no_model_can_forecast_the_week(tmp_path):
     best = DU.donor_best(ds)
     assert best[dates[-1]] < 30 and best[dates[0]] < 30
     html = _page(url=f"/forecast?source={ds.id}").text
-    assert '<p class="fc-runwhy" id="fc-runwhy" role="status" hidden></p>' \
+    assert '<p class="fc-runwhy" id="fc-runwhy" role="status"></p>' \
         in html
     got = _served(tmp_path, html, dates[-1], """
       function run() {

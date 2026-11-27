@@ -2,8 +2,9 @@
    retro_context): with no dataset a pointer to the Data tab's upload box
    (its "Save and set up replay" stores a file and reopens this tab on it);
    else the settings of a replay of one dataset (picked by a plain GET
-   form, like the Forecast tab's, sent when the choice changes, so the
-   weeks and groups are rendered without script) beside its replays.
+   form, like the Forecast tab's, sent by its Use button, so the weeks and
+   groups are rendered without script; a choice alone never loads a page,
+   and Replay waits for Use) beside its replays.
    Never among the FluSight seasons. Tips imported by retro.html, which
    links the tab's sheet. #}
 {% set dr = dataset_replay %}{% set d = dr.ds %}
@@ -54,8 +55,10 @@
       group: datasets_ui.replay_start) #}
    <div class="lblrow"><label id="dsr-groups-lbl">Groups <span id="dsr-gcount" class="fc-count"></span></label></div>
    {% call tips.fold("Pick groups", id="dsr-grouppick", open=True, cls="fc-locpick") %}
+   {# shown by its script, which is what filters (without script Enter in
+      it would press Replay) #}
    <input type="search" id="dsr-gfilter" class="fc-locfilter" placeholder="Filter" autocomplete="off"
-     aria-label="Filter the groups" aria-controls="dsr-checklist">
+     aria-label="Filter the groups" aria-controls="dsr-checklist" hidden>
    <div class="checklist" id="dsr-checklist" role="group" aria-labelledby="dsr-groups-lbl">
     <label class="ck"><input type="checkbox" id="dsr-gall" checked> <b>all {{ d.groups | length }} groups</b></label>
     {% for g in d.groups %}<label class="ck"><input type="checkbox" class="dsr-gone" name="groups" value="{{ g }}" checked> {{ g }}</label>
@@ -69,7 +72,22 @@
           filt = document.getElementById('dsr-gfilter'),
           none = document.getElementById('dsr-gnomatch'),
           count = document.getElementById('dsr-gcount');
-      if (!all) return;
+      if (filt) {
+        filt.hidden = false;
+        // Enter in the filter is the filter's own: never the form's Replay
+        filt.addEventListener('keydown', function (e) {
+          if (e.key === 'Enter') e.preventDefault();
+        });
+        filt.addEventListener('input', function () {
+          var q = filt.value.toLowerCase(), shown = 0;
+          ones.forEach(function (c) {
+            var hit = !q || c.value.toLowerCase().indexOf(q) >= 0;
+            c.parentNode.hidden = !hit; if (hit) shown++;
+          });
+          if (none) none.hidden = shown > 0;
+        });
+      }
+      if (!all || !count) return;
       function paint() {
         var n = ones.filter(function (c) { return c.checked; }).length;
         all.checked = n === ones.length;
@@ -79,24 +97,13 @@
           n ? n + ' of ' + ones.length :
           'none ticked: all ' + ones.length + ' replay';
       }
+      // the box's own change bubbles to the form, whose script redoes
+      // the time line
       all.addEventListener('change', function () {
         ones.forEach(function (c) { c.checked = all.checked; });
         paint();
-        ones[0] && ones[0].dispatchEvent(new Event('change', {bubbles: true}));
       });
       ones.forEach(function (c) { c.addEventListener('change', paint); });
-      // Enter in the filter is the filter's own: never the form's Replay
-      filt.addEventListener('keydown', function (e) {
-        if (e.key === 'Enter') e.preventDefault();
-      });
-      filt.addEventListener('input', function () {
-        var q = filt.value.toLowerCase(), shown = 0;
-        ones.forEach(function (c) {
-          var hit = !q || c.value.toLowerCase().indexOf(q) >= 0;
-          c.parentNode.hidden = !hit; if (hit) shown++;
-        });
-        none.hidden = shown > 0;
-      });
       paint();
     })();
    </script>
@@ -123,10 +130,12 @@
     <div id="dsr-est"{% if not d.est_text %} hidden{% endif %}>{{ tips.meta([("clock", d.est_text, "Time")], label="Replay time") }}</div>
    </div>
    <script type="application/json" id="dsr-donor-data">{{ d.donors_json | safe }}</script>
-   <button class="gold" id="dsr-run" data-guard="console-run">Replay</button>
+   <button class="gold" id="dsr-run" aria-describedby="dsr-runwhy" data-guard="console-run">Replay</button>
    {# a Dataset choice not yet opened with Use: Replay waits for it, so the
-      form's own dataset never replays unseen #}
-   <p class="rt-under" id="dsr-runwhy" role="status" hidden></p>
+      form's own dataset never replays unseen; the line is a live region
+      kept on the page (empty when there is nothing to say) and describes
+      the button #}
+   <p class="rt-under dsr-runwhy" id="dsr-runwhy" role="status"></p>
    <script>
     (function () {
       var pick = document.getElementById('dsr-ds'),
@@ -137,7 +146,6 @@
       function sync() {
         var stale = pick.value !== held;
         run.disabled = stale;
-        why.hidden = !stale;
         why.textContent = stale ? 'Replay is off: press Use to open ' +
           pick.options[pick.selectedIndex].text + ' first.' : '';
       }

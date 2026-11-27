@@ -250,7 +250,6 @@
         var r = stale() || runWhy(o);
         run.disabled = !!r;
         why.textContent = r;
-        why.hidden = !r;
       }
     }
     if (!line && !alert && !why) return null;

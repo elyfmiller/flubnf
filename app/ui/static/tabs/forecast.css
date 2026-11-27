@@ -27,6 +27,7 @@
 #fcform.mode-realtime .fc-pastnote{display:none}
 /* why Run is off on a dataset week no model can forecast */
 .fc-runwhy{margin:.35rem 0 0;color:var(--mut);font-size:.9rem;flex-basis:100%}
+.fc-runwhy:empty{margin:0}
 /* the anchor week under the date: an icon, the label, the week, the
    "not archived" badge; or one warn line when no week is on or before */
 .fc-anchor{margin:.35rem 0 .15rem;font-size:var(--fs-label);line-height:1.5}

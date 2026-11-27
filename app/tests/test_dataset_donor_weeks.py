@@ -183,7 +183,7 @@ def test_the_replay_badge_counts_its_weeks_and_replay_stays_on():
     assert ">Groundhog donors: enough in 0 of 38 weeks<" in form
     assert 'class="uk-badge uk-badge--warn" id="dsr-donors"' in form
     # informs only: a week without donors ends "no forecast"
-    assert '<button class="gold" id="dsr-run" data-guard="console-run">Replay</button>' \
+    assert '<button class="gold" id="dsr-run" aria-describedby="dsr-runwhy" data-guard="console-run">Replay</button>' \
         in form
     ok = stored(TEMPLATE.read_bytes(), "Kids")
     w0, w1 = DU.replay_window(ok.forecast_dates())
@@ -192,7 +192,7 @@ def test_the_replay_badge_counts_its_weeks_and_replay_stays_on():
     form = replay_form(ok)
     assert f">Groundhog donors: enough in {n} of {len(weeks)} weeks<" in form
     assert 0 < n < len(weeks)
-    assert '<button class="gold" id="dsr-run" data-guard="console-run">Replay</button>' \
+    assert '<button class="gold" id="dsr-run" aria-describedby="dsr-runwhy" data-guard="console-run">Replay</button>' \
         in form
     # what the page's script reads: every forecast week's count
     data = re.search(r'<script type="application/json" id="dsr-donor-data">'

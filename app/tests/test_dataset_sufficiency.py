@@ -169,11 +169,11 @@ def test_replay_stays_on_where_the_groundhog_has_no_donors():
     ds = stored(one_series_bytes(), "Flu")
     html = " ".join(client.get(f"/retro?dataset={ds.id}").text.split())
     assert ">Groundhog donors: enough in 0 of 38 weeks<" in html
-    assert '<button class="gold" id="dsr-run" data-guard="console-run">Replay</button>' \
+    assert '<button class="gold" id="dsr-run" aria-describedby="dsr-runwhy" data-guard="console-run">Replay</button>' \
         in html
     ok = stored(TEMPLATE.read_bytes(), "Kids")
     html = " ".join(client.get(f"/retro?dataset={ok.id}").text.split())
-    assert '<button class="gold" id="dsr-run" data-guard="console-run">Replay</button>' \
+    assert '<button class="gold" id="dsr-run" aria-describedby="dsr-runwhy" data-guard="console-run">Replay</button>' \
         in html
 
 

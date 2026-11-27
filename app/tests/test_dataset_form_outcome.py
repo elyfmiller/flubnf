@@ -21,6 +21,8 @@ from pathlib import Path
 
 from app.ui import datasets_ui as DU
 
+import served_dom as SD                                  # noqa: E402
+
 from test_datasets_ui import client, isolated, stored  # noqa: E402,F401
 
 ROOT = Path(__file__).resolve().parents[2]
@@ -129,16 +131,59 @@ def test_what_a_past_week_sees_is_said_outside_real_time():
 
 # ------------------------------------------- the group pickers' filters
 
-def test_enter_in_a_group_filter_never_submits_the_form():
+def _inline(html: str, marker: str, tmp_path, name: str):
+    """The page's own inline script holding `marker`, as a file the served
+    page harness runs."""
+    for block in re.findall(r"<script>(.*?)</script>", html, re.S):
+        if marker in block:
+            f = tmp_path / name
+            f.write_text(block, encoding="utf-8")
+            return f
+    raise AssertionError(marker)
+
+
+KEY = ("function key(el, k) { var ev = {type: 'keydown', key: k, "
+       "bubbles: true, defaultPrevented: false, preventDefault: "
+       "function () { this.defaultPrevented = true; }}; "
+       "el.dispatchEvent(ev); return ev.defaultPrevented; }\n")
+
+
+def test_enter_in_a_group_filter_never_submits_the_form(tmp_path):
     """Enter applies a search box's filter; in the replay form it once
-    pressed Replay (the form's first submit button)."""
+    pressed Replay (the form's first submit button). The filters are
+    shown by the script that makes them work: without script there is no
+    box to press Enter in."""
     ds = stored()
-    for url, fid in ((f"/retro?dataset={ds.id}", "filt"),
-                     (f"/forecast?source={ds.id}", "FILTER")):
-        page = client.get(url).text
-        assert (f"{fid}.addEventListener('keydown', function (e) {{"
-                in page), url
-        assert "if (e.key === 'Enter') e.preventDefault();" in page, url
+    page = client.get(f"/retro?dataset={ds.id}").text
+    assert re.search(r'<input type="search" id="dsr-gfilter"[^>]* hidden>',
+                     page)
+    got = SD.run(tmp_path, page, [_inline(page, "dsr-gall", tmp_path,
+                                          "groups.js")], KEY + """
+      var f = document.getElementById('dsr-gfilter');
+      return [f.hidden, key(f, 'Enter'), key(f, 'a')];""")
+    assert got == [False, True, False]
+    fc = client.get(f"/forecast?source={ds.id}").text
+    assert re.search(r'<input type="search" id="fc-locfilter"[^>]* hidden',
+                     fc)
+    assert "if (FILTER) FILTER.hidden = false;" in fc
+    assert "if (e.key === 'Enter') e.preventDefault();" in fc
+
+
+def test_the_group_count_follows_the_ticks(tmp_path):
+    ds = stored()
+    page = client.get(f"/retro?dataset={ds.id}").text
+    n = len(ds.groups)
+    got = SD.run(tmp_path, page, [_inline(page, "dsr-gall", tmp_path,
+                                          "groups.js")], """
+      var all = document.getElementById('dsr-gall'),
+          c = document.getElementById('dsr-gcount'),
+          one = document.querySelectorAll('.dsr-gone')[0], out = [c.textContent];
+      one.checked = false; one.fire('change'); out.push(c.textContent);
+      all.checked = false; all.fire('change'); out.push(c.textContent);
+      all.checked = true; all.fire('change'); out.push(c.textContent);
+      return out;""")
+    assert got == [f"all {n}", f"{n - 1} of {n}",
+                   f"none ticked: all {n} replay", f"all {n}"]
 
 
 def test_no_group_ticked_says_every_group_replays():
@@ -148,5 +193,5 @@ def test_no_group_ticked_says_every_group_replays():
     # the replay form's own Use and the Replay that waits for it
     form = page[page.index('id="dsr-srcform"'):]
     assert '<button class="quiet">Use</button>' in form[:form.index("</form>")]
-    assert 'id="dsr-run" data-guard="console-run">Replay</button>' in page
+    assert 'id="dsr-run" aria-describedby="dsr-runwhy" data-guard="console-run">Replay</button>' in page
     assert "Replay is off: press Use to open " in page

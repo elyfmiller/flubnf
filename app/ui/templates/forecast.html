@@ -102,9 +102,9 @@
     <span class="fc-anchor-none"{% if aw %} hidden{% endif %}>{{ tips.icon("warning") }}<span id="fc-anchor-none">{{ an if not aw else "" }}</span></span>
    </div>
    {% if dataset %}
-   {# what a past week sees, said only in Vintage mode (forecast.css hides it
-      in Real-time, where the newest week is forecast from the data as it
-      stands): the snapshot that held it, or today's numbers #}
+   {# what a past week sees, hidden in Real-time only (forecast.css), so it
+      shows in Vintage and without script, where the server runs whatever
+      week is typed: the snapshot that held it, or today's numbers #}
    <p class="fc-pastnote" id="fc-pastnote">{% if dataset.vintage_true %}Past weeks use the data as it was reported then.{% else %}{{ tips.icon("warning", cls="uk-c-warn") }} Past weeks use today's numbers, not what was known then.{% endif %}</p>
    {# a newest week that ends after today may still be filling in: said
       while the date anchors on it, with the week before it offered #}
@@ -313,7 +313,7 @@
         or (not us_checked and all_locs and fl_st | length == all_locs | length) %}
    {% call tips.fold("Pick groups" if dataset else "Pick locations", id="fc-locpick",
         open=(dataset or locations_error or not fl_preset), cls="fc-locpick") %}
-   <input type="search" id="fc-locfilter" class="fc-locfilter" placeholder="Filter" autocomplete="off"
+   <input type="search" id="fc-locfilter" class="fc-locfilter" placeholder="Filter" autocomplete="off" hidden
      aria-label="{{ 'Filter the groups' if dataset else 'Filter the locations' }}" aria-controls="fc-checklist">
    <div class="checklist" id="fc-checklist" role="group" aria-labelledby="fc-locs-lbl">
      <label class="ck"><input type="checkbox" id="ck-all" value="all" name="locations"
@@ -392,10 +392,12 @@
       against the last run (the script below; display only) #}
    {% set lr = (aids.last_run if (aids is defined and aids and not dataset) else none) %}
    <div class="fc-runrow">
-    <button class="gold" id="fc-run" data-guard="console-run">Run models</button>
-    {# a dataset week no model can forecast: Run is off and says why
-       (static/forecast_form.js, from the donor counts above) #}
-    {% if dataset %}<p class="fc-runwhy" id="fc-runwhy" role="status" hidden></p>{% endif %}
+    <button class="gold" id="fc-run"{% if dataset %} aria-describedby="fc-runwhy"{% endif %} data-guard="console-run">Run models</button>
+    {# why Run is off on a dataset (a week no model can forecast, or a
+       picked dataset not yet opened with Use; static/forecast_form.js): a
+       live region kept on the page, empty when there is nothing to say,
+       that describes the button #}
+    {% if dataset %}<p class="fc-runwhy" id="fc-runwhy" role="status"></p>{% endif %}
     {% if lr %}<span id="fc-vslast" class="fc-vslast" aria-live="polite">{{ tips.badge("ok", "Same as last run", id="fc-vs-last") }}</span>{% endif %}
     {# how long the run takes here: the models, the locations and the
        cost model's span (routes/forecast.run_words), redone on every
@@ -579,6 +581,9 @@
      var FILTER = document.getElementById('fc-locfilter'),
          NOMATCH = document.getElementById('fc-nomatch');
      // Enter in the filter is the filter's own: never the form's Run
+     // shown by script, which is what filters (without script Enter in it
+     // would press Run models)
+     if (FILTER) FILTER.hidden = false;
      if (FILTER) FILTER.addEventListener('keydown', function (e) {
        if (e.key === 'Enter') e.preventDefault();
      });
