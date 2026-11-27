@@ -130,7 +130,8 @@ DRIVE = r"""
     FMODEL = m; FIDX = Object.keys(FANQ[m]).indexOf(loc);
     await drawFan();
     var c = calls.filter(function(c){ return c.id === 'fanplot'; }).pop();
-    var med = c.traces.filter(function(t){ return t.name === 'median'; })[0];
+    // the member's median line (named after the member, marked by meta)
+    var med = c.traces.filter(function(t){ return t.meta === 'median'; })[0];
     out[m + '|' + loc] = {x: med.x[0], y: med.y[0], n: med.x.length,
                           h: Object.keys(FANQ[m][loc]).length};
   }

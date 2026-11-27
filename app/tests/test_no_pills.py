@@ -209,9 +209,6 @@ PILL_RULES = {
     ("ui-kit.css", ".uk-progress-track"), ("ui-kit.css", ".uk-progress-fill"),
     ("tabs/models.css", ".md-bar-track"),
     ("tabs/storage.css", ".st-bar"),
-    # the Forecast chart's model buttons (forecast.html, built by script),
-    # left while that chart keeps its switch: delete this line with them
-    ("nau.css", ".seg button"),
 }
 
 

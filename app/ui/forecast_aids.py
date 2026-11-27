@@ -211,6 +211,183 @@ def fan_run(ledger_rows: list, rid) -> dict | None:
             "modified": _runs.is_modified(spec), "earlier": earlier}
 
 
+# === The Forecasts card's chart: the 95% range, the axis, the order ===
+#: the levels of the 95% range. results.json keeps 0.1 to 0.9 only, so the
+#: chart reads these two from the run's own files (wide_levels)
+WIDE = ("0.025", "0.975")
+#: the hub chart's y axis
+HUB_VALUE_LABEL = "Weekly flu hospital admissions"
+#: a dataset's y axis when neither its run nor its file names the value
+DATASET_VALUE_LABEL = "Weekly value"
+#: value-column names that say nothing about what is counted
+_GENERIC_VALUE = ("value", "values", "observation", "observations", "y")
+
+
+def _grid_levels(workroot) -> dict:
+    """A hub run's 95% ranges from its weekly report's bundle: the "All
+    locations" grid (report_grid, bundle version 8) keeps each model's own
+    forecast at 2.5% and 97.5%, the same forecast results.json keeps at
+    10% to 90% (before the upper-tail cap; the submitted file is after
+    it). National keyed "US"; {} without a grid."""
+    from app.core import report_grid, report_v2
+    try:
+        bundle = json.loads((Path(workroot) / report_v2.BUNDLE_NAME)
+                            .read_text(encoding="utf-8"))
+        lo = report_grid.LEVELS.index(float(WIDE[0]))
+        hi = report_grid.LEVELS.index(float(WIDE[1]))
+    except (OSError, ValueError):
+        return {}
+    grid = bundle.get("grid") if isinstance(bundle, dict) else None
+    panels = grid.get("panels") if isinstance(grid, dict) else None
+    out: dict = {}
+    for p in panels if isinstance(panels, list) else []:
+        if not isinstance(p, dict):
+            continue
+        name = "US" if p.get("key") == "US" else p.get("name")
+        for m, f in (p.get("models") or {}).items():
+            if not isinstance(f, dict):
+                continue
+            for t, row in zip(f.get("times") or [], f.get("q") or []):
+                try:
+                    out.setdefault(m, {}).setdefault(name, {})[str(t)[:10]] = {
+                        WIDE[0]: float(row[lo]), WIDE[1]: float(row[hi])}
+                except (TypeError, ValueError, IndexError):
+                    continue
+    return out
+
+
+def _export_levels(workroot, ds) -> dict:
+    """A dataset run's 95% ranges from its export files (custom_run:
+    export/<export id>[-suffix]/*.csv, all 23 levels, keyed by the
+    dataset's own unit column), group names through the dataset's source
+    keys. {} without the files."""
+    import csv
+    from app.core import custom_run as CR
+    root = Path(workroot) / CR.EXPORT_DIR
+    if not root.is_dir():
+        return {}
+    try:
+        back = {str(k): n for n, k in CR.source_keys(ds).items()}
+        col = CR.key_col(ds)
+    except Exception:
+        back, col = {}, ""
+    out: dict = {}
+    for m, mid in CR.EXPORT_IDS.items():
+        files = sorted(f for d in root.iterdir() if d.is_dir()
+                       and (d.name == mid or d.name.startswith(mid + "-"))
+                       for f in d.glob("*.csv"))
+        if not files:
+            continue
+        try:
+            with open(files[-1], newline="", encoding="utf-8") as fh:
+                for r in csv.DictReader(fh):
+                    if r.get("output_type") != "quantile":
+                        continue
+                    lv = f"{float(r['output_type_id']):g}"
+                    if lv not in WIDE:
+                        continue
+                    key = str(r.get(col) or r.get("target_group")
+                              or r.get("location") or "")
+                    out.setdefault(m, {}).setdefault(
+                        back.get(key, key), {}).setdefault(
+                        str(r["target_end_date"])[:10], {})[lv] = float(
+                            r["value"])
+        except (OSError, KeyError, ValueError):
+            continue
+    return out
+
+
+def wide_levels(workroot, ds=None) -> dict:
+    """model -> location -> target date -> {"0.025", "0.975"}: a run's
+    95% ranges from its own files, the weekly report's bundle for a hub
+    run, the export files for a dataset run (`ds` given). {} for none."""
+    if not workroot:
+        return {}
+    try:
+        return (_export_levels(workroot, ds) if ds is not None
+                else _grid_levels(workroot))
+    except Exception:
+        return {}
+
+
+def widen_fans(fanq: dict, wide: dict, fc_date: str) -> dict:
+    """The fans with each stored horizon h's 95% range from `wide`, matched
+    by its target date (the as-of + 7h, where the chart draws it), kept
+    outside the 80% range (the bundle's whole numbers could cross it). A
+    horizon without both levels keeps its five."""
+    from app.core import us_national
+    try:
+        base = date.fromisoformat(str(fc_date)[:10])
+    except ValueError:
+        return fanq
+    out = {}
+    for m, by_loc in (fanq or {}).items():
+        wm = (wide or {}).get(m) or {}
+        out[m] = {}
+        for loc, hs in by_loc.items():
+            wl = wm.get(loc) or (wm.get("US") if us_national.is_us(loc)
+                                 else None) or {}
+            row = {}
+            for h, q in hs.items():
+                try:
+                    t = (base + timedelta(days=7 * int(h))).isoformat()
+                except (TypeError, ValueError):
+                    row[h] = q
+                    continue
+                w = wl.get(t) or {}
+                if isinstance(q, dict) and all(k in w for k in WIDE):
+                    q = dict(q)
+                    q[WIDE[0]] = min(w[WIDE[0]], q.get("0.1", w[WIDE[0]]))
+                    q[WIDE[1]] = max(w[WIDE[1]], q.get("0.9", w[WIDE[1]]))
+                row[h] = q
+            out[m][loc] = row
+    return out
+
+
+def fan_first(locations, national: str = "") -> str:
+    """The location the chart's list starts with: a dataset's national
+    group when it names one, else the national series among `locations`;
+    "" when there is none."""
+    from app.core import us_national
+    locs = list(locations or [])
+    if national:
+        return national if national in locs else ""
+    return next((l for l in locs if us_national.is_us(l)), "")
+
+
+def fan_chart(fanq: dict, *, label: str, kind: str = "count",
+              national: str = "", first_label: str = "",
+              dataset: str = "") -> dict:
+    """What the Forecasts card's script reads beside the fans (FANC): the
+    y axis's words, whether values are counts (whole numbers in the hover)
+    or rates, the location listed first and its name there, the models'
+    drawing order (the weekly report's: the first drawn sits under the
+    others) and the dataset's name for a saved figure ("" on the hub)."""
+    from app.core import report_grid
+    locs = [l for qs in (fanq or {}).values() for l in qs]
+    first = fan_first(locs, national)
+    return {"label": label, "kind": "rate" if kind == "rate" else "count",
+            "first": first, "first_label": (first_label or first) if first
+            else "", "order": list(report_grid.MODELS), "dataset": dataset}
+
+
+def dataset_value_label(ds, res=None) -> str:
+    """A dataset chart's y axis: the target the run recorded (a hub-style
+    file's target column), else the dataset's value column when its name
+    says what is counted, else DATASET_VALUE_LABEL."""
+    tgt = str(((res or {}).get("dataset") or {}).get("target") or "")
+    if tgt and tgt != "custom":
+        return tgt
+    try:
+        col = str((ds.meta.get("columns") or {}).get("value") or "")
+    except Exception:
+        col = ""
+    name = re.sub(r"[_\s]+", " ", col).strip()
+    if name and name.lower() not in _GENERIC_VALUE:
+        return f"Weekly {name}"
+    return DATASET_VALUE_LABEL
+
+
 # === Location presets ===
 def _spec(row) -> dict:
     try:

@@ -935,8 +935,8 @@
  </div>
 </div>
 {# the fan card, cloned into #fanwrap by the script when stored forecasts
-   exist: the model buttons (script), the FluSight switch's slot, the
-   location pager and the expand button #}
+   exist: the models switch (script), the FluSight switch's slot, the
+   location pager, the expand and Save figure buttons #}
 <template id="fc-fan-tpl"><div class="card" id="fancard">
  {# the run drawn, by name and link; badged when it used modified
     settings, and when it is not the newest run the Latest run card shows
@@ -944,13 +944,20 @@
  {% set fr = aids.fan_run if (aids is defined and aids) else none %}
  {% set fan_meta %}{% if fr %}<ul class="uk-meta" aria-label="The run drawn"><li>{{ tips.icon("clock") }}<span class="uk-sr">Run: </span><a href="/runs/{{ fr.run_id }}" id="fc-fan-run">{{ fr.label }}</a></li></ul>{% if fr.modified %}{{ tips.badge("warn", "modified settings", id="fc-fan-mod") }}{% endif %}{% if fr.earlier %}{{ tips.badge("warn", fr.earlier, id="fc-fan-earlier") }}{% endif %}{% else %}{{ tips.meta([("calendar", fc_date, "Forecast date"), ("clock", "latest stored run")]) }}{% endif %}{% endset %}
  {{ tips.heading("Forecasts", "fc-fans", after=fan_meta) }}
- <div class="fanbar"><div class="seg" role="group" aria-label="model"></div>
+ {# the models shown, the kit's segmented switch (filled by the script
+    when the run has more than one model): all of them together, each its
+    median and 95% range, or one with its 50%, 80% and 95% ranges #}
+ <div class="fanbar"><div class="uk-seg" role="group" aria-label="models shown" id="fan-view"></div>
   <span class="fanoff" id="fan-offslot"></span></div>
  <div class="carousel"><button type="button" class="quiet cnav" id="fan-prev" aria-label="previous location">◀</button>
   <select id="fan-loc" aria-label="forecast location" style="width:auto;min-width:min(230px,45vw);max-width:100%"></select>
   <button type="button" class="quiet cnav" id="fan-next" aria-label="next location">▶</button>
   <span class="fc-pos" id="fan-pos"></span>
-  <button type="button" class="quiet" id="fan-expand" aria-haspopup="dialog">⤢ expand</button></div>
+  <button type="button" class="quiet" id="fan-expand" aria-haspopup="dialog">⤢ expand</button>
+  {# a PNG with the location, the data's date, the models and the ranges
+     written in (the toolbar's camera shows only on hover, and not on a
+     phone) #}
+  <button type="button" class="quiet" id="fan-save">{{ tips.icon("download") }} Save figure</button></div>
  <div id="fanplot" style="min-height:400px" tabindex="0" role="group" aria-label="Forecast chart: Left and Right arrows change the location"></div></div></template>
 {# expanded forecast view: base.html's modal shell sized by .modal.fanx; its
    pager shares the card's selection, so closing restores location, scroll
@@ -1002,7 +1009,10 @@
  const MNAMES = {{ model_names_json | safe }};
  // [month label, week offset from August 1] (server-side list)
  const SEASON_MONTHS = {{ season_months | tojson }};
- const css = v => getComputedStyle(document.documentElement).getPropertyValue(v).trim();
+ // the tokens of the page's theme; Save figure points CSSROOT at a probe
+ // in the light block while it builds the image (saveFan)
+ let CSSROOT=null;
+ const css = v => getComputedStyle(CSSROOT||document.documentElement).getPropertyValue(v).trim();
  // ensemble alone resolves through --gold (re-read per draw)
  const MCOLORS = {{ member_colors_json | safe }};
  // season lines resolve --season-N per draw (the cvd set under
@@ -1135,10 +1145,54 @@
  drawData('season');
  // forecast fans (interactive, full width)
  const MODELS=Object.keys(FANQ);
- // PF first, then the Groundhog
- let FMODEL=['pf','analogue'].find(m=>MODELS.includes(m))||MODELS[0];
- let FLOCS=FMODEL?Object.keys(FANQ[FMODEL]):[];
+ // the y axis's words, counts or rates, the location listed first and its
+ // name, the models' drawing order, the dataset's name
+ // (forecast_aids.fan_chart)
+ const FANC={{ fan_chart_json | default('{}', true) | safe }};
+ // the view: '' draws every model together (each its median and 95%
+ // range), a model's key that model alone with its 50%, 80% and 95%
+ // ranges; the last choice is kept in this browser
+ let FMODEL='';
+ if(MODELS.length<2) FMODEL=MODELS[0]||'';
+ else{try{const v=localStorage.getItem('fcfanview')||'';
+   if(MODELS.includes(v)) FMODEL=v;}catch(e){}}
+ let FLOCS=[];
  let FIDX=0;
+ // what the card's chart shows, set as it is drawn: {loc, model (the
+ // view), off (the FluSight lines), zoomed (the reader has since moved an
+ // axis: a zoom, a pan, a double click to fit)}. Save figure builds from
+ // it, never from FIDX and FMODEL, which move before a draw's fetch is
+ // answered
+ let FANDRAWN=null;
+ // the models view v draws (the current one by default), in the weekly
+ // report's order (the first sits under the others)
+ function fanModels(v){
+   if(v===undefined) v=FMODEL;
+   if(v) return FANQ[v]?[v]:[];
+   const order=(FANC.order||[]).filter(m=>MODELS.includes(m));
+   return [...order,...MODELS.filter(m=>!order.includes(m))];
+ }
+ // the locations they forecast, the national one first
+ function fanLocs(){
+   const out=[];
+   fanModels().forEach(m=>Object.keys(FANQ[m]||{}).forEach(l=>{
+     if(!out.includes(l)) out.push(l);}));
+   const i=out.indexOf(FANC.first);
+   if(i>0){out.splice(i,1); out.unshift(FANC.first);}
+   return out;
+ }
+ const locLabel=l=>(FANC.first&&l===FANC.first&&FANC.first_label)||l;
+ // the hover's numbers: whole counts (a rate keeps three figures)
+ const fmtV=v=>(v==null||!isFinite(v))?'n/a':FANC.kind==='rate'
+   ?Number(v).toLocaleString('en-US',{maximumSignificantDigits:3})
+   :Math.round(v).toLocaleString('en-US');
+ // hub weeks end on the Saturday; a dataset's week is named by its date
+ const WEEKW=SRCQ?'week of ':'week ending ';
+ // the ranges, widest first: [low, high, share, fill alpha]; one model
+ // draws all three (nested, so the middle reads darkest), the overlay
+ // each model's widest
+ const BANDS=[['0.025','0.975','95%',.13],['0.1','0.9','80%',.2],
+              ['0.25','0.75','50%',.3]];
  async function ensureSeries(loc){
    if(SERIES[loc]) return;
    try{const r=await fetch('/api/series?locs='+encodeURIComponent(loc)+SRCQ);
@@ -1168,24 +1222,89 @@
        });
      }
      out.push({x:X,y:seq('0.5'),mode:'lines+markers',name:MNAMES[m]||m,
-       line:{color:col,width:2,dash:ens?'dash':'dot'},marker:{size:4},legendgroup:m});
+       line:{color:col,width:2,dash:ens?'dash':'dot'},marker:{size:4},legendgroup:m,
+       legendrank:40,customdata:[...ax.map(()=>'observed'),...hs.map(()=>'median')],
+       hovertemplate:'%{fullData.name} · '+WEEKW
+         +'%{x|%b %-d, %Y}<br>%{customdata} %{y:,.0f}<extra></extra>'});
    });
    return out;
  }
  let fanSeq=0;
+ // the chart's layout for a figure F (fanFigure): the location's name
+ // over it, the y axis says what is counted (and, together, stops where
+ // F's rule puts its top), and the legend's title (above its entries)
+ // what the overlay's shading holds and whether the top cuts it. A legend
+ // title never wraps: the cut note takes a line of its own, two on a
+ // chart `w` px wide that is narrower than 30 times its text (a phone)
+ function fanLay(loc,h,F,w){
+   const L=lay(locLabel(loc),h);
+   const fs=Math.round(rootPx()*.85);
+   L.yaxis.title={text:FANC.label||'',font:{size:fs}};
+   if(F.yrange){L.yaxis.range=F.yrange; L.yaxis.autorange=false;}
+   const note=F.note+(F.cut?'<br>(cut at the top;'
+     +((w||700)<30*fs?'<br>':' ')+'choose one model to see all of it)':'');
+   if(F.note) L.legend.title={text:note,side:'top',font:{size:fs}};
+   // the hover's lines (week, median, ranges) read from the left
+   L.hoverlabel={align:'left'};
+   return L;
+ }
  async function drawFan(){
    const card=document.getElementById('fancard'); if(!card) return;
-   FLOCS=Object.keys(FANQ[FMODEL]||{});
+   FLOCS=fanLocs();
    if(!FLOCS.length) return;
    const tok=++fanSeq;
    FIDX=((FIDX%FLOCS.length)+FLOCS.length)%FLOCS.length;
-   const loc=FLOCS[FIDX], qs=FANQ[FMODEL][loc];
+   const loc=FLOCS[FIDX];
    await ensureSeries(loc);
    if(tok!==fanSeq) return;             // a newer drawFan superseded this one
-   const s=SERIES[loc];
    document.getElementById('fan-pos').textContent=(FIDX+1)+'/'+FLOCS.length;
    syncLocSel(document.getElementById('fan-loc'));
-   const hs=Object.keys(qs).sort();
+   const F=fanFigure(loc,FMODEL,SHOWOFF), traces=F.traces;
+   FANDRAWN={loc:loc, model:FMODEL, off:SHOWOFF, zoomed:false};
+   // react repaints in place: a page flip never collapses the card or
+   // moves the scroll
+   // taller at a large text size, where the legend takes more rows
+   const fname='forecast_'+(FMODEL||'models')+'_'+loc+'_'+FCDATE;
+   const plot=document.getElementById('fanplot');
+   FluCharts.react(plot,traces,
+     fanLay(loc,420+Math.round(Math.max(0,rootPx()-16)*10),F,plot.clientWidth),
+     pconf(fname));
+   // a redraw puts the axes back; the reader's own moves (a range or a
+   // fit: never the tick policy's relayouts) are noted for Save figure
+   if(plot.on&&!plot._fanAxes){
+     plot._fanAxes=true;
+     plot.on('plotly_relayout',ev=>{
+       if(FANDRAWN&&Object.keys(ev||{}).some(k=>/^[xy]axis\.(range|autorange)/.test(k)))
+         FANDRAWN.zoomed=true;});
+   }
+   // the expanded view mirrors the card (traces deep-copied: no shared state)
+   const xb=document.getElementById('fanx-modal');
+   if(xb&&!xb.hidden){
+     document.getElementById('fanx-pos').textContent=(FIDX+1)+'/'+FLOCS.length;
+     syncLocSel(document.getElementById('fanx-loc'));
+     const xplot=document.getElementById('fanxplot');
+     FluCharts.react(xplot,JSON.parse(JSON.stringify(traces)),
+       fanLay(loc,Math.max(420,Math.round(innerHeight*.68)),F,xplot.clientWidth),
+       pconf(fname));
+   }
+ }
+ // the figure at loc in view `model` ('' for every model together), with
+ // the FluSight lines when `off`, coloured by the tokens css() reads:
+ // {traces, note: the legend's title, cut: whether the top cuts a band,
+ // yrange: the y axis's range when the view sets one}. The card, the
+ // expanded view and Save figure draw from it
+ function fanFigure(loc,model,off){
+   const s=SERIES[loc];
+   // the models drawn here, and the ranges: one model (chosen, or the
+   // run's only one) all three; together, each model's 95% range (its 80%
+   // where the run's files kept no 95%)
+   const ms=fanModels(model).filter(m=>(FANQ[m]||{})[loc]);
+   const one=!!model||MODELS.length<2;
+   const wide=ms.every(m=>Object.values(FANQ[m][loc]).every(
+     q=>q['0.025']!=null&&q['0.975']!=null));
+   const bands=one?BANDS.filter(b=>wide||b[0]!=='0.025')
+                  :[wide?BANDS[0]:BANDS[1]];
+   const hs=[...new Set(ms.flatMap(m=>Object.keys(FANQ[m][loc])))].sort();
    // observed is AS OF the run's vintage (a latest tail misdraws backdated
    // runs); fallback: the latest series clipped at the run date
    let obsX=[], obsY=[];
@@ -1195,78 +1314,185 @@
    obsX=obsX.slice(-12); obsY=obsY.slice(-12);
    // whole weeks in UTC: local-time days shift a day across a DST change
    const base=new Date(FCDATE+'T00:00:00Z');
-   const xs=hs.map(h=>{const d=new Date(base); d.setUTCDate(d.getUTCDate()+7*parseInt(h));
-     return d.toISOString().slice(0,10);});
+   const weekOf=h=>{const d=new Date(base); d.setUTCDate(d.getUTCDate()+7*parseInt(h));
+     return d.toISOString().slice(0,10);};
+   const xs=hs.map(weekOf);
    // what happened after the origin (settled data), framed to the horizon
    const lim=new Date(base);
    lim.setUTCDate(lim.getUTCDate()+7*Math.max(...hs.map(h=>parseInt(h))));
    const limIso=lim.toISOString().slice(0,10);
    const aftX=[],aftY=[];
    if(s){s.dates.forEach((d,i)=>{if(d>FCDATE&&d<=limIso){aftX.push(d);aftY.push(s.values[i]);}});}
-   // the weeks this member set aside (unreported: set aside on the
-   // Forecast tab, a trailing zero, a partial week) are marked, and the fan
-   // starts from the last week it used, where the model started
-   const aside=new Set((RASIDE[FMODEL]||{})[loc]||[]);
+   // the weeks a member set aside (unreported: set aside on the Forecast
+   // tab, a trailing zero, a partial week) are marked, and its fan starts
+   // from the last week it used, where the model started
+   const asideOf=m=>new Set((RASIDE[m]||{})[loc]||[]);
+   const aside=new Set(ms.flatMap(m=>[...asideOf(m)]));
+   // the FluSight ensemble and baseline lines start at the last week no
+   // drawn member set aside, a reported 0 included: the zero-anchor move
+   // below is the Groundhog's own and does not apply to them
    let ai=obsX.length-1; while(ai>=0&&aside.has(obsX[ai])) ai--;
-   // the FluSight ensemble and baseline lines start at this week, a
-   // reported 0 included: the zero-anchor move below is the Groundhog's
-   // own and does not apply to them
    const oi=ai, ox=oi>=0?[obsX[oi]]:[], oy=oi>=0?[obsY[oi]]:[];
-   // a newest week of 0 under a zero-anchor rule is a reported week, so it
-   // is not set aside; but no rule starts from that 0 (FC-14). Extend
-   // starts from the newest positive week, as after a set-aside week.
-   // Level, Blend and the Poisson fallbacks start at the first horizon,
-   // with no line from the observed series. Without the drawn run's flags
-   // (RZERO null), a Groundhog fan from a 0 takes the first horizon.
-   if(ai>=0&&!(obsY[ai]>0)){
-     const zr=RZERO?(RZERO[FMODEL]||{})[loc]:(FMODEL==='analogue'?'unknown':'');
-     if(zr){
-       let pi=ai; while(pi>=0&&!(obsY[pi]>0)) pi--;
-       // Extend carries a positive week over at most 2 zeros (missing.MAX_CARRY)
-       ai=(zr==='extend'&&pi>=0&&ai-pi<=2)?pi:-1;
+   // where member m's fan starts. A newest week of 0 under a zero-anchor
+   // rule is a reported week, so it is not set aside; but no rule starts
+   // from that 0 (FC-14). Extend starts from the newest positive week, as
+   // after a set-aside week. Level, Blend and the Poisson fallbacks start
+   // at the first horizon, with no line from the observed series. Without
+   // the drawn run's flags (RZERO null), a Groundhog fan from a 0 takes
+   // the first horizon.
+   function startOf(m){
+     const own=asideOf(m);
+     let ai=obsX.length-1; while(ai>=0&&own.has(obsX[ai])) ai--;
+     if(ai>=0&&!(obsY[ai]>0)){
+       const zr=RZERO?(RZERO[m]||{})[loc]:(m==='analogue'?'unknown':'');
+       if(zr){
+         let pi=ai; while(pi>=0&&!(obsY[pi]>0)) pi--;
+         // Extend carries a positive week over at most 2 zeros (missing.MAX_CARRY)
+         ai=(zr==='extend'&&pi>=0&&ai-pi<=2)?pi:-1;
+       }
      }
+     return ai;
    }
-   const ax=ai>=0?[obsX[ai]]:[], ay=ai>=0?[obsY[ai]]:[];
-   const fx=[...ax,...xs];
-   const med=[...ay,...hs.map(h=>qs[h]['0.5'])];
-   const lo9=[...ay,...hs.map(h=>qs[h]['0.1'])];
-   const hi9=[...ay,...hs.map(h=>qs[h]['0.9'])];
-   // the fan wears the DISPLAYED member's color
-   const mc=memberColor(FMODEL);
+   // the upper edge of each model's widest band, as [week, value] points
+   // (what the cut note asks about: the FluSight band never counts)
+   const tops=[];
    const traces=[
-     {x:obsX,y:obsY,mode:'lines+markers',name:'observed (as of '+FCDATE+')',line:{color:css('--ink')}},
-     {x:fx,y:hi9,mode:'lines',line:{width:0},showlegend:false,hoverinfo:'skip'},
-     {x:fx,y:lo9,mode:'lines',fill:'tonexty',fillcolor:rgba(mc,.2),
-      line:{width:0},name:'10-90% interval'},
-     {x:fx,y:med,mode:'lines+markers',name:'median',line:{color:mc,width:2.5}},
-   ];
+     {x:obsX,y:obsY,mode:'lines+markers',name:'observed (as of '+FCDATE+')',
+      line:{color:css('--ink')},legendrank:1,
+      customdata:obsX.map((d,i)=>'observed · '+WEEKW+fmtDate(d)+'<br>'+fmtV(obsY[i])),
+      hovertemplate:'%{customdata}<extra></extra>'}];
+   ms.forEach(m=>{
+     const qs=FANQ[m][loc], mh=Object.keys(qs).sort();
+     const si=startOf(m);
+     const ax=si>=0?[obsX[si]]:[], ay=si>=0?[obsY[si]]:[];
+     const fx=[...ax,...mh.map(weekOf)];
+     const seq=k=>[...ay,...mh.map(h=>qs[h][k])];
+     // each fan wears its member's color
+     const mc=memberColor(m), nm=MNAMES[m]||m;
+     // a band is its two edges, the lower filled up to the upper; one
+     // model's bands carry their share in the legend, the overlay's go
+     // with their model's line (one legend entry says what they are)
+     const up=seq(bands[0][1]); fx.forEach((x,i)=>tops.push([x,up[i]]));
+     bands.forEach(([lo,hi,pct,a],bi)=>{
+       const g=one?'band'+pct:m;
+       traces.push({x:fx,y:seq(hi),mode:'lines',line:{width:0},showlegend:false,
+         hoverinfo:'skip',legendgroup:g});
+       traces.push({x:fx,y:seq(lo),mode:'lines',fill:'tonexty',
+         fillcolor:rgba(mc,a),line:{width:0},hoverinfo:'skip',legendgroup:g,
+         showlegend:one,name:pct+' of forecasts fall here',
+         legendrank:20+bands.length-bi});
+     });
+     // the hover: the week, the median, the 50% and 95% ranges
+     const rng=(q,a,b)=>fmtV(q[a])+' to '+fmtV(q[b]);
+     const tip=h=>{const q=qs[h];
+       return '<b>'+nm+'</b> · '+WEEKW+fmtDate(weekOf(h))
+         +'<br>median '+fmtV(q['0.5'])+'<br>50% range '+rng(q,'0.25','0.75')
+         +(q['0.025']!=null&&q['0.975']!=null
+           ?'<br>95% range '+rng(q,'0.025','0.975')
+           :'<br>80% range '+rng(q,'0.1','0.9'));};
+     traces.push({x:fx,y:seq('0.5'),mode:'lines+markers',name:nm+' median',
+       meta:'median',legendgroup:m,legendrank:10+MODELS.indexOf(m),
+       line:{color:mc,width:2.5},
+       customdata:[...ax.map((d,i)=>'<b>'+nm+'</b> starts from '+WEEKW
+                     +fmtDate(d)+'<br>observed '+fmtV(ay[i])),...mh.map(tip)],
+       hovertemplate:'%{customdata}<extra></extra>'});
+   });
    if(aside.size){
      const sx=obsX.filter(d=>aside.has(d)), sy=obsY.filter((v,i)=>aside.has(obsX[i]));
      if(sx.length) traces.push({x:sx,y:sy,mode:'markers',name:'set aside',
-       marker:{symbol:'x-open',size:9,color:css('--mut')}});
+       marker:{symbol:'x-open',size:9,color:css('--mut')},legendrank:30,
+       customdata:sx.map((d,i)=>'set aside by '+ms.filter(m=>asideOf(m).has(d))
+         .map(m=>MNAMES[m]||m).join(' and ')+' · '+WEEKW+fmtDate(d)
+         +'<br>'+fmtV(sy[i])),
+       hovertemplate:'%{customdata}<extra></extra>'});
    }
-   if(SHOWOFF) traces.push(...offTraces(loc, xs, ox, oy));
+   if(off) traces.push(...offTraces(loc, xs, ox, oy));
    if(aftX.length) traces.push({x:aftX,y:aftY,mode:'lines+markers',
      // dotted ink, as on every surface; hollow markers tell it from the
      // dotted grey FluSight baseline
      name:'settled outcome',line:{color:css('--ink'),dash:'dot',width:1.4},
-     marker:{size:6,symbol:'circle-open'}});
-   // react repaints in place: a page flip never collapses the card or
-   // moves the scroll
-   // taller at a large text size, where the legend takes more rows
-   FluCharts.react(document.getElementById('fanplot'),traces,
-     lay(loc,400+Math.round(Math.max(0,rootPx()-16)*10)),
-     pconf('forecast_'+FMODEL+'_'+loc+'_'+FCDATE));
-   // the expanded view mirrors the card (traces deep-copied: no shared state)
-   const xb=document.getElementById('fanx-modal');
-   if(xb&&!xb.hidden){
-     document.getElementById('fanx-pos').textContent=(FIDX+1)+'/'+FLOCS.length;
-     syncLocSel(document.getElementById('fanx-loc'));
-     FluCharts.react(document.getElementById('fanxplot'),
-       JSON.parse(JSON.stringify(traces)),
-       lay(loc,Math.max(420,Math.round(innerHeight*.68))),
-       pconf('forecast_'+FMODEL+'_'+loc+'_'+FCDATE));
-   }
+     marker:{size:6,symbol:'circle-open'},legendrank:50,
+     customdata:aftX.map((d,i)=>'settled outcome · '+WEEKW+fmtDate(d)+'<br>'+fmtV(aftY[i])),
+     hovertemplate:'%{customdata}<extra></extra>'});
+   if(one||!ms.length)
+     return {traces:traces, note:'', yrange:null, cut:false, tops:tops};
+   // together, the y axis is scaled to what the reader compares: its top
+   // is 1.1 times the largest observed value in the window (the settled
+   // outcome included), median and 50% upper bound of every model drawn
+   // (the FluSight lines' too when shown), from 0. A band past the top is
+   // cut there, and the legend's title says so; one model alone shows all
+   // of its bands, and a double click still fits everything
+   const cmp=[...obsY,...aftY];
+   const qsAt=[...ms.map(m=>FANQ[m][loc]),
+               ...(off?OFFMODELS.map(m=>(OFFQ[m]||{})[loc]):[])];
+   qsAt.forEach(qs=>Object.values(qs||{}).forEach(q=>cmp.push(q['0.5'],q['0.75'])));
+   const top=1.1*Math.max(0,...cmp.filter(v=>v!=null&&isFinite(v)));
+   const yrange=top>0?[0,top]:null;
+   return {traces:traces, yrange:yrange, tops:tops,
+     cut:fanCut(tops,null,yrange),
+     note:'Shaded: '+bands[0][2]+" of each model's forecasts fall here"};
+ }
+ // whether a model's widest band runs past the top of y range yr within x
+ // range xr (null: every week); a y axis fitted to the data (yr null)
+ // cuts nothing
+ function fanCut(tops,xr,yr){
+   if(!yr) return false;
+   const x0=xr?String(xr[0]).slice(0,10):'', x1=xr?String(xr[1]).slice(0,10):'~';
+   return tops.some(([x,y])=>y!=null&&y>yr[1]&&x>=x0&&x<=x1);
+ }
+ // Save figure: the card's chart as a PNG at twice its pixels, always in
+ // the light theme's colours (the chart on screen keeps the page's), with
+ // the location over it, the data's date and the models under that, and
+ // the legend (the models' lines and what the shading holds); in the axes
+ // the reader left on the card when they moved them
+ async function saveFan(){
+   const gd=document.getElementById('fanplot'), D=FANDRAWN;
+   if(!gd||!gd.data||!D||typeof Plotly==='undefined') return;
+   // the location and view on screen (a pager click may be waiting on its
+   // data: FIDX has moved, the chart not yet)
+   const loc=D.loc, fs=rootPx(), W=1200, H=760;
+   const names=MODELS.filter(m=>fanModels(D.model).includes(m)
+     &&(FANQ[m]||{})[loc]).map(m=>MNAMES[m]||m);
+   // the light tokens whatever the page wears: a probe element in nau.css's
+   // light block (it answers to data-theme="light" on any element), in the
+   // page's contrast and colour-vision modes
+   const de=document.documentElement, probe=document.createElement('span');
+   probe.hidden=true; probe.setAttribute('data-theme','light');
+   ['data-contrast','data-vision'].forEach(k=>{
+     const v=de.getAttribute&&de.getAttribute(k); if(v) probe.setAttribute(k,v);});
+   document.body.appendChild(probe);
+   // the reader's axes: a zoom or pan keeps its ranges, a double click
+   // its fit; the cut note then says what that range cuts
+   const xa=(gd.layout||{}).xaxis||{}, ya=(gd.layout||{}).yaxis||{};
+   const xr=D.zoomed&&!xa.autorange&&xa.range?xa.range.slice():null;
+   const yr=D.zoomed&&!ya.autorange&&ya.range?ya.range.slice():null;
+   let F, L;
+   CSSROOT=probe;
+   try{
+     F=fanFigure(loc,D.model,D.off);
+     if(D.zoomed) F=Object.assign({},F,{yrange:yr,
+       cut:!!F.note&&fanCut(F.tops,xr,yr)});
+     L=fanLay(loc,H,F,W);
+   }finally{CSSROOT=null; probe.remove();}
+   if(xr){L.xaxis.range=xr; L.xaxis.autorange=false;}
+   // what the reader hid in the legend stays hidden
+   F.traces.forEach((t,i)=>{const v=(gd.data[i]||{}).visible;
+     if(v!==undefined) t.visible=v;});
+   L.width=W; L.height=H; L.autosize=false;
+   L.title={text:locLabel(loc)+(FANC.dataset?' · '+FANC.dataset:''),
+     x:0,xref:'paper',xanchor:'left',font:{size:Math.round(fs*1.2)},
+     subtitle:{text:'Data as of '+FCDATE+' · '+names.join(' and '),
+       font:{size:Math.round(fs*.85)}}};
+   L.margin=Object.assign({},L.margin,{l:16,r:16,t:Math.round(fs*5)});
+   FluCharts.applyLayout(L,F.traces,W);
+   const url=await Plotly.toImage({data:F.traces,layout:L},
+     {format:'png',width:W,height:H,scale:2});
+   const a=document.createElement('a');
+   a.href=url;
+   a.download=('flubnf_forecast_'+loc+'_'+FCDATE+'_'
+               +(D.model?(MNAMES[D.model]||D.model):'models'))
+               .replace(/[^\w-]+/g,'_')+'.png';
+   document.body.appendChild(a); a.click(); a.remove();
  }
  // both location selects (card and expanded view) follow the arrows
  function syncLocSel(sel){
@@ -1275,7 +1501,7 @@
    if(sel.dataset.locs!==key){
      sel.innerHTML='';
      FLOCS.forEach(l=>{const o=document.createElement('option');
-       o.textContent=l; sel.appendChild(o);});
+       o.textContent=locLabel(l); sel.appendChild(o);});
      sel.dataset.locs=key;
    }
    sel.selectedIndex=FIDX;
@@ -1283,26 +1509,33 @@
  if(MODELS.length){
    const wrap=document.getElementById('fanwrap');
    // the card from its server template (#fc-fan-tpl: its meta says latest
-   // STORED run, honest across a restart), one button per model
+   // STORED run, honest across a restart); the models switch: every model
+   // together first, then each alone (none with one model)
    wrap.innerHTML='';
    wrap.appendChild(document.getElementById('fc-fan-tpl').content.cloneNode(true));
-   const mseg=wrap.querySelector('.fanbar .seg');
-   MODELS.forEach(m=>{const b=document.createElement('button');
-     b.type='button'; b.className='quiet mbtn'; b.dataset.m=m;
-     b.textContent=(MNAMES[m]||m); mseg.appendChild(b);});
-   document.querySelectorAll('.mbtn').forEach(b=>{
-     if(b.dataset.m===FMODEL) b.classList.add('gold');
-     b.setAttribute('aria-pressed', String(b.dataset.m===FMODEL));
-     b.onclick=()=>{
-       // the current location follows across model buttons
+   const vseg=document.getElementById('fan-view');
+   if(MODELS.length>1&&vseg){
+     [['',MODELS.length===2?'Both':'All'],...MODELS.map(m=>[m,(MNAMES[m]||m)])]
+       .forEach(([m,t])=>{const b=document.createElement('button');
+         b.type='button'; b.className='quiet'; b.dataset.m=m;
+         b.textContent=t; vseg.appendChild(b);});
+     const mark=()=>vseg.querySelectorAll('button').forEach(x=>
+       x.setAttribute('aria-pressed',String(x.dataset.m===FMODEL)));
+     mark();
+     vseg.querySelectorAll('button').forEach(b=>{b.onclick=()=>{
+       // the current location follows across the views
        const cur=FLOCS[FIDX];
-       FMODEL=b.dataset.m;
-       document.querySelectorAll('.mbtn').forEach(x=>{x.classList.remove('gold');
-         x.setAttribute('aria-pressed','false');});
-       b.classList.add('gold'); b.setAttribute('aria-pressed','true');
-       const nl=Object.keys(FANQ[FMODEL]||{});
+       FMODEL=b.dataset.m; mark();
+       try{localStorage.setItem('fcfanview',FMODEL);}catch(e){}
+       const nl=fanLocs();
        FIDX=Math.max(0, nl.indexOf(cur));
        drawFan();};});
+   }else if(vseg) vseg.remove();
+   const save=document.getElementById('fan-save');
+   if(save) save.onclick=async()=>{
+     save.disabled=true;
+     try{await saveFan();}catch(e){console.error(e);}
+     finally{save.disabled=false;}};
    // the comparator switch: only when the hub recorded forecasts this week
    const oslot=document.getElementById('fan-offslot'),
          otpl=document.getElementById('fan-offctl');
