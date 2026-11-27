@@ -24,7 +24,9 @@ $log = "$Out\logs\replay-$(Get-Date -Format yyyyMMdd-HHmmss).log"
 "start $((Get-Date).ToUniversalTime().ToString('s'))Z repo $((git -C $Repo rev-parse --short=8 HEAD).Trim()) hub $head engine public" | Out-File $log -Encoding utf8
 $p = Start-Process -FilePath "$Repo\.venv\Scripts\python.exe" -ArgumentList (@("`"$PSScriptRoot\replay.py`"", "`"$Out`"") + $Extra) `
     -WorkingDirectory $Repo -NoNewWindow -PassThru -RedirectStandardOutput "$log.out" -RedirectStandardError "$log.err"
+$null = $p.Handle   # held, so ExitCode is readable after the exit
 try { $p.PriorityClass = 'BelowNormal' } catch {}
+"pid $($p.Id)" | Out-File $log -Append -Encoding utf8
 $p.WaitForExit()
 "exit $($p.ExitCode) $((Get-Date).ToUniversalTime().ToString('s'))Z" | Out-File $log -Append -Encoding utf8
 exit $p.ExitCode
