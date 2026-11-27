@@ -23,6 +23,7 @@ sys.path.insert(0, str(Path(__file__).resolve().parents[2]))
 
 from markupsafe import Markup                        # noqa: E402
 
+import css_cascade as C                             # noqa: E402
 from app.ui.templating import templates             # noqa: E402
 
 REPO = Path(__file__).resolve().parents[2]
@@ -981,6 +982,87 @@ def test_a_mark_on_a_filled_surface_takes_that_surface_s_text_color():
     # on the old open Model settings button's accent fill fell under 3:1 in
     # some theme, and the dim theme's red on an alert's tint under 4.5:1). Not pinned: a
     # theme that improves those pairs must not fail this test
+
+
+#: a segmented switch's segments as the pages write them (the kit's own
+#: rules, then nau.css's before them, as base.html links them), each
+#: with keyboard focus: (where, its chain from the root)
+_SEG_FOCUS = {
+    "a chosen button": ("div.uk-seg[role=group]",
+                        'button[type=button][aria-pressed="true"]:focus-visible'),
+    "a chosen tab": ("div.mviews.uk-seg[role=tablist]",
+                     'button[type=button][role=tab][aria-selected="true"]'
+                     ':focus-visible'),
+    "a chosen link": ("span.uk-seg[role=group]",
+                      'a[href][aria-current="true"]:focus-visible'),
+    "a chosen button, quiet": ("nav.uk-seg.uk-seg--quiet",
+                               'button[type=button][aria-pressed="true"]'
+                               ':focus-visible'),
+    "the current page, quiet": ("nav.uk-seg.uk-seg--quiet",
+                                'a[href][aria-current="page"]:focus-visible'),
+    "a choice not chosen": ("div.uk-seg[role=group]",
+                            'button[type=button][aria-pressed="false"]'
+                            ':focus-visible'),
+}
+
+
+def _seg_focus(on=()):
+    """{where: (the ring's color, the segment's fill)} as the cascade
+    gives them, the values as written (a token, a color-mix, a system
+    color)."""
+    cas = C.Cascade.page()
+    out = {}
+    for where, (seg, item) in _SEG_FOCUS.items():
+        chain = C.path("html", "body", "main", "div.card", seg, item)
+        ring = cas.winner(chain, ("outline", "outline-color"), on=on)
+        fill = cas.winner(chain, ("background", "background-color"), on=on)
+        assert ring is not None and fill is not None, where
+        color = ring.value
+        if ring.prop == "outline":
+            # the shorthand's color: its one var() that is not the width
+            color = [v for v in re.findall(r"var\(--[\w-]+\)", ring.value)
+                     if "focus-w" not in v][-1]
+        out[where] = (color.strip(), fill.value.strip())
+    return out
+
+
+def test_the_focus_ring_shows_on_every_segment_of_a_switch():
+    """The kit draws a segment's focus as a ring inside it, in the gold
+    the chosen segment is filled with: on the chosen one it could not be
+    seen (1:1 on the dark themes). Each segment's ring holds 3:1 against
+    the segment under it, in every theme, with and without high contrast
+    and the color-vision palette; in forced colors the chosen one is the
+    system's highlight and its ring the highlight's text."""
+    got = _seg_focus()
+    # the ring is inside the segment (the switch clips what is outside)
+    cas = C.Cascade.page()
+    off = cas.value(C.path("html", "body", "div.uk-seg",
+                           'button[aria-pressed="true"]:focus-visible'),
+                    "outline-offset")
+    assert off == "-3px"
+    seen = 0
+    for name, _hc, T in _grid():
+        card = _rgb(T["card"])
+
+        def paint(value):
+            if value == "transparent":
+                return card
+            m = re.fullmatch(r"color-mix\(in srgb,var\(--([\w-]+)\) "
+                             r"(\d+)%,var\(--card\)\)", value)
+            if m:
+                return _mix(_rgb(T[m.group(1)]), card, int(m.group(2)) / 100)
+            return _rgb(T[_token(value)])
+
+        for where, (ring, fill) in got.items():
+            r = _ratio(paint(ring), paint(fill))
+            assert r >= 3.0, (name, where, ring, fill, round(r, 2))
+        seen += 1
+    assert seen >= 16
+    # forced colors: the system's pair, which keeps its own contrast
+    forced = _seg_focus(on={"forced-colors:active"})
+    for where in ("a chosen button", "a chosen tab", "a chosen link",
+                  "a chosen button, quiet", "the current page, quiet"):
+        assert forced[where] == ("HighlightText", "Highlight"), where
 
 
 def test_the_tabs_own_words_hold_the_bar_where_they_sit():

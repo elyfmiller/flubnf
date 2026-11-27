@@ -423,6 +423,14 @@ details.uk-fold[open] > summary::before{transform:rotate(45deg)}
 .uk-seg > button[aria-pressed="true"],.uk-seg > [aria-current],
 .uk-seg > [role="tab"][aria-selected="true"]{
   background:var(--gold-bright);color:var(--on-accent)}
+/* the chosen segment is filled with the gold the focus ring is drawn in
+   (1:1 on the dark themes, under 2.5:1 on the light ones): there the ring
+   takes the segment's own text color, 6:1 or more on the fill in every
+   theme and mode. The quiet switch's tint keeps the gold ring */
+.uk-seg:not(.uk-seg--quiet) > button[aria-pressed="true"]:focus-visible,
+.uk-seg:not(.uk-seg--quiet) > [aria-current]:focus-visible,
+.uk-seg:not(.uk-seg--quiet) > [role="tab"][aria-selected="true"]:focus-visible{
+  outline-color:var(--on-accent)}
 /* where it wraps (a phone, large text), each row fills the width and a
    rule parts the rows: every choice draws a line above itself (clipped on
    the first row) and tucks its left divider under the outline at a row's
@@ -451,6 +459,15 @@ details.uk-fold[open] > summary::before{transform:rotate(45deg)}
   .uk-seg > button[aria-pressed="true"],.uk-seg > [aria-current],
   .uk-seg > [role="tab"][aria-selected="true"]{
     background:Highlight;color:HighlightText}
+  /* the chosen segment's ring: the highlight's text, on every switch
+     (the same selectors as the ring's rule above, so this one wins) */
+  .uk-seg:not(.uk-seg--quiet) > button[aria-pressed="true"]:focus-visible,
+  .uk-seg:not(.uk-seg--quiet) > [aria-current]:focus-visible,
+  .uk-seg:not(.uk-seg--quiet) > [role="tab"][aria-selected="true"]:focus-visible,
+  .uk-seg--quiet > button[aria-pressed="true"]:focus-visible,
+  .uk-seg--quiet > [aria-current]:focus-visible,
+  .uk-seg--quiet > [role="tab"][aria-selected="true"]:focus-visible{
+    outline-color:HighlightText}
   .uk-progress-fill{background:Highlight}
 }
 @media (prefers-reduced-motion:reduce){
