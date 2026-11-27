@@ -700,7 +700,7 @@ def donor_weeks(ds) -> dict:
 
 
 def donor_best(ds) -> dict:
-    """{forecast week (ISO): the most donor weeks the Groundhog finds at
+    """{forecast week (ISO): the most donor weeks the donor model finds at
     any of its four horizons}: under donor_need() there, it forecasts no
     horizon of that week at all (donor_weeks is the fewest, under which it
     forecasts some horizons only). Counted as donor_weeks is."""

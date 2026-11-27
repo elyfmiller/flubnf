@@ -64,10 +64,10 @@
  {{ tips.heading("Preview", fid ~ "-pv", level=3, cls="dt-subhead") }}
  {# what storing it leads to, first: which models can forecast it, or
     that none can yet and what would fix it (datasets_ui.outcome_line);
-    the Groundhog's donor count under it when it is short (by the newest
+    the donor model's count under it when it is short (by the newest
     week's scarcest horizon; shown, never stored) #}
  {% if chk.outcome %}{{ tips.alert(chk.outcome[0], chk.outcome[1], id=fid ~ "-outcome", live="") }}{% endif %}
- {# the Groundhog's fix goes with its count when another model can
+ {# the donor model's fix goes with its count when another model can
     forecast already (the outcome line then has no fix of its own) #}
  {% if chk.groundhog %}<p class="dt-ghnote" id="{{ fid }}-gh">{{ chk.groundhog }}{% if chk.outcome and chk.outcome[0] == "ok" and chk.groundhog_fix %} {{ chk.groundhog_fix }}{% endif %}</p>{% endif %}
  {# what the file holds, one labelled value each #}

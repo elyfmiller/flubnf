@@ -22,7 +22,7 @@
 
    A dataset's Run (runWhy; dataset form only): off, with the reason under
    it, when no model the form runs can forecast the anchor week: the
-   Groundhog alone (chosen, or the only one the dataset can run) with
+   donor model alone (chosen, or the only one the dataset can run) with
    fewer donor weeks than it needs at every horizon (the page's "best",
    datasets_ui.donor_best), at the default donor window and Weeks to drop.
    Anything else leaves Run on; the run itself says what it skipped.
@@ -159,7 +159,7 @@
   }
 
   // why Run is off (o: what readDonor returns), or "" when something can
-  // run: the Groundhog alone, short at every horizon of the anchor week
+  // run: the donor model alone, short at every horizon of the anchor week
   function runWhy(o) {
     if (!o || !o.groundhogOnly || !o.windowDefault || !o.dropDefault)
       return "";
@@ -190,13 +190,16 @@
     var c = a && counts.weeks.hasOwnProperty(a) ? counts.weeks[a] : null;
     var best = counts.best || {};
     var b = a && best.hasOwnProperty(a) ? best[a] : null;
+    var gh = !!model && model.value !== "pf";
     return {count: typeof c === "number" ? c : null, need: counts.need,
             best: typeof b === "number" ? b : null,
             pfOk: counts.pf_ok !== false,
             unit: counts.unit === "group-weeks" ? "group-weeks" : "weeks",
-            groundhog: !!model && model.value !== "pf",
-            groundhogOnly: !!model && (model.value === "analogue" ||
-                                       counts.pf_ok === false),
+            groundhog: gh,
+            // the donor model without the filter: chosen alone, or Both on
+            // a dataset the filter cannot fit
+            groundhogOnly: gh && (model.value !== "all" ||
+                                  counts.pf_ok === false),
             windowDefault: atDefault(form, "groundhog.bandwidth"),
             dropDefault: atDefault(form, "run.weeks_to_drop")};
   }

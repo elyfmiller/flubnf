@@ -123,7 +123,7 @@ a.dt-back{font-size:var(--fs-label);white-space:nowrap}
 .dt-wow--flat{color:var(--mut)}
 /* the stored datasets fill their card; the actions column at the right */
 table.dstable{width:100%}
-/* the Groundhog's donor count under the check's outcome line, in quiet words */
+/* the donor model's count under the check's outcome line, in quiet words */
 .dt-ghnote{margin:.35rem 0 0;color:var(--mut);font-size:.92em}
 /* the way back to the form the upload box was opened from */
 .dt-back{margin:.1rem 0 .6rem;font-size:.92rem}
