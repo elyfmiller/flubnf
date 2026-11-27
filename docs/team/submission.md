@@ -6,6 +6,30 @@ and CDC's rules. The season's facts are in
 
 ## Now
 
+- 2026-11-27 (17:48 UTC): THE ORACLE WEIGHT: THE FILTER ALONE LOSES
+  FROM DECEMBER ON TOO, ON THE RECORDS ALREADY IN THE REPOSITORY. Read
+  after Ely confirmed the rule (Decided, 11-27), from the width screen's
+  week sums (docs/team/model-oracle-width-screen-2026-10/data/
+  week_sums_C0.csv.gz: the lab Mac's replays of 2023-24 to 2025-26 in
+  the 10-24 live form, the filter alone stored at k 1.0 only). This
+  lane's own aggregation first reproduced the screen's report exactly
+  (0.668 / 0.699 / 0.92 at k 0.7; shrink 15x minus none +0.0023
+  [-0.0038, +0.0080] | +0.0082 [+0.0026, +0.0138]).
+  Filter alone against 0.25, both unnarrowed (k 1.0), no output rule:
+  - Window B (reference dates from December 1): 0.828 / 0.901 against
+    0.702 / 0.710; natural +0.126 [+0.070, +0.183], log +0.191 [+0.139,
+    +0.256]; worse in every season (0.973 / 0.795, 0.761 / 0.678,
+    0.857 / 0.692); 95% coverage 0.91 against 0.97.
+  - Window A (whole season): +0.151 [+0.095, +0.215] natural.
+  - Against the live 0.25 at k 0.7: +0.160 [+0.100, +0.224] in B.
+  Reading: the gap narrows a little after November but stays large, so
+  w = 1 will not pass the rule. The screen on the PC is still the only
+  test of 0.5 to 0.75 in today's form; for 0.5 to pass in B the curve
+  would have to fall from 0.25 to 0.5 and rise steeply after. The old
+  form's step (0.5 to 0.25 at the to_date seed, 0.749 to 0.720) points
+  the same way. Not a reason to stop the screen: the narrowing per w is
+  what it adds. Scripts: this lane's scratchpad, wscreen/tools/agg.py.
+
 - 2026-11-26 (05:37 UTC): ROUND 2026-11-28: THE ORACLE AT WEIGHT 0.5,
   LOOKED AT BY THIS LANE AND THE INDEPENDENT REVIEWER (Ely's rerun out of
   curiosity; the pull request, #4237, passed the hub's validation and is
@@ -4041,6 +4065,14 @@ and CDC's rules. The season's facts are in
        0.25. Otherwise stay at 0.25.
      - Reported beside it, not part of the rule: by horizon, by season,
        and window A.
+     - How this lane reads two terms (17:48 UTC, before any arm exists;
+       the frozen text governs where it says otherwise): window B is
+       the reference dates (as-of + 7) on or after December 1 of the
+       season's first year, 23, 25 and 25 as-of weeks of the width
+       screen's 84; each w's k is picked on the window being scored
+       (lowest pooled natural relWIS on the other two seasons' weeks of
+       that window, among 0.6, 0.7, 0.8 and 1.0), the three held-out
+       seasons pooled, the picks fixed inside the bootstrap.
   4. Records in the repository: per arm the quantiles per week and
      location (or the scored cell table), so this lane scores them
      again with its own scorer before the joint recommendation to Ely.
