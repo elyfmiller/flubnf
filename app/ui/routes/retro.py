@@ -1284,7 +1284,34 @@ def retro_results(request: Request, season: str, week: str = "",
                                  knobs_modified=knobs_modified,
                                  imported=imported,
                                  weeks=weeks),
-             active="Retrospective"))
+             active="Retrospective",
+             # the Rescore button's state: why it is off ("" when on),
+             # the reason the POST would give
+             rescore_off=_rescore_refusal(root, season, archive)[0]))
+
+
+def _rescore_refusal(root: Path, season: str, archive: str = "") -> tuple:
+    """(why a rescore of this tree is refused, whether the refusal goes
+    back to the Retrospective index), ("", False) when it may run. One
+    rule for POST /retro/{season}/rescore and the season page's Rescore
+    button, which shows the reason with the button off. `why` reads after
+    "Not rescored: " and, capitalized, as the button's reason."""
+    from app.core import retro
+    if retro_prep._being_removed(root):
+        # "the run is being deleted or moved"
+        return retro_prep._REMOVING_WHY.split(";")[0], True
+    if _is_sealed_root(root):
+        return ("the sealed validation record is read only; its scores "
+                "stand"), False
+    if _replaying(root, season, archive):
+        return (f"{season} is replaying; it is scored when the replay "
+                "ends"), False
+    if not retro.season_sample_files(root):
+        return f"{season} has no completed weeks", True
+    if retro_prep._job_running(root):
+        return (f"{season} is being scored now; its page shows the "
+                "progress"), False
+    return "", False
 
 
 @router.post("/retro/{season}/rescore")
@@ -1294,31 +1321,21 @@ def retro_rescore(request: Request, season: str, archive: str = Form("")):
     which shows the job's progress until it lands. A POST, never a GET:
     opening a page, or a link another site plants, never starts the work
     (the same-host guard checks a POST's Origin). Refused, with the reason
-    on the page: a malformed id, a tree being deleted or moved, the sealed
-    validation record (read only), a season still replaying (the worker
-    scores it at its end), and a tree with no completed week."""
-    from app.core import retro
+    on the page (_rescore_refusal, the season page's Rescore button's rule):
+    a malformed id, a tree being deleted or moved, the sealed validation
+    record (read only), a season still replaying (the worker scores it at
+    its end), a tree with no completed week, and a tree already being
+    scored (its page shows that job's progress)."""
     if not _valid_season(season) or (archive and not _valid_archive(archive)):
         _flash("Not rescored: unrecognized season or archive.", "warn")
         return RedirectResponse("/retro", status_code=303)
     page = f"/retro/{season}" + (f"?archive={archive}" if archive else "")
     root, _is_seal = retro_seasons._season_root(season, archive)
-    if retro_prep._being_removed(root):
-        # "the run is being deleted or moved"
-        _flash("Not rescored: "
-               f"{retro_prep._REMOVING_WHY.split(';')[0]}.", "warn")
-        return RedirectResponse("/retro", status_code=303)
-    if _is_sealed_root(root):
-        _flash("Not rescored: the sealed validation record is read only; "
-               "its scores stand.", "warn")
-        return RedirectResponse(page, status_code=303)
-    if _replaying(root, season, archive):
-        _flash(f"Not rescored: {season} is replaying; it is scored when "
-               "the replay ends.", "warn")
-        return RedirectResponse(page, status_code=303)
-    if not retro.season_sample_files(root):
-        _flash(f"Not rescored: {season} has no completed weeks.", "warn")
-        return RedirectResponse("/retro", status_code=303)
+    why, to_index = _rescore_refusal(root, season, archive)
+    if why:
+        _flash(f"Not rescored: {why}.", "warn")
+        return RedirectResponse("/retro" if to_index else page,
+                                status_code=303)
     job = retro_prep._ensure_results_job(root, season, force=True)
     if job.get("refused"):
         # a delete began since the check above, or the tree is gone

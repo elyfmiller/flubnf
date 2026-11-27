@@ -54,6 +54,9 @@
 .rt-facts{margin:.55rem 0 .25rem}
 /* the resume, pause and stop controls */
 .rt-resume{margin:.55rem 0 .15rem}
+/* the season page's Rescore, at the right of the Season scores heading:
+   the button and its "?" on one line */
+.rt-rescore{display:inline-flex;align-items:center;gap:.3rem;margin:0}
 /* the archived runs: a small heading, rows of facts */
 .rt-arch-h{margin:1rem 0 .15rem}
 .rt-arch-h > h3{margin:0;font-size:var(--fs-label);font-weight:650;

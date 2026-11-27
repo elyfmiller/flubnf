@@ -489,6 +489,112 @@ def test_rescore_forces_a_fresh_job_over_current_scores(tmp_path, _stubbed,
     assert forces == [True]                 # the page did not score again
 
 
+def _rescore_form(html: str) -> str:
+    """The season page's Rescore form, from its tag to its end."""
+    return html.split('class="rt-rescore"', 1)[1].split("</form>", 1)[0]
+
+
+def test_the_season_page_offers_rescore_beside_its_scores(tmp_path, _stubbed,
+                                                          _routed,
+                                                          monkeypatch):
+    """A quiet Rescore button by the Season scores heading posts to the
+    rescore route, under the season's job guard, with one "?" saying what
+    it does; opening the page never rescores. An archived run's carries
+    its archive. The exported report has no button."""
+    from app.core import retro_archive
+    _mk_tree(_routed)
+    forces = []
+    real = retro.finalize_season
+
+    def _spy(root, season, phase_cb=None, force=False, count_cb=None):
+        forces.append(force)
+        return real(root, season, phase_cb=phase_cb, force=force,
+                    count_cb=count_cb)
+
+    monkeypatch.setattr(retro, "finalize_season", _spy)
+    html = client.get(f"/retro/{SEASON}").text
+    head = html.split('id="h-rs-scores"', 1)[1].split('<div class="rt-vgroups">', 1)[0]
+    assert 'class="uk-heading-aside"' in head and 'class="rt-rescore"' in head
+    form = _rescore_form(html)
+    assert f'action="/retro/{SEASON}/rescore"' in html.split(
+        'class="rt-rescore"', 1)[0][-80:]
+    assert 'name="archive"' not in form               # the live season
+    assert ('<button type="submit" class="quiet" data-guard="retro-run">'
+            'Rescore</button>') in form
+    assert "disabled" not in form
+    assert ("Scores every week of this season again from its stored "
+            "forecasts, against the newest truth data on this computer "
+            "(Update data on the Data tab fetches it). No forecast is run "
+            "again.") in form
+    assert form.count('class="tipbtn"') == 1
+    # the page scored its stale caches once (not forced); the button posts
+    assert forces == [False]
+    r = client.post(f"/retro/{SEASON}/rescore", follow_redirects=False)
+    assert r.status_code == 303
+    assert ui_retro_prep._results_jobs[str(_routed / SEASON)]["done"].wait(10)
+    assert forces == [False, True]
+    # the exported season report (the same template) has no button
+    from app.core import report_season
+    rep = report_season.build_season_report(_routed / SEASON, SEASON)
+    rep = rep.read_text(encoding="utf-8")
+    assert "Season scores" in rep and 'class="rt-rescore"' not in rep
+    assert f'action="/retro/{SEASON}/rescore"' not in rep
+    # an archived run's button carries its archive
+    retro_archive.archive_run(_routed, SEASON, stamp="20980101T000000Z")
+    ui_shared._invalidate_scans()
+    html = client.get(f"/retro/{SEASON}?archive=20980101T000000Z").text
+    assert ('<input type="hidden" name="archive" value="20980101T000000Z">'
+            in _rescore_form(html))
+
+
+def test_rescore_is_off_with_the_reason_the_server_would_give(
+        tmp_path, _stubbed, _routed, monkeypatch):
+    """Rescore is never hidden: where the POST would refuse, the button is
+    off (the kit's reason button) and its "?" gives that reason, from one
+    rule (routes/retro._rescore_refusal) the route uses too."""
+    from app.ui.state import _status as status
+    root = _mk_tree(_routed)
+    client.get(f"/retro/{SEASON}")                    # scored and cached
+    # the season still replaying: the worker scores it at its end
+    ui_retro_seasons._retro_status[SEASON] = "running"
+    monkeypatch.setattr(ui_retro, "_replaying", lambda *a: True)
+    form = _rescore_form(client.get(f"/retro/{SEASON}").text)
+    assert "disabled" in form and 'data-guard' not in form
+    assert f"{SEASON} is replaying; it is scored when the replay ends." in form
+    r = client.post(f"/retro/{SEASON}/rescore", follow_redirects=False)
+    assert r.headers["location"] == f"/retro/{SEASON}"
+    assert f"Not rescored: {SEASON} is replaying" in status["flash"]
+    status["flash"] = ""
+    ui_retro_seasons._retro_status.pop(SEASON, None)
+    monkeypatch.setattr(ui_retro, "_replaying", lambda *a: False)
+    # the sealed validation record (no live tree): read only, its scores
+    # stand
+    seal = tmp_path / "seal"
+    _mk_tree(seal)
+    monkeypatch.setattr(ui_retro_seasons, "RETRO_ROOT", tmp_path / "nolive")
+    monkeypatch.setattr(ui_retro_seasons, "RETRO_SEAL", seal)
+    ui_retro_prep._results_jobs.clear()
+    ui_shared._invalidate_scans()
+    form = _rescore_form(client.get(f"/retro/{SEASON}").text)
+    assert "disabled" in form and "data-guard" not in form
+    assert ("The sealed validation record is read only; its scores "
+            "stand.</span>") in form
+    assert form.count('class="tipbtn"') == 1        # the reason's "?" alone
+    assert ui_retro._rescore_refusal(seal / SEASON, SEASON) == (
+        "the sealed validation record is read only; its scores stand", False)
+    # every other refusal, from the same rule
+    monkeypatch.setattr(ui_retro_prep, "_job_running", lambda r: True)
+    assert ui_retro._rescore_refusal(root, SEASON) == (
+        f"{SEASON} is being scored now; its page shows the progress", False)
+    empty = tmp_path / "empty" / SEASON
+    empty.mkdir(parents=True)
+    assert ui_retro._rescore_refusal(empty, SEASON) == (
+        f"{SEASON} has no completed weeks", True)
+    monkeypatch.setattr(ui_retro_prep, "_being_removed", lambda r: True)
+    assert ui_retro._rescore_refusal(root, SEASON) == (
+        "the run is being deleted or moved", True)
+
+
 def test_the_page_joins_a_rescore_that_is_still_working(tmp_path, _stubbed,
                                                         _routed, monkeypatch):
     """Opened while a rescore runs, the page shows its progress rather than
