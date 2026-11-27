@@ -260,6 +260,12 @@ def test_slow_job_shows_the_preparing_state_and_status_endpoint(
         st = client.get(f"/api/retro/{SEASON}/results_status").json()
         assert st["pending"] is True and st["phase"] == "scoring cells"
         assert st["step"] == "Scoring each week's forecasts: week 3 of 28"
+        # the words and the count come from one tuple the worker writes
+        # whole, so a poll never pairs one phase's words with another's
+        # count
+        job = ui_retro_prep._results_jobs[str(_routed / SEASON)]
+        assert job["step"] == ("scoring cells", (3, 28))
+        assert "count" not in job
         assert st["elapsed_s"] >= 0.0
     finally:
         hold.set()

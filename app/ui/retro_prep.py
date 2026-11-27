@@ -474,22 +474,28 @@ def _ensure_results_job(root: Path, season: str,
             job["warm"].set()
             _results_jobs[key] = job
             return job
-        job = {"phase": "preparing", "t0": time.time(), "count": None,
+        job = {"phase": "preparing", "t0": time.time(),
+               "step": ("preparing", None),
                "done": threading.Event(), "error": "", "seconds": None,
                "season": season, "warm": threading.Event(),
                "inputs": retro.newest_samples_mtime(root)}
         _results_jobs[key] = job
 
+    # the step the preparing state says, (phase, (week, of n) or None),
+    # written as one tuple in one assignment, so a poll never pairs one
+    # phase's words with another's count; only this job's worker writes it
     def _set_phase(p):
-        # a new phase has no count until its first week starts
-        job["count"] = None
+        job["step"] = (p, None)      # a new phase: no count until a week
         job["phase"] = p
+
+    def _set_count(i, n):
+        job["step"] = (job["step"][0], (i, n))
 
     def _run():
         try:
             job["seconds"] = retro.finalize_season(
                 root, season, phase_cb=_set_phase, force=force,
-                count_cb=lambda i, n: job.__setitem__("count", (i, n)))
+                count_cb=_set_count)
             # warm the default view's (last week's) map cards
             wks = [p.parent.name for p in retro.season_sample_files(root)]
             if wks:
@@ -520,9 +526,10 @@ def _job_running(root: Path) -> bool:
 def job_step(job: dict) -> str:
     """A running finalize job's step as the preparing state says it: the
     phase in plain words and, in a phase that goes week by week, the week
-    it is on (retro.finalize_words)."""
+    it is on (retro.finalize_words), read from the job's one step tuple."""
     from app.core import retro
-    return retro.finalize_words(job.get("phase", ""), job.get("count"))
+    phase, count = job.get("step") or (job.get("phase", ""), None)
+    return retro.finalize_words(phase, count)
 
 
 def _job_covered(root: Path) -> dict | None:
