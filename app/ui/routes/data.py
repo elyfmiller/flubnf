@@ -301,7 +301,11 @@ def _vintage_rows(vs) -> list:
 
 @router.get("/data", response_class=HTMLResponse)
 def data_page(request: Request, loc: str = "", vintage: str = "",
-              source: str = ""):
+              source: str = "", then: str = ""):
+    # opened from a Forecast or Retrospective form's "Upload a dataset":
+    # the upload box's button back to that form is the primary one
+    from app.ui.datasets_ui import UPLOAD_THEN
+    upload_then = then if then in UPLOAD_THEN else ""
     if source:
         # browse one custom dataset in the vintage browser's place
         # (a foreign Host never gets here: shared._same_host_guard)
@@ -312,12 +316,14 @@ def data_page(request: Request, loc: str = "", vintage: str = "",
             ctx = _data_context()
             ctx.update(_dsu.data_context(ds, loc, vintage))
             _dataset_season_vars(ctx, ds)
+            ctx["upload_then"] = upload_then
             return templates.TemplateResponse(request, "data.html", ctx)
         _flash(why or "That dataset is not stored; showing the FluSight hub.",
                "warn")
     return templates.TemplateResponse(
         request, "data.html",
-        _data_context(loc, vintage, freshness=_take_pulled()))
+        {**_data_context(loc, vintage, freshness=_take_pulled()),
+         "upload_then": upload_then})
 
 
 def _dataset_season_vars(ctx: dict, ds) -> None:

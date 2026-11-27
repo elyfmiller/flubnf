@@ -306,7 +306,14 @@ def check_status(chk: dict) -> str:
     a few words, read out instead of the whole result."""
     if chk.get("preview"):
         pv = chk["preview"]
-        return (f"Ready to use: {pv['n_groups']} group"
+        # led by what the preview's outcome line says (datasets_ui
+        # .outcome_line): never "ready" for a file no model can forecast
+        oc = chk.get("outcome")
+        lead = ("Checked" if not oc else "Can forecast" if oc[0] == "ok"
+                else "Some horizons only"
+                if oc[1].startswith("Can forecast some") else
+                "Can't forecast yet")
+        return (f"{lead}: {pv['n_groups']} group"
                 f"{'' if pv['n_groups'] == 1 else 's'}, {pv['weeks']} week"
                 f"{'' if pv['weeks'] == 1 else 's'}"
                 + (f", {pv['files']} snapshot files." if pv["files"]
@@ -328,10 +335,11 @@ def _message_view(message: str) -> dict:
             "target": "", "preview": None}
 
 
-def render_check(chk: dict, where: str = "data") -> str:
-    """The result box's HTML (the same macro the pages render)."""
+def render_check(chk: dict, where: str = "data", then: str = "") -> str:
+    """The result box's HTML (the same macro the pages render); `then`, the
+    form the Data tab was opened from, makes its button the primary one."""
     tpl = templating.templates.get_template("_dataset_check.html")
-    return str(tpl.module.result(chk, where))
+    return str(tpl.module.result(chk, where, then))
 
 
 def _kind_field(form):

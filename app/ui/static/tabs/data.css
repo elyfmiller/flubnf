@@ -90,7 +90,6 @@ a.dt-back{font-size:var(--fs-label);white-space:nowrap}
 .dt-panel > .dt-subhead{margin-top:.6rem}
 /* in a narrow settings column (Forecast's and Retrospective's upload
    folds) the preview is flat: the fold is its frame */
-.dsup-fold .dt-panel{padding:0;border:0;background:none}
 /* the problems under the fields they follow */
 .dsproblems{margin-top:.6rem}
 .dt-pgroup{margin:.35rem 0 .2rem}
@@ -124,3 +123,7 @@ a.dt-back{font-size:var(--fs-label);white-space:nowrap}
 .dt-wow--flat{color:var(--mut)}
 /* the stored datasets fill their card; the actions column at the right */
 table.dstable{width:100%}
+/* the donor model's count under the check's outcome line, in quiet words */
+.dt-ghnote{margin:.35rem 0 0;color:var(--mut);font-size:.92em}
+/* the way back to the form the upload box was opened from */
+.dt-back{margin:.1rem 0 .6rem;font-size:.92rem}

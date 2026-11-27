@@ -84,6 +84,9 @@ MEMBER_NAMES = {"pf": "plain SIHRS PF", "analogue": GROUNDHOG}
 FORM_SLACK = 64 * 1024
 #: where a stored upload opens (the upload box's buttons post `next`)
 NEXT_PAGES = ("data", "forecast", "replay")
+#: the forms the Data tab's upload box returns to ("then"; the address's
+#: then=, from the "Upload a dataset" links on those forms)
+UPLOAD_THEN = ("forecast", "replay")
 
 def _D():
     from app.core import datasets
@@ -288,8 +291,9 @@ def model_view(rep, chk: dict, kind: str = "") -> dict:
     if donors is None:          # not a valid file of two weeks: as stored
         gh = (("warn", "too little history") if chk.get("groundhog")
               else ("ok", "ready"))
-        return {"models": [(GROUNDHOG, *gh), (FILTER, *pf)],
-                "groundhog_fix": ""}
+        models = [(GROUNDHOG, *gh), (FILTER, *pf)]
+        return {"models": models, "groundhog_fix": "",
+                "outcome": outcome_line(models)}
     short = donors["n"] < donors["need"]
     gh = (("ok", "ready") if not short else
           ("warn", "some horizons only") if donors["enough"] else
@@ -298,6 +302,7 @@ def model_view(rep, chk: dict, kind: str = "") -> dict:
            "groundhog": groundhog_notice(
                donors, len(s.get("groups") or ())),
            "groundhog_fix": ""}
+    out["outcome"] = None       # set below, once the fix is known
     if short:
         k = donors["seasons"]
         pf_fix = (f"Add a population column"
@@ -322,7 +327,30 @@ def model_view(rep, chk: dict, kind: str = "") -> dict:
                     " of data")
             out["groundhog_fix"] = (f"{pf_fix}, or give {more}." if pf_fix
                                     else f"Give {more}.")
+    out["outcome"] = outcome_line(out["models"], out["groundhog_fix"])
     return out
+
+
+def outcome_line(models, fix: str = "") -> tuple[str, str]:
+    """What the check's preview says first: (state, sentence). Which models
+    can forecast the file, from model_view's badges ([(name, state, word)]):
+    "Can forecast with A and B." (ok); "Can forecast some horizons only,
+    with A." (warn, then the fix); or "Can't forecast yet." (warn, then the
+    fix). A model whose badge is neutral (the filter on rates) is left
+    out: it was never one this file could use."""
+    full = [n for n, st, w in models if st == "ok"]
+    part = [n for n, st, w in models if w == "some horizons only"]
+    tail = f" {fix}" if fix else ""
+    if full:
+        text = f"Can forecast with {' and '.join(full)}."
+        if part:
+            text += (f" {' and '.join(part)} can forecast some horizons "
+                     "only.")
+        return "ok", text
+    if part:
+        return "warn", (f"Can forecast some horizons only, with "
+                        f"{' and '.join(part)}.{tail}")
+    return "warn", f"Can't forecast yet.{tail}"
 
 
 def no_more_seasons(counts, open_groups: int = 0,
@@ -412,9 +440,14 @@ async def check(request: Request):
     D = _D()
     where = str(request.query_params.get("where") or "data")
     where = where if where in NEXT_PAGES else "data"
+    # the Data tab opened from a Forecast or Retrospective form ("Upload a
+    # dataset"): the button back to that form is the primary one
+    then = str(request.query_params.get("then") or "")
+    then = then if then in UPLOAD_THEN else ""
 
     def answer(chk, code=200, **extra):
-        return JSONResponse({"ok": chk["ok"], "html": render_check(chk, where),
+        return JSONResponse({"ok": chk["ok"],
+                             "html": render_check(chk, where, then),
                              "status": check_status(chk), **extra},
                             status_code=code)
     if not request.headers.get("content-type", "").startswith(
@@ -483,23 +516,27 @@ async def upload(request: Request):
     if not ctype.startswith("multipart/form-data"):
         return PlainTextResponse("Expected a multipart/form-data upload.\n",
                                  status_code=400)
+    # the form the Data tab was opened from: in the box's address too, so a
+    # refusal before the form is read still keeps it
+    then_q = str(request.query_params.get("then") or "")
+    then_q = then_q if then_q in UPLOAD_THEN else ""
     try:
         form = await _capped_form(request, cap)
     except Exception:
         # a malformed body or too many fields: said as the check says it
         return _render_data(request, upload={
-            "name": "", "kind": "", "chk": _message_view(
+            "name": "", "kind": "", "then": then_q, "chk": _message_view(
                 "The upload could not be read; choose the file again.")},
             _code=400)
     mb = D.DEFAULT_LIMITS.max_bytes // (1024 * 1024)
     if form is None:
         return _render_data(request, upload={
-            "name": "", "kind": "", "chk": _message_view(
+            "name": "", "kind": "", "then": then_q, "chk": _message_view(
                 f"The upload is larger than the {mb} MB limit; nothing was "
                 "read or stored.")}, _code=413)
     if form is TOO_MANY_FILES:
         return _render_data(request, upload={
-            "name": "", "kind": "", "chk": _message_view(
+            "name": "", "kind": "", "then": then_q, "chk": _message_view(
                 _too_many_message())}, _code=413)
     fs, why, as_snaps = _files_of(form)
     name = str(form.get("name") or "").strip()
@@ -507,7 +544,9 @@ async def upload(request: Request):
     target = str(form.get("target") or "").strip() or None
     columns = _form_columns(form)
     nxt = str(form.get("next") or "data")
-    back = {"name": name, "kind": kind or "", "target": target or ""}
+    then = str(form.get("then") or "")
+    back = {"name": name, "kind": kind or "", "target": target or "",
+            "then": then if then in UPLOAD_THEN else then_q}
     if not fs:
         return _render_data(request, upload={
             **back, "chk": _message_view(why)}, _code=400)
@@ -664,9 +703,17 @@ def donor_weeks(ds) -> dict:
     return _donor_entry(ds)["weeks"]
 
 
+def donor_best(ds) -> dict:
+    """{forecast week (ISO): the most donor weeks the donor model finds at
+    any of its four horizons}: under donor_need() there, it forecasts no
+    horizon of that week at all (donor_weeks is the fewest, under which it
+    forecasts some horizons only). Counted as donor_weeks is."""
+    return _donor_entry(ds)["best"]
+
+
 def _donor_entry(ds) -> dict:
-    """The cached {"weeks": donor_weeks, "cells": the final data's
-    values} of `ds`, counted on first use."""
+    """The cached {"weeks": donor_weeks, "best": donor_best, "cells": the
+    final data's values} of `ds`, counted on first use."""
     key = (ds.id, ds.meta.get("digest"))
     hit = _DONORS.get(key)
     if hit is None:
@@ -675,13 +722,35 @@ def _donor_entry(ds) -> dict:
         truth = ds.truth()
         bank = {(g, date.fromisoformat(d)): v for (g, d), v in truth.items()}
         weeks = [date.fromisoformat(w) for w in ds.forecast_dates()]
-        hit = {"weeks": {w.isoformat(): min(c)
-                         for w, c in donor_counts(bank, weeks).items()},
+        counts = donor_counts(bank, weeks)
+        hit = {"weeks": {w.isoformat(): min(c) for w, c in counts.items()},
+               "best": {w.isoformat(): max(c) for w, c in counts.items()},
                "cells": len(truth)}
         while len(_DONORS) >= DONOR_CACHE:
             _DONORS.pop(next(iter(_DONORS)), None)
         _DONORS[key] = hit
     return hit
+
+
+def future_week(dates, today=None) -> dict | None:
+    """{"week": the newest week, "before": the newest week that has ended
+    by `today`, or ""} when the newest of `dates` (ISO week-ending days,
+    ascending) ends after `today`: a week whose last day has not come yet,
+    which an upload of Monday-dated rows gives, may be incomplete. None
+    otherwise."""
+    from datetime import date
+    if not dates:
+        return None
+    today = today or date.today()
+    newest = dates[-1]
+    try:
+        ahead = date.fromisoformat(newest) > today
+    except ValueError:
+        return None
+    if not ahead:
+        return None
+    done = [d for d in dates if d <= today.isoformat()]
+    return {"week": newest, "before": done[-1] if done else ""}
 
 
 def donor_need() -> int:
@@ -803,15 +872,24 @@ def forecast_page(request: Request, ds):
     # each week's Groundhog donor weeks, for the page's warning on a week
     # too thin to forecast (the Forecast tab renders it), and what they
     # count with several groups (donor_unit)
-    view.update(donor_weeks=donor_weeks(ds), donor_need=donor_need(),
+    view.update(donor_weeks=donor_weeks(ds), donor_best=donor_best(ds),
+                donor_need=donor_need(),
                 donor_unit=donor_unit(len(ds.groups)))
     dates = ds.forecast_dates()
     newest = dates[-1] if dates else ""
+    # a newest week that ends after today may still be filling in: said on
+    # the form, with the week before it offered (future_week)
+    view["future_week"] = future_week(dates)
     form = dict(_LAST.get(ds.id) or {
         "forecast_date": newest, "locations": ["all"],
         "engine": "all" if view["pf_ok"] else "analogue",
         "weeks_to_drop": 0, "replicates": 3, "season_start": "",
         "flusurv": False})
+    # a week of the dataset named in the address (the future-week note's
+    # "Forecast from" link) opens the form on it, in Vintage mode
+    asked = str(request.query_params.get("forecast_date") or "")
+    if asked in dates:
+        form["forecast_date"] = asked
     # a refusal over the model settings opens the panel on this page
     # only; a later visit shows it as the user left it
     (_LAST.get(ds.id) or {}).pop("ms_refused", None)

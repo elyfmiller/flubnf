@@ -20,6 +20,7 @@ from pathlib import Path
 import pytest
 
 from app.core import datasets as D
+from app.ui import pipeline
 
 from test_datasets_ui import client, isolated  # noqa: F401
 from test_dataset_upload_box import fact
@@ -235,26 +236,28 @@ def test_the_box_takes_several_files_and_a_folder():
     """Snapshots have a zone of their own beside the one-CSV zone, with a
     folder pick; both post as "snapshots", so without script the folder's
     files are posted too."""
-    page = client.get("/retro?tab=own").text
-    assert ('<input type="file" name="file" id="dsup-replay-file" data-one '
+    # the one upload box, on the Data tab (opened here from the
+    # Retrospective's "Upload a dataset")
+    page = client.get("/data?then=replay").text
+    assert ('<input type="file" name="file" id="dsup-data-file" data-one '
             'accept=') in page
-    assert ('<input type="file" name="snapshots" id="dsup-replay-snap" '
+    assert ('<input type="file" name="snapshots" id="dsup-data-snap" '
             'data-snap multiple accept=') in page
     # the folder pick: shown without script too, posting the folder
     assert ('<span class="dsfolder"><label class="dslink" '
-            'for="dsup-replay-folder">Choose a folder</label>') in page
-    assert ('<input type="file" name="snapshots" id="dsup-replay-folder" '
+            'for="dsup-data-folder">Choose a folder</label>') in page
+    assert ('<input type="file" name="snapshots" id="dsup-data-folder" '
             'data-folder webkitdirectory multiple>') in page
     assert "data-folder-wrap" not in page
     # what goes in the snapshot box is the weekly CSV's "?", which explains
     # both boxes; the snapshot box itself says only that it is optional
-    about = page.split('id="tip-dsup-replay-about">', 1)[1].split("</span></span>", 1)[0]
+    about = page.split('id="tip-dsup-data-about">', 1)[1].split("</span></span>", 1)[0]
     assert ("an as_of column in this file, or snapshot files beside it "
             "(optional), one per as_of") in about
     # an as_of column in the weekly CSV is read, not dropped with the rest
     # (the column names are in README since the tip was cut to two lines)
     assert "an as_of column in this file" in about
-    assert 'id="tip-dsup-replay-snaps"' not in page
+    assert 'id="tip-dsup-data-snaps"' not in page
 
 
 def _snap_post(url, files, field="snapshots", **data):
@@ -271,13 +274,16 @@ def covid(folder="covid_snapshots"):
     return [(f"{folder}/{p.name}", p.read_bytes()) for p in COVID]
 
 
-def test_a_covid_snapshot_folder_is_one_vintage_true_dataset():
+def test_a_covid_snapshot_folder_is_one_vintage_true_dataset(monkeypatch):
     """A made-up COVID-19 admissions series, 6 weekly snapshot files as
     the snapshot zone posts them (a folder, without script too), its
     columns named week_ending, jurisdiction, admissions, population."""
+    # the status leads with what can forecast the file, which depends on
+    # the engine being there: set, so the test reads the same everywhere
+    monkeypatch.setattr(pipeline, "_pf_engine_state", lambda: "ready")
     j = _snap_post("/data/datasets/check?where=replay", covid()).json()
     assert j["ok"] and j["name"] == "covid_snapshots"
-    assert j["status"] == "Ready to use: 2 groups, 18 weeks, 6 snapshot files."
+    assert j["status"] == "Can forecast: 2 groups, 18 weeks, 6 snapshot files."
     assert fact(j["html"], "Snapshots") == \
         "6 files, as_of 2024-11-02 to 2024-12-07"
     # a folder picked without script posts its other files too: skipped
@@ -339,10 +345,11 @@ def test_one_file_in_the_snapshot_zone_says_it_is_final_data():
     assert "read as final data" in client.get(r.headers["location"]).text
 
 
-def test_several_files_are_checked_together():
+def test_several_files_are_checked_together(monkeypatch):
+    monkeypatch.setattr(pipeline, "_pf_engine_state", lambda: "ready")
     j = _post("/data/datasets/check?where=replay", snaps()).json()
     assert j["ok"] and j["name"] == "flu"
-    assert j["status"] == "Ready to use: 3 groups, 50 weeks, 8 snapshot files."
+    assert j["status"] == "Can forecast: 3 groups, 50 weeks, 8 snapshot files."
     html = j["html"]
     assert fact(html, "Snapshots") == "8 files, as_of 2023-11-04 to 2023-12-23"
     assert (f'First rows as read, from <span class="dt-nw">{FILES[0].name}'

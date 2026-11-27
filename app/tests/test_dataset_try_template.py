@@ -23,8 +23,10 @@ BUTTON = ('<button type="button" class="quiet" data-try-template '
 
 
 def test_every_upload_box_offers_the_button_beside_the_link():
-    pages = {"/data": "data", "/forecast?tab=own": "forecast",
-             "/retro?tab=own": "replay"}
+    # one upload box, on the Data tab; the Forecast and Retrospective
+    # tabs link to it (the 2026-11-27 user review, C7)
+    pages = {"/data": "data", "/data?then=forecast": "data",
+             "/data?then=replay": "data"}
     for url, where in pages.items():
         html = client.get(url).text
         box = html[html.index(f'id="dsup-{where}"'):]
@@ -34,9 +36,12 @@ def test_every_upload_box_offers_the_button_beside_the_link():
                           re.S).group(1)
         assert 'href="/static/dataset-template.csv"' in links
         assert BUTTON in links
-    # a stored dataset's Retrospective tab folds the box: still there
+    # a stored dataset's Forecast and Retrospective tabs link to it
     ds = stored(TEMPLATE.read_bytes(), "Kids")
-    assert BUTTON in client.get(f"/retro?dataset={ds.id}").text
+    assert 'href="/data?then=replay#datasets"' in client.get(
+        f"/retro?dataset={ds.id}").text
+    assert 'href="/data?then=forecast#datasets"' in client.get(
+        f"/forecast?source={ds.id}").text
 
 
 def test_what_the_button_fetches_is_served_and_checks_ready():
@@ -47,7 +52,7 @@ def test_what_the_button_fetches_is_served_and_checks_ready():
                     files={"file": ("dataset-template.csv", r.content,
                                     "text/csv")},
                     data={"kind": ""}).json()
-    assert j["ok"] and j["status"] == "Ready to use: 3 groups, 143 weeks."
+    assert j["ok"] and j["status"] == "Can forecast: 3 groups, 143 weeks."
     assert j["name"] == "dataset-template"
 
 

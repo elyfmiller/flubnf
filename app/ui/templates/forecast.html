@@ -7,7 +7,6 @@
 <script src="/static/estimate.js" defer></script><script src="/static/forecast_form.js" defer></script>{% endblock %}
 {% block content %}{% import "_tips.html" as tips %}
 <h1>Forecast</h1>
-{% import "_dataset_upload.html" as dsup %}
 {# the data source as two tabs: the FluSight hub, or your own datasets
    (app/ui/datasets_ui.py); plain links, so Back, bookmarks and no-script work #}
 <nav class="srctabs" aria-label="data source">
@@ -15,8 +14,11 @@
  <a href="/forecast?tab=own"{% if dataset or own_tab %} aria-current="page"{% endif %}>Your data</a>
 </nav>
 {% if own_tab and not dataset %}
+{# no dataset stored yet: uploading is on the Data tab, which comes back
+   here with the new dataset chosen (then=forecast) #}
 <div class="card">{{ tips.heading("Your data", "fc-own") }}
- {{ dsup.box("forecast") }}
+ {% set up %}<a class="btn gold" href="/data?then=forecast#datasets">Upload a dataset</a>{% endset %}
+ {{ tips.empty("No datasets yet", "folder", action=up, id="fc-own-none", tiptext="A weekly CSV of your own: date, group and value, population optional. It is checked on the Data tab, then opens here to forecast.") }}
 </div>
 {% else %}
 {# a status word in a badge: the ledger's run statuses by kind; a stop is
@@ -48,21 +50,18 @@
   {%- endif %}
   {% endcall %}
   {% if dataset %}
-  {# which of your datasets; a plain GET form, like the Data tab's #}
-  <form method="get" action="/forecast" class="row srcpick">
+  {# which of your datasets; a plain GET form, like the Data tab's, sent by
+     Use (a choice alone never loads a page). While the choice is not the
+     dataset the form below holds, Run models is off and says to press Use
+     (static/forecast_form.js), so the old dataset never runs unseen #}
+  <form method="get" action="/forecast" class="row srcpick" id="fc-srcform">
    <span>{{ tips.label("Dataset", "fc-src", for_="fc-source") }}
    <select name="source" id="fc-source">
     {% for sid, sname in source_choices %}<option value="{{ sid }}" {% if dataset.id == sid %}selected{% endif %}>{{ sname }}</option>{% endfor %}
    </select></span>
    <button class="quiet">Use</button>
+   <a class="srcpick-upload" href="/data?then=forecast#datasets">Upload a dataset</a>
   </form>
-  {# the data's truth in a badge (the dataset's name is the select's; the
-     Settings "i" says what each means) #}
-  <p class="fc-truth">{{ tips.badge("ok" if dataset.vintage_true else "warn", "vintage-true" if dataset.vintage_true else "final data, not vintage-true", id="fc-ds-truth") }}</p>
-  <details class="dsup-fold" id="fc-upload">
-   <summary>Upload another</summary>
-   {{ dsup.box("forecast") }}
-  </details>
   {% endif %}
   {# the hub form carries the cost model's constants (estimates.page_params)
      for the Run row's time line (static/forecast_form.js) #}
@@ -103,6 +102,20 @@
      <span id="fc-anchor-live"{% if live_off %} hidden{% endif %}>{{ tips.badge("neutral", "not archived · target-data", id="fc-live") }}</span></span>
     <span class="fc-anchor-none"{% if aw %} hidden{% endif %}>{{ tips.icon("warning") }}<span id="fc-anchor-none">{{ an if not aw else "" }}</span></span>
    </div>
+   {% if dataset %}
+   {# what a past week sees, hidden in Real-time only (forecast.css), so it
+      shows in Vintage and without script, where the server runs whatever
+      week is typed: the snapshot that held it, or today's numbers #}
+   <p class="fc-pastnote" id="fc-pastnote">{% if dataset.vintage_true %}Past weeks use the data as it was reported then.{% else %}{{ tips.icon("warning", cls="uk-c-warn") }} Past weeks use today's numbers, not what was known then.{% endif %}</p>
+   {# a newest week that ends after today may still be filling in: said
+      while the date anchors on it, with the week before it offered #}
+   {% set fw = dataset.future_week %}
+   {% if fw %}
+   {% set fw_act %}{% if fw.before %}<a class="btn quiet" href="/forecast?source={{ dataset.id | urlencode }}&amp;forecast_date={{ fw.before }}">Forecast from {{ fw.before }}</a>{% endif %}{% endset %}
+   {{ tips.alert("warn", "The newest week ends " ~ fw.week ~ ", after today, so it may be incomplete.", id="fc-future", action=fw_act, hidden=(anchor_week != fw.week)) }}
+   <script type="application/json" id="fc-future-week">{{ fw.week | tojson }}</script>
+   {% endif %}
+   {% endif %}
    {# the round the date answers: its reference date (the anchor week + 7)
       and the hub's window for it (output._date_status), repainted from
       GET /api/forecast/week-info as the date changes. Display only #}
@@ -142,7 +155,7 @@
    {# what a count counts: with several groups a week counts once in each
       (datasets_ui.donor_unit: "weeks" or "group-weeks") #}
    {% set dn_unit = dataset.donor_unit or "weeks" %}
-   <script type="application/json" id="fc-donor-data">{{ {"need": dn_need, "weeks": dataset.donor_weeks, "unit": dn_unit} | tojson }}</script>
+   <script type="application/json" id="fc-donor-data">{{ {"need": dn_need, "weeks": dataset.donor_weeks, "best": dataset.donor_best, "unit": dn_unit, "pf_ok": dataset.pf_ok} | tojson }}</script>
    {{ tips.alert("warn", ("The Groundhog has too little history for this week (" ~ dn_n ~ " of " ~ dn_need ~ " donor " ~ dn_unit ~ ").") if dn_show else "", id="fc-ds-donors", hidden=not dn_show) }}
    {% endif %}
    <script>
@@ -228,6 +241,10 @@
         if (pick) pick.value = VS.indexOf(box.value) >= 0 ? box.value : '';
         var nc = document.getElementById('newest-check');
         if (nc) nc.hidden = a !== nc.dataset.week;
+        // a dataset's newest week that ends after today: its note
+        var fw = document.getElementById('fc-future'),
+            fwk = document.getElementById('fc-future-week');
+        if (fw && fwk) fw.hidden = a !== JSON.parse(fwk.textContent || '""');
         // the Data issues box belongs to that week too; disabled, it
         // posts nothing (the run then takes each state's recommendation)
         var di = document.getElementById('data-issues');
@@ -302,7 +319,7 @@
         or (not us_checked and all_locs and fl_st | length == all_locs | length) %}
    {% call tips.fold("Pick groups" if dataset else "Pick locations", id="fc-locpick",
         open=(dataset or locations_error or not fl_preset), cls="fc-locpick") %}
-   <input type="search" id="fc-locfilter" class="fc-locfilter" placeholder="Filter" autocomplete="off"
+   <input type="search" id="fc-locfilter" class="fc-locfilter" placeholder="Filter" autocomplete="off" hidden
      aria-label="{{ 'Filter the groups' if dataset else 'Filter the locations' }}" aria-controls="fc-checklist">
    <div class="checklist" id="fc-checklist" role="group" aria-labelledby="fc-locs-lbl">
      <label class="ck"><input type="checkbox" id="ck-all" value="all" name="locations"
@@ -381,7 +398,12 @@
       against the last run (the script below; display only) #}
    {% set lr = (aids.last_run if (aids is defined and aids and not dataset) else none) %}
    <div class="fc-runrow">
-    <button class="gold" data-guard="console-run">Run models</button>
+    <button class="gold" id="fc-run"{% if dataset %} aria-describedby="fc-runwhy"{% endif %} data-guard="console-run">Run models</button>
+    {# why Run is off on a dataset (a week no model can forecast, or a
+       picked dataset not yet opened with Use; static/forecast_form.js): a
+       live region kept on the page, empty when there is nothing to say,
+       that describes the button #}
+    {% if dataset %}<p class="fc-runwhy" id="fc-runwhy" role="status"></p>{% endif %}
     {% if lr %}<span id="fc-vslast" class="fc-vslast" aria-live="polite">{{ tips.badge("ok", "Same as last run", id="fc-vs-last") }}</span>{% endif %}
     {# how long the run takes here: the models, the locations and the
        cost model's span (routes/forecast.run_words), redone on every
@@ -574,6 +596,13 @@
      // the filter: shows the boxes whose name holds the text
      var FILTER = document.getElementById('fc-locfilter'),
          NOMATCH = document.getElementById('fc-nomatch');
+     // Enter in the filter is the filter's own: never the form's Run
+     // shown by script, which is what filters (without script Enter in it
+     // would press Run models)
+     if (FILTER) FILTER.hidden = false;
+     if (FILTER) FILTER.addEventListener('keydown', function (e) {
+       if (e.key === 'Enter') e.preventDefault();
+     });
      if (FILTER) FILTER.addEventListener('input', function () {
        var q = FILTER.value.replace(/^\s+|\s+$/g, '').toLowerCase(), shown = 0;
        Array.prototype.forEach.call(LIST.querySelectorAll('label.ck'), function (l) {

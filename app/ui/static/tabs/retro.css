@@ -210,3 +210,6 @@
 .rt-plot{min-height:25rem}
 /* the horizon's label beside its segmented switch (the kit's uk-seg) */
 .rt-hz-l{color:var(--mut);font-size:var(--fs-label);font-weight:600}
+/* why Replay is off (a picked dataset not yet opened with Use): a live
+   region kept on the page, taking no room while empty */
+.dsr-runwhy:empty{margin:0;padding:0}
