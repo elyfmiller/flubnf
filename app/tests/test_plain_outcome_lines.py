@@ -12,7 +12,9 @@
     with what it holds, and with `remember` keeps each reader's open or
     closed choice in the browser (localStorage "fold:<id>"); it works
     without storage and without script. Its script and the hub card's
-    are run here on the served page (JavaScriptCore, or node as on CI).
+    are run here on the served page (JavaScriptCore, or node as on CI);
+  * the same fold holds other operator detail: Home's component versions
+    (the engine's commit) and the run page's software versions.
 """
 from __future__ import annotations
 
@@ -27,6 +29,8 @@ from fastapi.testclient import TestClient
 sys.path.insert(0, str(Path(__file__).resolve().parents[2]))
 
 from app.core import data as data_mod                    # noqa: E402
+from app.core import runs as runs_mod                    # noqa: E402
+from app.core.runs import Ledger, RunSpec                # noqa: E402
 from app.ui import server as srv                         # noqa: E402
 from app.ui.routes import data as D                      # noqa: E402
 
@@ -469,3 +473,50 @@ def test_the_cards_busy_words_are_plain():
     assert ("busy(true,pull?'Updating the flu data':'Checking the FluSight "
             "hub for new data');") in src
     assert "Checking origin" not in src and "Pulling the hub clone" not in src
+
+
+# ------------------------------------- operator detail on other pages
+
+def test_home_keeps_component_versions_in_a_fold(monkeypatch):
+    html = client.get("/").text
+    card = html.split('<div class="card hm-setup">', 1)[1]
+    # the outcome (the heading's badge) first, outside the fold
+    assert card.index('id="hm-setup-state"') < card.index('id="hm-versions-fold"')
+    assert ('<details class="uk-fold hm-versions-fold" id="hm-versions-fold" '
+            'data-remember><summary><span class="uk-fold-sum">Component '
+            'versions</span></summary>') in card
+    fold = card.split('id="hm-versions-fold"', 1)[1].split("</details>", 1)[0]
+    assert 'aria-label="Component versions"' in fold
+
+
+def _run_page(tmp_path, monkeypatch, build) -> str:
+    monkeypatch.setattr(runs_mod, "APP_STATE", tmp_path)
+    led = Ledger()
+    rid = led.open_run(RunSpec(engine="all", forecast_date="2098-01-03"),
+                       Path("pending"), {"pybnf": "1.8.1", "pybnf_build": build})
+    led.close_run(rid, "ok", {})
+    return client.get(f"/runs/{rid}").text
+
+
+def test_the_run_page_keeps_software_versions_in_a_fold(tmp_path, monkeypatch):
+    from app.core import engine_build as EB
+    prod = {"branch": EB.PRODUCTION_ENGINE_BRANCH,
+            "commit": EB.PRODUCTION_ENGINE_COMMIT[:8], "dirty": False,
+            "source": "git"}
+    page = _run_page(tmp_path, monkeypatch, prod)
+    rec = page.split('class="card runrec"', 1)[1]
+    assert ('<details class="uk-fold" id="run-versions" data-remember>'
+            '<summary><span class="uk-fold-sum">Software versions</span>'
+            '</summary>') in rec
+    fold = rec.split('id="run-versions"', 1)[1].split("</details>", 1)[0]
+    assert "<dt>pybnf</dt><dd>1.8.1</dd>" in fold
+    assert "<dt>PyBNF build</dt>" in fold
+    assert "Produced by" not in page
+    # another build than production says so on the fold's own line
+    other = {"branch": "main", "commit": "deadbeef", "dirty": False,
+             "source": "git"}
+    page = _run_page(tmp_path / "other", monkeypatch, other)
+    summary = page.split('id="run-versions"', 1)[1].split("</summary>", 1)[0]
+    assert '<span class="uk-fold-sum">Software versions</span>' in summary
+    assert 'id="run-versions-warn"' in summary
+    assert '<span class="uk-badge-t">not the production build</span>' in summary

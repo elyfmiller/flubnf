@@ -83,5 +83,5 @@ a.btn.hm-report{margin-left:auto;padding:.28rem .85rem;
 .hm-mono{font-family:ui-monospace,"SF Mono",Menlo,Consolas,monospace;
   font-size:.92em;overflow-wrap:anywhere}
 .hm-versions{margin:.5rem 0 .1rem}
-/* below a list of what is missing, the versions sit apart from it */
-.hm-missing ~ .hm-versions{padding-top:.6rem;border-top:1px solid var(--line)}
+/* below a list of what is missing, the versions' fold sits apart from it */
+.hm-missing ~ .hm-versions-fold{padding-top:.6rem;border-top:1px solid var(--line)}

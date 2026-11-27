@@ -81,7 +81,10 @@ def test_every_surface_renders_through_the_shared_renderer():
     assert "settings_html(status.settings)" in FORECAST_T
     assert "settings_html(r.settings)" in FORECAST_T
     assert 'settings_html(settings, title="")' in RUN_T
-    assert 'settings_html(versions, title="Produced by")' in RUN_T
+    # the versions in a closed, remembered fold under the settings
+    assert '{% set produced = settings_html(versions, title="") %}' in RUN_T
+    assert ('{% call tips.fold("Software versions", id="run-versions", '
+            'remember=True,') in RUN_T
     assert "settings_html(s.settings)" in RETRO_T
     # the live replay uses the shared renderer; the finished record shows
     # every pair in plain sight, one row of facts with no tip behind it
