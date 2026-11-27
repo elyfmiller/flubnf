@@ -1,0 +1,105 @@
+PRE-REGISTRATION: THE ORACLE SIHRS WEIGHT SCREEN IN TODAY'S FORM
+FROZEN 2026-11-27 at 17:58 UTC, after Ely confirmed the rule as written
+below ("Confirm, freeze it"), and before any score: no truth had been read
+for any arm, and the replays were still running.
+Model lane (Ely's Windows PC), written 2026-11-27. Asked by the Submission
+lane, 2026-11-27 17:39 UTC (submission.md, For other lanes, "THE ORACLE
+WEIGHT SCREEN ON THE WINDOWS PC"; its item 3 is the rule below).
+
+QUESTION. Does a filter weight above 0.25 forecast better in today's form,
+over the season and from December on, so that a change could start at
+round 2026-12-05?
+
+WHAT IS ALREADY KNOWN (read before writing this, so the predictions are not
+blind):
+- On these 84 weeks, in an older form (the to_date seed, no narrowing),
+  0.25 beat 0.5 by 0.029 relative WIS [-0.048, -0.012] (0.720 against
+  0.749; model.md, 2026-10-23).
+- The width screen's C0 (the 10-24 live form: stage-rule seed, w 0.25,
+  k 0.7) on these 84 weeks, no cap: relWIS 0.668, log 0.699, 95% coverage
+  0.92.
+- Submission, 2026-11-27 17:48 UTC, from the width screen's week sums
+  (C0, both unnarrowed): the filter alone against 0.25 from December on,
+  natural +0.126 [+0.070, +0.183], log +0.191, 95% coverage 0.91 against
+  0.97.
+- Round 2026-11-28 run at 0.5 as well as 0.25: h3 lower in all 53
+  locations (median ratio 0.83), nothing scored yet.
+- This screen's pilot (one week, two states; no truth read): weight 1
+  through the step is not the filter alone (2024-12-07, h3 median Arizona
+  540 against 375, Ohio 18 against 52).
+No weight other than 0.25 has been scored at narrowing 0.7, or with the
+cap, on these seasons.
+
+DATA.
+- The replays (model.md, Now, 2026-11-27 17:55 UTC): 2023-24, 2024-25 and
+  2025-26, the 84 scoreable as-of weeks (30, 27, 27), `flubnf retro run`
+  through replay.py on repository eab21ba9, the public engine (lanl/PyBNF
+  8410f794), hub 09c96ec8, live form: replicates 3, particles 10,000,
+  pf.seed_denominator season_total_early, oracle.w 0.25, oracle.narrow
+  0.7. Per week, kept beside the replay: the filter's own samples before
+  the Oracle step, the step's arguments, the floor's recent observations.
+- Truth and baseline: the settled target data and the FluSight-baseline
+  files of hub 09c96ec8. State cells only (the 52 jurisdictions the
+  replay fits); FluSight's cell rule (app.core.scoring.score_quantiles).
+
+ARMS (score.py, arms.py), no refit, every arm with the live cap:
+- (w, k) for w in {1, 0.75, 0.5, 0.375, 0.25} and k in {0.6, 0.7, 0.8,
+  1.0}: app.core.oracle.apply_week on the kept filter samples with oracle.w
+  = w and oracle.narrow = k in the run's knob record, the replay's output
+  floor, hub rows by app.core.submit.quantile_rows (horizons 0 to 3, whole
+  admissions), then the live cap: flubnf.tailcap.cap_rows, shrink, 10x the
+  larger of the last reported week and the three-week mean.
+- "w 1" in the rule means weight 1 through the step, as the knob takes it.
+- F, the filter alone: the kept samples through the same floor, rows and
+  cap, unnarrowed. Reported, not in the rule.
+- The comparator: w 0.25, k 0.7, the live arm.
+- The check before any score: the arm w 0.25, k 0.7 rebuilt from the kept
+  inputs equals each week's stored member exactly (arms.py check; the
+  pilot week passed, max difference 0). A week that differs stops the
+  screen before any score.
+
+SCORES.
+- Relative WIS: the ratio of WIS sums over the FluSight-baseline's WIS sums
+  on the same cells (natural scale), and the same on the log scale; 50% and
+  95% coverage.
+- Window A: every scored week. Window B: reference dates (as-of + 7 days)
+  from December 1 of the season's first year on.
+- Each w takes its narrowing k by leave-one-season-out: for each season,
+  the k with the lowest pooled natural relWIS over the other two seasons'
+  cells IN THE SAME WINDOW (ties: the k nearer 0.7, then the larger); the
+  w's arm is each season's cells at its own k.
+- Differences: pooled natural relWIS, the w's arm less the comparator's, on
+  their common cells; a week-cluster bootstrap stratified by season, 2,000
+  resamples, default_rng(20261127), percentile 95% interval.
+
+THE RULE (Submission's item 3; window B; candidates w 1, 0.75, 0.5, 0.375,
+each at its leave-one-season-out k). A candidate passes when all hold:
+  (a) its natural relWIS is below the comparator's, with the 95% interval
+      of the difference below 0;
+  (b) its log relWIS is no more than 0.010 above the comparator's;
+  (c) its natural relWIS is below the comparator's in at least two of the
+      three seasons;
+  (d) its 95% coverage is at least 0.90.
+If several pass, the lowest natural relWIS in window B; among those within
+0.005 of it, the one nearest 0.25. Then the change starts at round
+2026-12-05 if the result reaches Ely by Tuesday 2026-12-01, else 12-12;
+Ely decides. If none passes, the Oracle stays at 0.25.
+Reported beside the rule, not part of it: window A the same way; by
+horizon; by season; every (w, k) arm; 0.25 at its own k against the live
+arm; F.
+
+PREDICTIONS:
+  P1 No candidate passes; 0.25 stays.
+  P2 w 1 is worse than the comparator in window B by more than 0.05
+     natural.
+  P3 At k 0.7, window B, 95% coverage falls as w rises from 0.25 to 1.
+  P4 The leave-one-season-out k of w 0.5 is at least 0.7 in every season,
+     window B (a heavier filter weight needs no more narrowing).
+  P5 In window A, w 0.5 at its own k is within 0.030 of the comparator.
+
+RECORDS. In the repository beside this file, after the scores: the report;
+the scored state cells of every arm; every arm's capped quantiles per week
+and location (gzipped), so the Submission lane can score them again with
+its own scorer before the joint recommendation. The replays themselves stay
+in %USERPROFILE%\flubnf-model-research\oracle-weight-screen-2026-11.
+Nothing here changes a shipped method. Ely decides any change.

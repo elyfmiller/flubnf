@@ -58,8 +58,21 @@ until 2026-11-09 and on the Windows PC since then.
     difference 0). Its weight 1 through the step is not the filter alone
     (h3 median Arizona 540 against 375).
   - score.py builds the arms (no truth), and scores and reports only once
-    a frozen PREREG.txt matches its sha256. The draft pre-registration
-    is with Ely and is not in the repository until it is frozen.
+    a frozen PREREG.txt matches its sha256.
+  - The pre-registration was frozen 2026-11-27 at 17:58 UTC, after Ely
+    confirmed its rule (Decided) and before any score:
+    [PREREG.txt](model-oracle-weight-screen-2026-11/PREREG.txt), sha256
+    0626c2ba35d32c7d174bbe7fbb2c95a9d4306092244d83d07dce556c8f15279a,
+    read-only, and pushed at once. It sets:
+    - Window B (reference dates from December 1).
+    - Candidates: weights 1 (through the step), 0.75, 0.5 and 0.375, each
+      at its leave-one-season-out narrowing.
+    - Comparator: weight 0.25 at narrowing 0.7, the live arm.
+    - The live cap on every arm.
+    - Submission's four tests: the interval below 0, log no more than
+      0.010 worse, better in two of three seasons, 95% coverage at least
+      0.90.
+    - Predictions P1 to P5.
 
 - 2026-11-11 (07:10 UTC): THE CAP'S LEVEL ON THE ORACLE: IT RESPONDS AS THE
   GROUNDHOG DOES, SO NOTHING HERE ARGUES AGAINST `larger` FOR BOTH. Ely
@@ -1511,6 +1524,12 @@ until 2026-11-09 and on the Windows PC since then.
   - The pre-registration is not frozen until Ely confirms the rule.
   - The replays run on the public engine (8410f794), the rounds' engine,
     not on the private engine the request named.
+  - Later the same day, Ely, on the draft's rule ("Confirm, freeze it"):
+    the rule as PREREG.txt writes it. That is Submission's item 3, with
+    "weight 1" meaning weight 1 through the Oracle step (the filter alone
+    is reported, not ranked). Each weight's narrowing is chosen
+    leave-one-season-out in the same window. The live cap is on every
+    arm.
 - 2026-11-11 (Ely, relayed by App, for the 2026-11-11 run): the tail cap's
   level is output.tail_level = larger, the larger of the last reported
   week and the three-week mean, for both members. The cap stays at 10x
@@ -1683,6 +1702,20 @@ until 2026-11-09 and on the Windows PC since then.
 
 ## For other lanes
 
+- 2026-11-27 (18:00 UTC), Submission: the weight screen's pre-registration
+  is frozen and pushed (model-oracle-weight-screen-2026-11/PREREG.txt,
+  sha256 0626c2ba..., Now). Your item 3 is its rule, as Ely confirmed it
+  (Decided), with three readings made explicit:
+  - "w 1" is weight 1 through the step, not the filter alone (F is
+    reported).
+  - Each w's k is chosen leave-one-season-out in the same window.
+  - The live cap is on every arm.
+  Truth and baseline: hub 09c96ec8's settled target data and
+  FluSight-baseline files. This lane's clone holds that commit; it is
+  cdcepi's "Archive target data" of 2026-09-30, so your scorer can name
+  it too. The records (every arm's capped quantiles and the scored
+  cells) come into the screen's folder after the scores, for your own
+  scoring before the joint recommendation.
 - 2026-11-27 (17:55 UTC), Submission: your weight-screen request of 17:39
   UTC is taken. The replays are announced under Now and start after this
   push. Three differences from the request:
