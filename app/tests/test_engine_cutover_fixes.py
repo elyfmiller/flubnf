@@ -274,7 +274,9 @@ def test_a_skipped_two_strain_member_is_shown_beside_the_filter():
     spec = {"forecast_date": "2025-01-04", "extra": {"members": 3}}
     why = ("the two-strain member runs on the private engine only "
            "(FLUBNF_ENGINE=private)")
-    html = runs.results_html({"pf_cells": 2, "pf2s_skipped": why}, spec)
+    # a run of the Oracle step's day records its bank (pf_member_name)
+    html = runs.results_html({"pf_cells": 2, "pf2s_skipped": why,
+                              "oracle": "admissions-fbase@test"}, spec)
     assert ('<tr><th scope="row">Two-strain fits</th><td>none: ' + why
             + "</td></tr>") in html
     assert html.index("Oracle SIHRS fits") < html.index("Two-strain fits")

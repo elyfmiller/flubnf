@@ -247,6 +247,10 @@ A choice is never drawn as a rounded pill: a switch is this one, a choice that l
 </div>
 ```
 
+### Delete: `<button class="quiet danger">`
+
+A control that removes something for good, in a row or a heading: the danger tier's quiet form, its word and outline in `--bad` on no fill (`nau.css`). It stands apart from the row's links ("Results", "Open"), never beside one in the same style, and it opens the shared confirmation (`window.FluBNFConfirm`), whose own button is the filled `danger`. Disabled, it is drawn as any disabled control.
+
 ### Icons: `tips.icon(name, label="", cls="")` and `tips.icon_tip(id, label, name, text="", state="")`
 
 Inline SVG icons in the text's color, 1em square: `info`, `warning`, `error`, `check`, `clock`, `download`, `upload`, `folder`, `external`, `lock`, `calendar`, `refresh`, `dot`, `close`. An icon is decorative (`aria-hidden`) unless given a `label`, which makes it an image with that name. Its drawing attributes are on the SVG itself, so it renders without `ui-kit.css` too. `icon_tip` is a tip whose button is an icon instead of "?": a warning mark whose tooltip names what to check, a lock whose tooltip says why something is protected; `state` colors it (`ok`, `warn`, `error`, `info`, `muted`). For an icon beside text, `<span class="uk-c-warn">` (or `-ok`, `-error`, `-info`, `-muted`) colors it with the state token.

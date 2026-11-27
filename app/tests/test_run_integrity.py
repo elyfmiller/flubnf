@@ -51,11 +51,14 @@ def _isolated_status():
     ui_shared._invalidate_scans()
 
 
-def _fake_run(monkeypatch, tmp_path, status_by_cell, collected, aux=None):
+def _fake_run(monkeypatch, tmp_path, status_by_cell, collected, aux=None,
+              apply_week=None):
     """Drive pipeline._run_all end to end with fake engines (injected PF
     statuses and samples, an analogue for every location, no truth). `aux`
-    is the Groundhog donor choice (None: shipped bank, "": bare analogue).
-    Returns (ledger row, outcome, workroot)."""
+    is the Groundhog donor choice (None: shipped bank, "": bare analogue);
+    `apply_week` replaces the stubbed Oracle step (one that raises ends the
+    run between the fits and the step). Returns (ledger row, outcome,
+    workroot)."""
     import app.core.engines.analogue as an_engine
     import app.core.engines.pf as pf_engine
     import app.core.floor as floor_mod
@@ -75,9 +78,9 @@ def _fake_run(monkeypatch, tmp_path, status_by_cell, collected, aux=None):
                                    for loc, s in collected.items()})
     import app.core.oracle as oracle_mod
     # the Oracle step needs a vintage this hub-free test lacks: stub it
-    monkeypatch.setattr(oracle_mod, "apply_week",
+    monkeypatch.setattr(oracle_mod, "apply_week", apply_week or (
                         lambda s, asof, wd, **kw: (s, {"applied": True,
-                                                       "bank": {"label": "stub"}}))
+                                                       "bank": {"label": "stub"}})))
     monkeypatch.setattr(an_engine, "run",
                         lambda spec: {loc: {h: dict(q)
                                             for h, q in AN_Q.items()}
@@ -124,6 +127,85 @@ def test_a_location_with_no_pf_member_is_absent_from_the_sihrs_file_only(
     assert outcome["analogue_aux"].startswith("flusurv+flusurv@")
     chips = ui_shared._outcome_chips(json.dumps(outcome))
     assert "analogue-only" not in chips and "withheld" not in chips
+    # the run records what it asked of the Oracle step, then its bank
+    assert outcome["oracle_wanted"] is True and outcome["oracle"] == "stub"
+
+
+def test_a_current_run_that_fails_after_its_fits_keeps_the_members_name(
+        tmp_path, monkeypatch):
+    """A run that errors between the filter's fits and the Oracle step
+    records fits and no bank, as a run from before the step does; it
+    recorded the step as wanted before its fits, so it keeps the member's
+    name on Storage's row, its run page and its settings, never the filter
+    alone. A row from before that record, ended in an error, is not taken
+    for a pre-step run either."""
+    from app.core import runs
+    from app.core.site_build import PF_LABEL_FILTER, PF_LABEL_ORACLE
+
+    def no_bank(*a, **k):
+        raise RuntimeError("the donor bank could not be built")
+
+    row, outcome, w = _fake_run(
+        monkeypatch, tmp_path, {"Ohio_r0": "ok", "Texas_r0": "ok"},
+        {"Ohio": SAMPLES, "Texas": SAMPLES}, apply_week=no_bank)
+    assert row["status"] == "error" and "donor bank" in outcome["error"]
+    assert outcome["pf_cells"] == 2 and "oracle" not in outcome
+    assert outcome["oracle_wanted"] is True
+    assert runs.pf_member_name(outcome) == PF_LABEL_ORACLE
+    chips = ui_shared._outcome_chips(json.dumps(outcome))
+    assert chips.startswith(f"{PF_LABEL_ORACLE}: 2 fits")
+    assert PF_LABEL_FILTER not in chips
+    ui_shared._invalidate_scans()
+    html = client.get(f"/runs/{row['run_id']}").text
+    assert f'<th scope="row">{PF_LABEL_ORACLE} fits</th>' in html
+    assert PF_LABEL_FILTER not in html
+    assert "a run from before the step" not in html
+    # the same shape from a run before the intent was recorded: its error
+    # keeps the member's name too
+    legacy = {k: v for k, v in outcome.items() if k != "oracle_wanted"}
+    assert runs.pf_member_name(legacy) == PF_LABEL_ORACLE
+    settings = dict(runs.spec_settings(row["spec"], legacy))
+    assert settings["engine"] == runs.ENGINE_LABELS["all"]
+    assert "before the step" not in settings["Oracle step"]
+    # a run that finished before the step still reads as the filter alone
+    done = {"pf_cells": 2, "pf_relwis": 0.8}
+    assert runs.pf_member_name(done) == PF_LABEL_FILTER
+    # and one that asked for no step, ended early, as the filter alone
+    assert runs.pf_member_name({"pf_cells": 2, "error": "x",
+                                "oracle_wanted": False}) == PF_LABEL_FILTER
+
+
+def test_a_current_run_stopped_after_its_fits_keeps_the_members_name(
+        tmp_path, monkeypatch):
+    """Stopped between the filter's fits and the Oracle step, a run ends
+    "stopped" with fits, no bank and no error: its recorded intent keeps
+    the Oracle SIHRS name on Storage's row and its run page. A run from
+    before the step, which finished with fits and no record, still reads
+    as the Particle filter alone."""
+    import app.core.engines.pf as pf_engine
+    from app.core import runs
+    from app.core.site_build import PF_LABEL_FILTER, PF_LABEL_ORACLE
+
+    def stop(*a, **k):
+        raise pf_engine.RunStopped("stopped by user")
+
+    row, outcome, w = _fake_run(
+        monkeypatch, tmp_path, {"Ohio_r0": "ok", "Texas_r0": "ok"},
+        {"Ohio": SAMPLES, "Texas": SAMPLES}, apply_week=stop)
+    assert row["status"] == "stopped"
+    assert outcome["pf_cells"] == 2 and "oracle" not in outcome
+    assert "error" not in outcome and outcome["oracle_wanted"] is True
+    assert runs.pf_member_name(outcome) == PF_LABEL_ORACLE
+    chips = ui_shared._outcome_chips(json.dumps(outcome))
+    assert chips.startswith(f"{PF_LABEL_ORACLE}: 2 fits")
+    ui_shared._invalidate_scans()
+    html = client.get(f"/runs/{row['run_id']}").text
+    assert PF_LABEL_FILTER not in html
+    # the old run's shape, finished before the step: the filter alone
+    old = {"pf_cells": 2, "pf_relwis": 0.8, "submissions": {"a": "x"}}
+    assert runs.pf_member_name(old) == PF_LABEL_FILTER
+    assert ui_shared._outcome_chips(json.dumps(old)).startswith(
+        f"{PF_LABEL_FILTER}: 2 fits")
 
 
 def test_all_pf_fits_failed_still_ships_the_groundhog(
@@ -202,6 +284,13 @@ def test_run_page_names_failed_cells_and_step_errors(tmp_path, monkeypatch):
     lists = "".join(u.split("</ul>", 1)[0]
                     for u in detail.split('<ul class="fc-faillist">')[1:])
     assert "<svg" not in lists and "uk-c-error" not in lists
+    # the failed fits' heading names the member as the results table and
+    # Storage do: this row records no Oracle bank (a run from before the
+    # step), so the filter alone, never the Oracle SIHRS
+    from app.core.site_build import PF_LABEL_FILTER, PF_LABEL_ORACLE
+    assert f"{PF_LABEL_FILTER} fits that failed" in detail
+    assert f"{PF_LABEL_ORACLE} fits that failed" not in detail
+    assert f'<th scope="row">{PF_LABEL_FILTER} fits</th>' in html
 
 
 def test_run_page_without_failures_shows_no_detail_block(tmp_path,
@@ -318,3 +407,66 @@ def test_the_run_page_finds_its_row_however_many_runs_followed(tmp_path, monkeyp
     page = TestClient(srv_.app).get(f"/runs/{old}").text
     assert "the old run&#39;s own error" in page or "the old run's own error" in page
     assert _json.loads(led.row(old)["spec"])["forecast_date"] == "2098-01-03"
+
+
+def _row_at(tmp_path, monkeypatch, run_id, status, outcome):
+    """A ledger row under a given run id (its start), as an older console
+    wrote it."""
+    import sqlite3
+    monkeypatch.setattr(runs_mod, "APP_STATE", tmp_path)
+    led = Ledger()
+    rid = led.open_run(RunSpec(engine="all", forecast_date="2026-03-07",
+                               locations=["Ohio"]), Path("pending"), {})
+    led.close_run(rid, status, outcome)
+    db = sqlite3.connect(tmp_path / "ledger.sqlite")
+    db.execute("UPDATE runs SET run_id=? WHERE run_id=?", (run_id, rid))
+    db.commit()
+    db.close()
+    ui_shared._invalidate_scans()
+    return run_id
+
+
+@pytest.mark.parametrize("run_id, status, outcome, name, step", [
+    # started before the Oracle step came in: the filter alone, however
+    # the run ended
+    ("20260909T111312-10b795", "error", {"pf_cells": 2, "error": "boom"},
+     "filter", "not applied (a run from before the step)"),
+    ("20260909T111312-10b795", "ok", {"pf_cells": 2, "pf_relwis": 0.5},
+     "filter", "not applied (a run from before the step)"),
+    # started after it, ended between its fits and the step: the member
+    # it was running, with or without the recorded intent
+    ("20261001T101010-abcdef", "error", {"pf_cells": 2, "error": "boom"},
+     "oracle", "on (console default)"),
+    ("20261127T101010-abcdef", "stopped", {"pf_cells": 2,
+                                           "oracle_wanted": True},
+     "oracle", "on (console default)"),
+])
+def test_a_rows_member_name_is_dated_by_when_the_run_started(
+        tmp_path, monkeypatch, run_id, status, outcome, name, step):
+    """Rows that record neither the Oracle step's bank nor what they asked
+    of it are dated by their start (runs.ORACLE_STEP_SINCE): before the
+    step came in, the Particle filter alone whatever their end; after it,
+    an errored or stopped row keeps the Oracle SIHRS. Storage's chips, the
+    run page's results, its failed fits and its settings all agree."""
+    from app.core import runs
+    from app.core.site_build import PF_LABEL_FILTER, PF_LABEL_ORACLE
+    want, other = ((PF_LABEL_FILTER, PF_LABEL_ORACLE) if name == "filter"
+                   else (PF_LABEL_ORACLE, PF_LABEL_FILTER))
+    outcome = dict(outcome, pf_failures={"Ohio_r1": "fit failed"})
+    assert runs.pf_member_name(outcome, run_id) == want
+    chips = " ".join(str(i["text"]) for i in ui_shared._outcome_items(
+        outcome, run_id=run_id))
+    assert chips.startswith(f"{want}: 2 fits") and other not in chips
+    rid = _row_at(tmp_path, monkeypatch, run_id, status, outcome)
+    html = client.get(f"/runs/{rid}").text
+    assert f'<th scope="row">{want} fits</th>' in html
+    assert other not in html.split('class="results"', 1)[1].split(
+        "</table>", 1)[0]
+    assert f"{want} fit that failed" in html
+    settings = dict(runs.spec_settings(
+        json.dumps({"forecast_date": "2026-03-07", "engine": "all"}),
+        outcome, run_id=run_id))
+    assert settings["Oracle step"] == step
+    storage = client.get("/storage").text
+    row = storage.split(f'href="/runs/{rid}"', 1)[1].split("</tr>", 1)[0]
+    assert f"{want}: 2 fits" in row and other not in row

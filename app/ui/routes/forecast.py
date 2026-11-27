@@ -280,7 +280,8 @@ def forecast_page(request: Request, source: str = "", tab: str = ""):
     for r in ledger_rows:
         r["label"] = _run_label(r["run_id"], r.get("spec", ""))
         r["modified"] = _runs.is_modified(r.get("spec", ""))
-        r["settings"] = spec_settings(r.get("spec", ""), r.get("outcome", ""))
+        r["settings"] = spec_settings(r.get("spec", ""), r.get("outcome", ""),
+                                      run_id=r["run_id"])
         r["files_deleted"] = output_routes._files_deleted(r["run_id"])
         # the latest-run card links the weekly report while its file is on
         # disk (Storage may have deleted the workroot), and a run that died
@@ -711,7 +712,8 @@ def run_page(request: Request, run_id: str):
         # a page of the console (under Storage, which lists the runs)
         return output_routes._notice(
             request, 404, "empty", f"No run {run_id} is recorded here",
-            tip="Storage lists the runs.", action=("/runs", "Open Storage"),
+            tip="Storage lists the runs.",
+            action=("/storage#ledgerfold", "Open Storage"),
             active="Storage", heading="Run")
     # its files: the workroot, or the archive that holds the run once
     # Storage deleted the workroot
@@ -791,7 +793,10 @@ def run_page(request: Request, run_id: str):
         "files_deleted": not w.is_dir(),
         "results_unreadable": unreadable,
         "results": results_html(o, spec_json, heading=False,
-                                deleted=not w.is_dir()),
+                                deleted=not w.is_dir(), run_id=run_id),
+        # the mechanistic member as the results table and Storage name it
+        # (its failed fits' heading)
+        "pf_name": _runs.pf_member_name(o, run_id),
         # the relWIS convention only beside a relWIS
         "results_tip": results_tip(spec_json, o),
         # the page shows a research badge, so the label stays untagged
@@ -809,7 +814,8 @@ def run_page(request: Request, run_id: str):
                    if v and m not in _report_v2_retired()},
         # the Modified model settings card says how its files were named:
         # the settings block does not say it again
-        "settings": [(k, v) for k, v in spec_settings(spec_json, o)
+        "settings": [(k, v) for k, v in spec_settings(spec_json, o,
+                                                      run_id=run_id)
                      if not (k == "files" and _runs.is_modified(spec_json))],
         "versions": version_pairs(row_sha, row_engine_versions),
         "can_rerun": (bool(spec_json) and status in RERUN_STATUSES
@@ -862,7 +868,7 @@ def _no_run_report(request: Request, run_id: str):
     Output's notices, under Storage as the run page is (to Storage when
     the id is not a run id's shape)."""
     back = ((f"/runs/{run_id}", "Back to the run") if _runs.is_run_id(run_id)
-            else ("/runs", "Open Storage"))
+            else ("/storage#ledgerfold", "Open Storage"))
     return output_routes._notice(
         request, 404, "empty", "No report for this run", action=back,
         active="Storage", heading="Run report")

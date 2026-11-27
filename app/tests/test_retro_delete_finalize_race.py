@@ -64,7 +64,8 @@ def world(tmp_path, monkeypatch, pf_engine_ready):
     ui_shared._invalidate_scans()
     finalized = []
 
-    def finalize_season(root, season, phase_cb=None, force=False):
+    def finalize_season(root, season, phase_cb=None, force=False,
+                        count_cb=None):
         finalized.append(Path(root))
         return {"total": 0.0}
     monkeypatch.setattr(retro, "finalize_season", finalize_season)

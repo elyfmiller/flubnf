@@ -161,10 +161,17 @@
  <div class="card out-past">{% for d, i in older %}{{ dayline(d, i) }}{% endfor %}</div>
 </details>
 {% endif %}
-{% if own %}
+{# Your data, always: a dataset's forecasts have a place before the first
+   run. Empty, it says what lands here, and its one way on is the
+   dataset's Forecast form once a dataset is stored (own_stored), else
+   Data's Your datasets, where a dataset is added #}
 <div class="card out-own" id="own-data">
  {{ tips.heading("Your data", "out-own", "Forecasts on your own datasets, newest first, under non-hub names: for your own use, downloaded on this computer only.",
                  after=tips.badge("neutral", "this computer only", icon_name="lock")) }}
+ {% if not own %}
+ {% set own_go %}{% if own_stored %}<a class="btn quiet" href="/forecast?tab=own">Forecast a dataset</a>{% else %}<a class="btn quiet" href="/data#datasets">Add a dataset</a>{% endif %}{% endset %}
+ {{ tips.empty("No forecasts on your datasets yet", "folder", action=own_go, compact=True, id="out-own-empty") }}
+ {% endif %}
  {% for r in own %}
  {% set runlink %}<a href="/runs/{{ r.run_id }}">run {{ r.run_when }}</a>{% endset %}
  <section class="out-set" aria-labelledby="out-set-{{ loop.index }}">
@@ -174,7 +181,6 @@
  </section>
  {% endfor %}
 </div>
-{% endif %}
 {{ fr.copy_script() }}
 {# data-out-now: the server's clock as it rendered the page
    (routes/output.output_page); the countdown below keeps time by it #}

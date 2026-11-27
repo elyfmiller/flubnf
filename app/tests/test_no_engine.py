@@ -173,9 +173,9 @@ def test_the_ledger_chip_says_why_the_filter_did_not_run():
         return [i["text"] for i in ui_shared._outcome_items(
             json.dumps(outcome))]
     assert "Groundhog only" in chips({"pf_skipped": "analogue-only run"})
-    assert "PF skipped" not in " ".join(
+    assert "skipped" not in " ".join(
         chips({"pf_skipped": "analogue-only run"}))
-    assert "PF skipped" in chips(
+    assert "Oracle SIHRS skipped" in chips(
         {"pf_skipped": "engine venv not installed (Tier A)"})
 
 

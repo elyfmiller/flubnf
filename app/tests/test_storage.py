@@ -250,7 +250,24 @@ def test_busy_rows_render_no_delete_controls(state):
                       1)[1].split("</div>", 1)[0]
     assert "data-del-storage" not in srow            # the replaying season
     assert " disabled " in srow
+    # a disabled Delete is drawn as any disabled control, not in red
+    assert "danger" not in row and "danger" not in srow
     assert f"{SEASON} is replaying (status: running); stop it first." in busy
+
+
+def test_each_delete_is_the_kits_quiet_danger_apart_from_the_links(state):
+    """A Delete sits in the row's action column, the entry's link in its
+    title: drawn in the kit's quiet danger (its word and outline in --bad),
+    it never reads as one of the page's links (G-U7)."""
+    import re
+    html = client.get("/storage").text
+    dels = re.findall(r'<button type="button" class="([^"]*)" '
+                      r'aria-label="Delete [^"]*" data-del-storage', html)
+    assert dels and set(dels) == {"quiet danger st-del"}
+    nau = (Path(__file__).resolve().parents[1] / "ui" / "static"
+           / "nau.css").read_text()
+    rule = nau.split("button.quiet.danger:not([disabled]){", 1)[1].split("}", 1)[0]
+    assert "color:var(--bad)" in rule and "background:transparent" in rule
 
 
 # ---------------------------------------------------------------- deletions
@@ -379,6 +396,9 @@ def test_clear_all_control_names_count_and_total_size(state):
     size_h = retro.human_bytes(sum(w["bytes"] for w in cw))
     assert f'data-size="{size_h}"' in html
     assert 'data-count="3"' in html
+    # the clear-all Delete, like each row's, is the kit's quiet danger
+    btn = html.split('id="clear-workroots-btn"', 1)[0].rsplit("<button", 1)[1]
+    assert 'class="quiet danger st-btn"' in btn
     # the confirmation goes through the shared shell and names both
     assert "totaling '+s+' on disk" in html
     assert "window.FluBNFConfirm" in html

@@ -1,7 +1,6 @@
 {% extends "base.html" %}{% block title %}FluBNF · Forecast{% endblock %}
 {% block head %}<link rel="stylesheet" href="/static/tabs/forecast.css">
 <script src="/static/plotly.min.js"></script><script src="/static/charts.js"></script>
-<script src="/static/quips.js"></script>
 {# the form's read-only lines: the Run row's time line from the engine's
    cost model (estimate.js) and a dataset's donor line (forecast_form.js) #}
 <script src="/static/estimate.js" defer></script><script src="/static/forecast_form.js" defer></script>{% endblock %}
@@ -656,7 +655,8 @@
       run page and weekly report state them); right, where the results
       will be, the fits by location as they finish (/api/progress
       "locations"), or a results skeleton while none are known (a
-      Groundhog-only run fits none), and the rotating quip #}
+      Groundhog-only run fits none). The step and the fit count are the
+      progress line's and the stats' above, in plain words #}
    <div class="runsplit fc-runsplit">
     <div id="runsettings">{{ settings_html(status.settings) | safe }}</div>
     <div class="fc-wait" id="fc-wait">
@@ -673,12 +673,10 @@
        {{ tips.badge("neutral", "after the run", id="fc-skel-badge") }}</div>
       <div class="fc-skel" aria-hidden="true">{% for w in (62, 48, 71, 40, 55) %}<span class="fc-skel-row"><i style="width:{{ w - 25 }}%"></i><i style="width:{{ w }}%"></i></span>{% endfor %}</div>
      </section>
-     <p class="quip fc-quip" id="quip"></p>
     </div>
    </div>
   </div>
   <script>
-   flubnfQuips('quip');
    // progress: % never regresses; the ETA is EMA-smoothed (alpha .3) and an
    // upward correction needs 3 consecutive polls; a new run resets it all
    let D={done:0,total:0,eta_s:null,t:Date.now()};
@@ -871,7 +869,7 @@
    {# settings left, results right #}
    <div class="runsplit">
     <div>{{ settings_html(r.settings) | safe }}</div>
-    <div>{{ results_html(r.outcome, r.spec, deleted=r.files_deleted) | safe }}</div>
+    <div>{{ results_html(r.outcome, r.spec, deleted=r.files_deleted, run_id=r.run_id) | safe }}</div>
    </div>
    {# straight to the run's outputs, so the tab never dead-ends here #}
    <div class="fc-actions">

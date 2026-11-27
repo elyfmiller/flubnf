@@ -105,7 +105,7 @@ def _outcome_dict(outcome) -> dict:
     return outcome if isinstance(outcome, dict) else {}
 
 
-def spec_settings(spec, outcome=None) -> list:
+def spec_settings(spec, outcome=None, run_id: str = "") -> list:
     """The settings that produced a console run, as (label, value) pairs.
 
     One formatter for the progress card, the run page and the weekly report.
@@ -113,7 +113,8 @@ def spec_settings(spec, outcome=None) -> list:
     unreadable spec yields [] rather than raising. `outcome` (the ledger's
     outcome, dict or JSON), when given, makes the list say what RAN rather
     than what was asked: the data file read, and a PF member that did not
-    run (no engine on this machine) is not listed as run.
+    run (no engine on this machine) is not listed as run. `run_id` dates
+    the run for pf_member_name (a run from before the Oracle step).
     """
     d = _spec_dict(spec)
     if not d:
@@ -130,6 +131,17 @@ def spec_settings(spec, outcome=None) -> list:
     if pf_absent:
         engine_label = (ENGINE_LABELS["analogue"]
                         + " (no PF engine on this machine)")
+    # the mechanistic member as it ran (pf_member_name), as the run's
+    # results and Storage name it: a run without the Oracle step, or from
+    # before it, ran the filter alone, and the engine row is built from
+    # that name (HUB_MEMBER_NAMES the other member's)
+    from app.core.site_build import PF_LABEL_ORACLE
+    ran_as = pf_member_name(o, run_id) if o else PF_LABEL_ORACLE
+    pf_pre_step = bool(o) and _before_the_step(o, run_id)
+    words = {"all": "both models ({pf} and {analogue})", "pf": "{pf}"}
+    if ran_as != PF_LABEL_ORACLE and not pf_absent and engine in words:
+        names = {**HUB_MEMBER_NAMES, "pf": ran_as}
+        engine_label = words[engine].format(**names)
     pairs = [("forecast date", str(d.get("forecast_date", "") or "unknown")),
              ("locations", locations_phrase(d.get("locations"))),
              ("engine", engine_label)]
@@ -156,6 +168,11 @@ def spec_settings(spec, outcome=None) -> list:
     pairs.append(("Groundhog donors", analogue_donors_label(extra)))
     if pf_absent or engine == "analogue":
         pairs.append(("Oracle step", "not run (no PF member ran)"))
+    elif pf_pre_step:
+        # the filter ran and the run recorded no bank: the step did not
+        # exist yet (it records one on every run since)
+        pairs.append(("Oracle step", "not applied (a run from before the "
+                                     "step)"))
     else:
         pairs.append(("Oracle step", oracle_label(extra, d)))
     # only a spec with a knobs record: shipped and older rows are unchanged.
@@ -498,6 +515,58 @@ ANCHOR_NOTE_KEYS = (("pf", "pf_anchor_notes"),
 HUB_MEMBER_NAMES = {"pf": "Oracle SIHRS", "analogue": "Groundhog"}
 
 
+#: when the Oracle step came into the console: the commit that added it
+#: and outcome["oracle"] (ba53035e, 2026-09-22 19:53:44 -07:00), in a run
+#: id's own form (the machine's local time; the lab's clock is -07:00).
+#: A run that started before it ran the filter alone, however it ended
+ORACLE_STEP_SINCE = "20260922T195344"
+
+
+def pf_member_name(outcome: dict, run_id: str = "") -> str:
+    """The mechanistic member's name on one run, from its ledger outcome,
+    by the season trees' rule (site_build.PF_LABEL_ORACLE and
+    PF_LABEL_FILTER): the member when the run applied the Oracle step (its
+    bank label) or asked for it (oracle_wanted, which the pipeline records
+    before the fits: a run that ended between them and the step), the
+    filter alone when it ran without it (oracle = none, or a run from
+    before the step: _before_the_step, which `run_id` dates). Any other
+    run (its filter never ran, or it ended in an error after the step came
+    in, before recording either) is named for the member it was to run; a
+    run on a dataset as the dataset pages name its member
+    (custom_run.MEMBER_LABELS). Storage's ledger and the run page name the
+    member this one way, in every fact of the run."""
+    from app.core.site_build import PF_LABEL_FILTER, PF_LABEL_ORACLE
+    o = outcome if isinstance(outcome, dict) else {}
+    if o.get("dataset"):
+        from app.core.custom_run import MEMBER_LABELS
+        return MEMBER_LABELS["pf"]
+    ox = str(o.get("oracle") or "")
+    if ox:
+        return PF_LABEL_FILTER if ox.startswith("none") else PF_LABEL_ORACLE
+    if "oracle_wanted" in o:
+        return PF_LABEL_ORACLE if o["oracle_wanted"] else PF_LABEL_FILTER
+    return (PF_LABEL_FILTER if _before_the_step(o, run_id)
+            else PF_LABEL_ORACLE)
+
+
+def _before_the_step(o: dict, run_id: str = "") -> bool:
+    """Whether an outcome is a run's from before the Oracle step existed.
+    Its filter ran, and it records neither the step's bank (oracle) nor
+    what it asked of the step (oracle_wanted), as every run since does.
+    A run that started before ORACLE_STEP_SINCE (`run_id`'s start) is
+    one, however it ended. After it, or undated, a run that finished is
+    one too (a console not yet restarted on the step's build), but one
+    that ended in an error is not: it may have stopped between its fits
+    and the step, so it keeps the member's name."""
+    if o.get("oracle") or "oracle_wanted" in o or not (
+            "pf_cells" in o or o.get("pf_relwis") is not None):
+        return False
+    started = str(run_id or "")[:15]
+    if is_run_id(run_id) and started < ORACLE_STEP_SINCE:
+        return True
+    return not o.get("error")
+
+
 def anchor_notes_row(o: dict, names: dict, skip=()):
     """The Results table's one row for both members' anchor notes, or None
     when neither recorded any (a shipped run on complete data): a count per
@@ -787,13 +856,14 @@ def _results_table(body: str, d: dict, heading: bool,
 
 
 def results_html(outcome, spec, heading: bool = True,
-                 deleted: bool = False) -> str:
+                 deleted: bool = False, run_id: str = "") -> str:
     """One run's results as a small table: run type, each member's relWIS
     with its cells, Oracle SIHRS fits and failures, submissions, report. Markup from
     fixed phrases and numbers only; unreadable input yields "". The table
     carries its own "Results" heading with the relWIS convention in a "?"
     tip; heading=False leaves both to the page (results_tip). deleted: Storage
-    deleted the run's files, so its files and report read "deleted"."""
+    deleted the run's files, so its files and report read "deleted".
+    `run_id` dates the run for pf_member_name."""
     if isinstance(outcome, str):
         try:
             o = json.loads(outcome or "{}")
@@ -809,7 +879,13 @@ def results_html(outcome, spec, heading: bool = True,
         return dataset_results_html(o, d, heading)
     mode = str(extra.get("mode") or "realtime")
     rows = [("Run type", MODE_LABELS.get(mode, mode))]
+    # the mechanistic member by what this run ran, as Storage names it, in
+    # every row of the table
+    pf_name = pf_member_name(o, run_id)
+    names = {**HUB_MEMBER_NAMES, "pf": pf_name}
     for name, key, cells_key in _RESULT_ROWS:
+        if key == "pf_relwis":
+            name = pf_name
         v = o.get(key)
         if v is None:
             continue
@@ -823,13 +899,13 @@ def results_html(outcome, spec, heading: bool = True,
         rows.append((name, f'<span class="relwis {"ok" if fv < 1 else "bad"}">'
                            f"{fv:.3f}</span>{_verdict(fv)}{cov}"))
     if "pf_cells" in o:
-        rows.append(("Oracle SIHRS fits", _pf_fits(o)))
+        rows.append((f"{pf_name} fits", _pf_fits(o)))
     elif o.get("pf_skipped"):
-        rows.append(("Oracle SIHRS fits", "none (analogue-only run)" if "analogue" in str(o["pf_skipped"]) else "none (no engine)"))
+        rows.append((f"{pf_name} fits", "none (analogue-only run)" if "analogue" in str(o["pf_skipped"]) else "none (no engine)"))
     elif o.get("pf_engine_broken"):
         # installed but broken (a different remedy from "no engine"); the
         # message (it carries a path) is the "?" tip's, escaped there
-        rows.append(("Oracle SIHRS fits", '<span class="bad">none (engine install '
+        rows.append((f"{pf_name} fits", '<span class="bad">none (engine install '
                                 'incomplete)</span>'
                                 + _tip("pf-broken", "the incomplete engine "
                                        "install", str(o["pf_engine_broken"]))))
@@ -843,16 +919,16 @@ def results_html(outcome, spec, heading: bool = True,
     # the states chosen in Data issues: that row says what came of them
     from app.core import missing as _ms
     covered = set(_ms.choices_of(extra))
-    arow = anchor_notes_row(o, HUB_MEMBER_NAMES, skip=covered)
+    arow = anchor_notes_row(o, names, skip=covered)
     if arow:
         rows.append(arow)
-    nrow = zero_anchor_row(o, HUB_MEMBER_NAMES, skip=covered)
+    nrow = zero_anchor_row(o, names, skip=covered)
     if nrow:
         rows.append(nrow)
-    frow = no_donors_row(o, HUB_MEMBER_NAMES)
+    frow = no_donors_row(o, names)
     if frow:
         rows.append(frow)
-    drow = data_issues_row(o, extra, HUB_MEMBER_NAMES)
+    drow = data_issues_row(o, extra, names)
     if drow:
         rows.append(drow)
     from app.core import missing as _missing

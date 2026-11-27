@@ -328,7 +328,7 @@ def test_the_ticker_paints_the_fits_a_poll_brings(tmp_path):
     got = _js(tmp_path, """
       var els = {}, now = 1000;
       function elem() { return {style: {}, textContent: "", hidden: false}; }
-      [".rquip", ".rfill", ".rstat", ".rt-stall", ".rbasis"].forEach(
+      [".rfill", ".rstat", ".rt-stall", ".rbasis"].forEach(
         function (s) { els[s] = elem(); });
       var card = {dataset: {season: "2098-99", status: "running", done: "1",
                             total: "4", results: "1"},

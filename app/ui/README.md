@@ -100,7 +100,8 @@ One line per module. "Imports" names the app/ui modules a module imports at top 
 | GET | `/retro/dataset/{id}/{stamp}` | `datasets_ui.py` | `replay_page` | `retro_dataset.html` | `_dataset_replay.html` links |
 | POST | `/retro/dataset/{id}/{stamp}/stop` | `datasets_ui.py` | `replay_stop` | redirect | `retro_dataset.html` form |
 | **Storage** | | | | | |
-| GET | `/storage`, `/runs` | `routes/storage.py` | `runs_page` | `runs.html` | nav |
+| GET | `/storage` | `routes/storage.py` | `runs_page` | `runs.html` | nav, every "Open Storage" |
+| GET | `/runs` | `routes/storage.py` | `runs_alias` | redirect to `/storage` | older pages and bookmarks |
 | GET | `/api/storage/reclaim` | `routes/storage.py` | `api_storage_reclaim` | | `runs.html` fetch |
 | POST | `/storage/reclaim` | `routes/storage.py` | `storage_reclaim` | | `runs.html` `#reclaim-form` |
 | POST | `/storage/delete` (`kind=experiment`, `ident=<name>/<id>`: a student experiment, on the runner computer's main console only) | `routes/storage.py` | `storage_delete` | | `runs.html` forms |
@@ -162,7 +163,6 @@ Template names that differ from their tab: `runs.html` is Storage, `run.html` is
 | `estimate.js` | `retro.html`, on both tabs (the Settings form's Oracle option prices the replay through `retro_progress.js` FluBNFRetroCost; the Your data tab's Replay time line through `dataset_replay.js`), and `forecast.html` (the Run row's time line, through `forecast_form.js`); the browser's copy of `app/core/estimates.py`, reading the `data-est-*` attributes `estimates.page_params()` puts on a run form |
 | `forecast_form.js` | `forecast.html` (the form's two read-only lines, redone on every change of the form: the Run row's time line on the hub form, whose rule on the server is `routes/forecast.run_words`, and a dataset's line when the Groundhog has too little history for the anchor week) |
 | `dataset_replay.js` | `_dataset_replay.html` (beside Replay: the Groundhog donor badge and the Replay time line, redone on every change of the form; `datasets_ui.donor_line` and `replay_estimate` are the same rules on the server) |
-| `quips.js` | `forecast.html`, `retro.html`, `retro_season.html` |
 | `plotly.min.js` | `data.html`, `forecast.html`, `model.html`, `retro_season.html`, `retro_dataset.html`, `run.html` (dataset runs), `sandbox.html` |
 | `dataset-template.csv` | `_dataset_upload.html` download link (FluBNF's synthetic grouped-CSV template: three groups, Overall the sum, with populations) |
 | `dataset_upload.js` | `_dataset_upload.html` (drop or choose one file, several or a folder of snapshots, check at once, recheck on kind/target/column changes) |

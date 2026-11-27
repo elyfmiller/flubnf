@@ -28,7 +28,6 @@
 </style>
 {% else %}<script src="/static/plotly.min.js"></script><script src="/static/charts.js"></script>
 <script src="/static/player.js"></script>
-<script src="/static/quips.js"></script>
 <script src="/static/retro_progress.js"></script>
 <link rel="stylesheet" href="/static/tabs/retro.css">{% endif %}{% endblock %}
 {% block export_title %}Season report{% endblock %}
@@ -108,25 +107,24 @@
 {%- endmacro %}
 {% if preparing %}
 {# preparing: scoring, the national aggregate and playback warming run as one
-   background job; poll its status and reload when it lands. The bar only
-   slides: the job has no honest denominator. #}
+   background job; poll its status and reload when it lands. The line says
+   the step in plain words and, while it goes week by week, the week it is
+   on (retro.finalize_words); the time beside it ticks here. The bar only
+   slides: the steps have no one honest denominator. #}
 <div class="rt-title"><h1><span class="accent">{{ season }}</span>: preparing results</h1>{{ knobs_badge() }}</div>
 <div class="card" data-season="{{ season }}">
  {{ tips.heading("Preparing the season results", "rs-prep") }}
- <p class="runstat" id="prep-stat" aria-live="polite">{{ preparing.phase }}&hellip;</p>
+ <p class="runstat" id="prep-stat"><span id="prep-step" aria-live="polite">{{ preparing.step or preparing.phase }}</span> · <span id="prep-time"></span></p>
  {{ tips.progress("Preparing", id="rs-prep-bar") }}
- <p class="quip rquip" id="prep-quip"></p>
 </div>
 <script>
  (function(){
-  var stat=document.getElementById('prep-stat');
+  var step=document.getElementById('prep-step'),time=document.getElementById('prep-time');
   var t0=Date.now()-({{ preparing.elapsed_s | round(1) }}*1000);
-  if(window.flubnfQuips)window.flubnfQuips(document.getElementById('prep-quip'),undefined,window.FLUBNF_RETRO_QUIPS);
-  var phase={{ preparing.phase | tojson }};
   function paint(){
     if(document.hidden)return;          // nothing to see: do no work
     var s=Math.round((Date.now()-t0)/1000);
-    stat.textContent=phase+'… '+(s>=60?Math.floor(s/60)+' min '+(s%60)+' s':s+' s');
+    time.textContent=s>=60?Math.floor(s/60)+' min '+(s%60)+' s':s+' s';
   }
   setInterval(paint,1000);paint();
   // polling: hidden tab -> 20 s heartbeat; never stack requests; poll at
@@ -142,7 +140,7 @@
      .then(function(r){return r.json();})
      .then(function(d){
        if(!d.pending){location.reload();return;}
-       if(d.phase)phase=d.phase;
+       if(d.step&&step.textContent!==d.step)step.textContent=d.step;
      })
      .catch(function(){})
      .then(function(){inflight=false;
@@ -243,7 +241,6 @@
  {# the settings this replay runs under, from its run record #}
  {% set live_set = settings_html(prog.settings) %}
  {% if live_set %}{% call tips.fold("Run settings", id="rs-live-set", cls="rsfold") %}{{ live_set | safe }}{% endcall %}{% endif %}
- <p class="quip rquip"></p>
 </div>
 <script>
  // reloads yield to an open guard modal (GUARD_BUSY)
@@ -448,7 +445,21 @@
     neutral dot: an info badge's circled "i" would read as a second "i");
     the page's "i" says which figures read it (scoring.earlier_rule_note) #}
  {% set rule_badge = tips.badge("neutral", "earlier cell rule", id="rs-rule") if rule_note else "" %}
- {{ tips.heading("Season scores", "rs-scores", cls="rt-sec-h", after=(tips.tag(conv_label) ~ rule_badge) if (heads or tm.us) else rule_badge) }}
+ {# Rescore, beside the scores it redoes (POST /retro/{season}/rescore),
+    its "?" saying what it does; off, its "?" says the reason the server
+    would give (routes/retro._rescore_refusal: what would clash with it is
+    refused there, so it carries no run guard, whose modal would offer to
+    stop a run it does not need stopped), never hidden; not in the
+    exported report #}
+ {% set rescore %}{% if not export and rescore_off is defined %}
+ {% set rs_what = "Scores every week of this season again from its stored forecasts, against the newest truth data on this computer (Update data on the Data tab fetches it). No forecast is run again." %}
+ <form method="post" action="/retro/{{ season }}/rescore" class="rt-rescore">
+  {% if archive %}<input type="hidden" name="archive" value="{{ archive }}">{% endif %}
+  {% if rescore_off %}{{ tips.reason_button("Rescore", "rs-rescore-why", (rescore_off[:1] | upper) ~ rescore_off[1:] ~ ".", cls="quiet", type="submit", label="why rescoring is unavailable") }}
+  {%- else %}<button type="submit" class="quiet">Rescore</button>{{ tips.tip("rs-rescore", "rescoring", rs_what) }}{% endif %}
+ </form>
+ {%- endif %}{% endset %}
+ {{ tips.heading("Season scores", "rs-scores", cls="rt-sec-h", after=(tips.tag(conv_label) ~ rule_badge) if (heads or tm.us) else rule_badge, aside=rescore) }}
  {% if score_error %}
  {# show the failure, never pass it off as "truth not settled"; the
     fitted forecasts below are intact, and the scoring input is usually

@@ -120,10 +120,15 @@ def _routed(monkeypatch, tmp_path):
 
 def test_finalize_builds_every_cache_and_times_each_phase(tmp_path, _stubbed):
     root = _mk_tree(tmp_path)
-    phases = []
+    phases, counts = [], []
     sec = retro.finalize_season(root, SEASON,
-                                phase_cb=phases.append)
+                                phase_cb=phases.append,
+                                count_cb=lambda i, n: counts.append((i, n)))
     assert phases == list(retro.FINALIZE_PHASES)
+    # scoring, the national aggregate (worked out here, not cached) and
+    # playback each count their weeks, 1 to n
+    n = len(retro.season_sample_files(root))
+    assert n and counts == [(i, n) for i in range(1, n + 1)] * 3
     for k in ("scoring", "national", "playback", "total"):
         assert k in sec and sec[k] >= 0.0, k
     # scores.json: real rows through the frozen formula
@@ -136,6 +141,24 @@ def test_finalize_builds_every_cache_and_times_each_phase(tmp_path, _stubbed):
     for w in (W1, W2):
         assert (root / "playback_cache" / f"{w}.json").is_file(), w
     assert retro.scores_current(root) and retro.scores_scoreable(root)
+
+
+def test_the_preparing_line_says_each_step_plainly_with_its_week():
+    """Every phase has plain words (no "cells", "aggregate" or
+    "intermediates" left bare), and a phase going week by week says the
+    week it is on."""
+    assert set(retro.FINALIZE_PHASES) < set(retro.FINALIZE_WORDS)
+    for phase in retro.FINALIZE_PHASES:
+        words = retro.finalize_words(phase)
+        assert words != phase and words[0].isupper(), phase
+    assert retro.finalize_words("preparing") == "Starting"
+    assert (retro.finalize_words("warming playback", (3, 28))
+            == "Preparing each week's playback: week 3 of 28")
+    # no count, or a count of nothing, leaves the words alone
+    assert (retro.finalize_words("scoring cells", None)
+            == retro.finalize_words("scoring cells", (0, 0))
+            == "Scoring each week's forecasts")
+    assert retro.finalize_words("refused") == "refused"
 
 
 def test_finalize_skips_scoring_when_current_unless_forced(tmp_path,
@@ -212,9 +235,11 @@ def test_slow_job_shows_the_preparing_state_and_status_endpoint(
     hold = threading.Event()
 
     def _slow(root, season, phase_cb=None,
-              force=False):
+              force=False, count_cb=None):
         if phase_cb:
             phase_cb("scoring cells")
+        if count_cb:
+            count_cb(3, 28)
         hold.wait(10)
         return {"total": 0.0}
 
@@ -222,15 +247,25 @@ def test_slow_job_shows_the_preparing_state_and_status_endpoint(
     monkeypatch.setattr(ui_retro, "_RESULTS_GRACE_S", 0.05)
     try:
         html = client.get(f"/retro/{SEASON}").text
-        # the preparing card, its live phase, and the poll wiring
+        # the preparing card, its step in plain words with the week it is
+        # on (no joke line), and the poll wiring
         assert "preparing results" in html
-        assert "scoring cells" in html
+        step = "Scoring each week&#39;s forecasts: week 3 of 28"
+        assert f'<span id="prep-step" aria-live="polite">{step}</span>' in html
+        assert "quip" not in html
         assert f"/api/retro/{SEASON}/results_status" in html
         assert "location.reload()" in html
         # nothing heavy rendered behind it
         assert "Download report" not in html
         st = client.get(f"/api/retro/{SEASON}/results_status").json()
         assert st["pending"] is True and st["phase"] == "scoring cells"
+        assert st["step"] == "Scoring each week's forecasts: week 3 of 28"
+        # the words and the count come from one tuple the worker writes
+        # whole, so a poll never pairs one phase's words with another's
+        # count
+        job = ui_retro_prep._results_jobs[str(_routed / SEASON)]
+        assert job["step"] == ("scoring cells", (3, 28))
+        assert "count" not in job
         assert st["elapsed_s"] >= 0.0
     finally:
         hold.set()
@@ -247,7 +282,7 @@ def test_one_job_per_root_even_under_concurrent_visits(tmp_path, _stubbed,
     hold = threading.Event()
 
     def _slow(root, season, phase_cb=None,
-              force=False):
+              force=False, count_cb=None):
         starts.append(1)
         hold.wait(10)
         return {"total": 0.0}
@@ -427,20 +462,211 @@ def test_the_season_page_says_why_no_weeks_score_yet(tmp_path, _routed,
 
 def test_rescore_forces_a_fresh_job_over_current_scores(tmp_path, _stubbed,
                                                         _routed, monkeypatch):
+    """A rescore is a POST that starts the forced job and opens the season
+    page; opening the page, ?rescore=1 or not, never starts one (G-S1: a
+    link or an image another site plants could otherwise start the work)."""
     _mk_tree(_routed)
     client.get(f"/retro/{SEASON}")          # scored and cached
     forces = []
     real = retro.finalize_season
 
-    def _spy(root, season, phase_cb=None, force=False):
+    def _spy(root, season, phase_cb=None, force=False, count_cb=None):
         forces.append(force)
         return real(root, season,
-                    phase_cb=phase_cb, force=force)
+                    phase_cb=phase_cb, force=force, count_cb=count_cb)
 
     monkeypatch.setattr(retro, "finalize_season", _spy)
     html = client.get(f"/retro/{SEASON}?rescore=1").text
+    assert forces == []                     # a GET never rescores
+    assert "weeks scored" in html and "preparing results" not in html
+    r = client.post(f"/retro/{SEASON}/rescore", follow_redirects=False)
+    assert r.status_code == 303 and r.headers["location"] == f"/retro/{SEASON}"
+    job = ui_retro_prep._results_jobs[str(_routed / SEASON)]
+    assert job["done"].wait(10)
     assert forces == [True]
-    assert "weeks scored" in html           # finished inside the grace wait
+    html = client.get(r.headers["location"]).text
+    assert "weeks scored" in html
+    assert forces == [True]                 # the page did not score again
+
+
+def _rescore_form(html: str) -> str:
+    """The season page's Rescore form, from its tag to its end."""
+    return html.split('class="rt-rescore"', 1)[1].split("</form>", 1)[0]
+
+
+def test_the_season_page_offers_rescore_beside_its_scores(tmp_path, _stubbed,
+                                                          _routed,
+                                                          monkeypatch):
+    """A quiet Rescore button by the Season scores heading posts to the
+    rescore route, with one "?" saying what it does; it carries no run
+    guard (the server refuses what would clash, and the guard's modal
+    would offer to stop runs a rescore does not need stopped). Opening the
+    page never rescores. An archived run's copy is read only: its button
+    is off with the reason, and the POST refuses it. The exported report
+    has no button."""
+    from app.core import retro_archive
+    _mk_tree(_routed)
+    forces = []
+    real = retro.finalize_season
+
+    def _spy(root, season, phase_cb=None, force=False, count_cb=None):
+        forces.append(force)
+        return real(root, season, phase_cb=phase_cb, force=force,
+                    count_cb=count_cb)
+
+    monkeypatch.setattr(retro, "finalize_season", _spy)
+    html = client.get(f"/retro/{SEASON}").text
+    head = html.split('id="h-rs-scores"', 1)[1].split('<div class="rt-vgroups">', 1)[0]
+    assert 'class="uk-heading-aside"' in head and 'class="rt-rescore"' in head
+    form = _rescore_form(html)
+    assert f'action="/retro/{SEASON}/rescore"' in html.split(
+        'class="rt-rescore"', 1)[0][-80:]
+    assert 'name="archive"' not in form               # the live season
+    assert '<button type="submit" class="quiet">Rescore</button>' in form
+    assert "data-guard" not in form and "retro-run" not in form
+    assert "disabled" not in form
+    assert ("Scores every week of this season again from its stored "
+            "forecasts, against the newest truth data on this computer "
+            "(Update data on the Data tab fetches it). No forecast is run "
+            "again.") in form
+    assert form.count('class="tipbtn"') == 1
+    # the page scored its stale caches once (not forced); the button posts
+    assert forces == [False]
+    r = client.post(f"/retro/{SEASON}/rescore", follow_redirects=False)
+    assert r.status_code == 303
+    assert ui_retro_prep._results_jobs[str(_routed / SEASON)]["done"].wait(10)
+    assert forces == [False, True]
+    # the exported season report (the same template) has no button
+    from app.core import report_season
+    rep = report_season.build_season_report(_routed / SEASON, SEASON)
+    rep = rep.read_text(encoding="utf-8")
+    assert "Season scores" in rep and 'class="rt-rescore"' not in rep
+    assert f'action="/retro/{SEASON}/rescore"' not in rep
+    # an archived run: read only, so off with the reason, and refused
+    from app.ui.state import _status as status
+    retro_archive.archive_run(_routed, SEASON, stamp="20980101T000000Z")
+    ui_shared._invalidate_scans()
+    html = client.get(f"/retro/{SEASON}?archive=20980101T000000Z").text
+    form = _rescore_form(html)
+    assert "disabled" in form
+    assert ("This copy is read only; rescore the live season.</span>"
+            in form)
+    status["flash"] = ""
+    r = client.post(f"/retro/{SEASON}/rescore",
+                    data={"archive": "20980101T000000Z"},
+                    follow_redirects=False)
+    assert r.headers["location"] == \
+        f"/retro/{SEASON}?archive=20980101T000000Z"
+    assert ("Not rescored: this copy is read only; rescore the live "
+            "season.") in status["flash"]
+    status["flash"] = ""
+    assert forces == [False, True]                 # nothing started
+
+
+def test_rescore_is_off_with_the_reason_the_server_would_give(
+        tmp_path, _stubbed, _routed, monkeypatch):
+    """Rescore is never hidden: where the POST would refuse, the button is
+    off (the kit's reason button) and its "?" gives that reason, from one
+    rule (routes/retro._rescore_refusal) the route uses too."""
+    from app.ui.state import _status as status
+    root = _mk_tree(_routed)
+    client.get(f"/retro/{SEASON}")                    # scored and cached
+    # the season still replaying: the worker scores it at its end
+    ui_retro_seasons._retro_status[SEASON] = "running"
+    monkeypatch.setattr(ui_retro, "_replaying", lambda *a: True)
+    form = _rescore_form(client.get(f"/retro/{SEASON}").text)
+    assert "disabled" in form and 'data-guard' not in form
+    assert f"{SEASON} is replaying; it is scored when the replay ends." in form
+    r = client.post(f"/retro/{SEASON}/rescore", follow_redirects=False)
+    assert r.headers["location"] == f"/retro/{SEASON}"
+    assert f"Not rescored: {SEASON} is replaying" in status["flash"]
+    status["flash"] = ""
+    ui_retro_seasons._retro_status.pop(SEASON, None)
+    monkeypatch.setattr(ui_retro, "_replaying", lambda *a: False)
+    # the sealed validation record (no live tree): read only, its scores
+    # stand
+    seal = tmp_path / "seal"
+    _mk_tree(seal)
+    monkeypatch.setattr(ui_retro_seasons, "RETRO_ROOT", tmp_path / "nolive")
+    monkeypatch.setattr(ui_retro_seasons, "RETRO_SEAL", seal)
+    ui_retro_prep._results_jobs.clear()
+    ui_shared._invalidate_scans()
+    form = _rescore_form(client.get(f"/retro/{SEASON}").text)
+    assert "disabled" in form and "data-guard" not in form
+    assert ("The sealed validation record is read only; its scores "
+            "stand.</span>") in form
+    assert form.count('class="tipbtn"') == 1        # the reason's "?" alone
+    assert ui_retro._rescore_refusal(seal / SEASON, SEASON) == (
+        "the sealed validation record is read only; its scores stand", False)
+    # every other refusal, from the same rule
+    monkeypatch.setattr(ui_retro_prep, "_job_running", lambda r: True)
+    assert ui_retro._rescore_refusal(root, SEASON) == (
+        f"{SEASON} is being scored now; its page shows the progress", False)
+    empty = tmp_path / "empty" / SEASON
+    empty.mkdir(parents=True)
+    assert ui_retro._rescore_refusal(empty, SEASON) == (
+        f"{SEASON} has no completed weeks", True)
+    # an archived or imported copy, by its archive id
+    assert ui_retro._rescore_refusal(root, SEASON, "20980101T000000Z") == (
+        "this copy is read only; rescore the live season", False)
+    monkeypatch.setattr(ui_retro_prep, "_being_removed", lambda r: True)
+    assert ui_retro._rescore_refusal(root, SEASON) == (
+        "the run is being deleted or moved", True)
+
+
+def test_the_page_joins_a_rescore_that_is_still_working(tmp_path, _stubbed,
+                                                        _routed, monkeypatch):
+    """Opened while a rescore runs, the page shows its progress rather than
+    the scores it is replacing, and starts nothing of its own."""
+    _mk_tree(_routed)
+    client.get(f"/retro/{SEASON}")          # scored and cached
+    hold, forces = threading.Event(), []
+
+    def _slow(root, season, phase_cb=None, force=False, count_cb=None):
+        forces.append(force)
+        if phase_cb:
+            phase_cb("scoring cells")
+        hold.wait(10)
+        return {"total": 0.0}
+
+    monkeypatch.setattr(retro, "finalize_season", _slow)
+    monkeypatch.setattr(ui_retro, "_RESULTS_GRACE_S", 0.05)
+    try:
+        r = client.post(f"/retro/{SEASON}/rescore")      # followed
+        assert "preparing results" in r.text
+        assert "Scoring each week&#39;s forecasts" in r.text
+        assert forces == [True]
+    finally:
+        hold.set()
+
+
+def test_a_rescore_refuses_what_it_may_not_score(tmp_path, _stubbed, _routed,
+                                                 monkeypatch):
+    """A malformed id, the read-only sealed record and a cross-site POST
+    start nothing; each refusal says why."""
+    from app.ui import state as ui_state
+    started = []
+    monkeypatch.setattr(ui_retro_prep, "_ensure_results_job",
+                        lambda *a, **k: started.append(1) or {})
+    ui_state._status["flash"] = ""
+    r = client.post("/retro/not-a-season/rescore", follow_redirects=False)
+    assert r.status_code == 303 and r.headers["location"] == "/retro"
+    assert "Not rescored: unrecognized season" in ui_state._status["flash"]
+    # the sealed validation record: read only, its scores stand
+    seal = tmp_path / "seal"
+    _mk_tree(seal)
+    monkeypatch.setattr(ui_retro_seasons, "RETRO_SEAL", seal)
+    ui_state._status["flash"] = ""
+    r = client.post(f"/retro/{SEASON}/rescore", follow_redirects=False)
+    assert r.headers["location"] == f"/retro/{SEASON}"
+    assert "sealed validation record is read only" in ui_state._status["flash"]
+    # another site's page: the same-host guard refuses the POST outright
+    r = client.post(f"/retro/{SEASON}/rescore",
+                    headers={"Origin": "https://elsewhere.example"},
+                    follow_redirects=False)
+    assert r.status_code == 403
+    assert started == []
+    ui_state._status["flash"] = ""
 
 
 def test_week_map_cards_cache_on_disk_and_are_reused(tmp_path, _stubbed,

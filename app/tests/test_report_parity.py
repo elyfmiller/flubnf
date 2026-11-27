@@ -163,11 +163,22 @@ def test_every_app_section_is_in_the_report(built):
         assert h in want, h
 
 
+def _without_rescore(html):
+    """The verdict's markup less the console's Rescore control (the Season
+    scores heading's aside), which the report does not carry."""
+    i = html.index('<span class="uk-heading-aside">')
+    j = html.index("</form>", i)
+    j = html.index("</span>", j) + len("</span>")
+    assert 'class="rt-rescore"' in html[i:j]
+    return html[:i] + html[j:]
+
+
 def test_verdict_tiles_match_including_us_aggregate(built):
     app_html, report_html = built
     a = _region(app_html, '<div class="verdict">', '<div class="card playcard')
     r = _region(report_html, '<div class="verdict">', '<div class="card playcard')
-    assert a == r
+    assert 'class="rt-rescore"' not in r
+    assert _without_rescore(a) == r
     assert _us_tile(a, "Groundhog")
 
 

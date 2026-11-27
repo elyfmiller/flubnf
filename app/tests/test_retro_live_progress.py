@@ -250,7 +250,13 @@ def test_the_page_of_a_running_replay_shows_its_live_card(tmp_path,
     # not scored yet is neither a failure nor truth still to come
     assert "Scoring failed" not in html
     assert "No scoreable weeks yet" not in html
-    # a rescore waits for the replay too
+    # a rescore waits for the replay too: refused, with the reason
+    from app.ui import state as ui_state
+    r = client.post(f"/retro/{SEASON}/rescore", follow_redirects=False)
+    assert r.status_code == 303 and r.headers["location"] == f"/retro/{SEASON}"
+    assert f"Not rescored: {SEASON} is replaying" in ui_state._status["flash"]
+    ui_state._status["flash"] = ""
+    # and opening the page with the old query starts nothing either
     assert client.get(f"/retro/{SEASON}?rescore=1").status_code == 200
 
 

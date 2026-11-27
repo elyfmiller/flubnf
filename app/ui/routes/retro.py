@@ -12,8 +12,9 @@ Sections (in order): the index and its APIs (retro_index,
 api_retro_progress, api_retro_startover, retro_archive_delete) | results
 status (api_retro_results_status, _RESULTS_GRACE_S) | the season worker and
 run controls (_retro_bg, _refused, retro_stop, retro_season_stop/pause/
-resume, retro_run) | bundle import (retro_import) | the season page and its
-APIs (retro_results, api_retro_playback, api_retro_mapswap, _season_report)
+resume, retro_run) | bundle import (retro_import) | the season page, its
+rescore (a POST) and its APIs (retro_results, retro_rescore,
+api_retro_playback, api_retro_mapswap, _season_report)
 | bundle export (_export_bundle, retro_season_export).
 """
 from __future__ import annotations
@@ -480,8 +481,10 @@ _RESULTS_GRACE_S = 1.5
 
 @router.get("/api/retro/{season}/results_status")
 def api_retro_results_status(season: str, archive: str = ""):
-    """The preparing state's poll: is the finalize job still working, and in
-    which phase. Never starts work (the results page does)."""
+    """The preparing state's poll: is the finalize job still working, in
+    which phase, and its step as the page says it ("step": the phase in
+    plain words with the week it is on). Never starts work (the results
+    page does)."""
     if archive and not (_valid_season(season) and _valid_archive(archive)):
         return {"pending": False, "error": "unrecognized archive"}
     if not _valid_season(season):
@@ -490,6 +493,7 @@ def api_retro_results_status(season: str, archive: str = ""):
     job = _results_jobs.get(str(root))
     if job and not job["done"].is_set():
         return {"pending": True, "phase": job["phase"],
+                "step": retro_prep.job_step(job),
                 "elapsed_s": round(time.time() - job["t0"], 1)}
     return {"pending": False, "error": (job or {}).get("error", "")}
 
@@ -1229,19 +1233,19 @@ def retro_results(request: Request, season: str, week: str = "",
             f"{season}: that archived run has no completed weeks, or it "
             "has been deleted.")
     score_error = ""
-    # Heavy scoring never runs in-request: stale caches or ?rescore=1 start
-    # the background finalize job and the page shows a polled preparing
-    # state (after a short grace wait). A job covering these exact inputs is
+    # Heavy scoring never runs in-request: stale caches start the
+    # background finalize job and the page shows a polled preparing state
+    # (after a short grace wait); a job already working on the tree (a
+    # rescore, POST /retro/{season}/rescore) is joined the same way. A GET
+    # never forces a rescore. A job covering these exact inputs is
     # believed, so an unsettled-truth season never loops.
     # A season still replaying renders from the caches it has, beside its
     # live card: a job per visit would rerun finalize on every new week
     # (the worker finalizes at the end).
     live = _replaying(root, season, archive)
-    if not live and ((request.query_params.get("rescore")
-                      and not _is_sealed_root(root))
-                     or retro_prep._results_pending(root)):
-        job = retro_prep._ensure_results_job(
-            root, season, force=bool(request.query_params.get("rescore")))
+    if not live and (retro_prep._results_pending(root)
+                     or retro_prep._job_running(root)):
+        job = retro_prep._ensure_results_job(root, season)
         if job.get("refused"):
             # a delete began since the check above: no job was started
             return _refused(f"{season}: {job['error']}.")
@@ -1252,6 +1256,7 @@ def retro_results(request: Request, season: str, week: str = "",
                 "model_name": _name_fn(names),
                 "knobs_modified": knobs_modified,
                 "preparing": {"phase": job["phase"],
+                              "step": retro_prep.job_step(job),
                               "elapsed_s": round(time.time() - job["t0"], 1)},
                 "archive": archive,
                 "archive_when": retro.stamp_human(archive) if archive else "",
@@ -1279,7 +1284,69 @@ def retro_results(request: Request, season: str, week: str = "",
                                  knobs_modified=knobs_modified,
                                  imported=imported,
                                  weeks=weeks),
-             active="Retrospective"))
+             active="Retrospective",
+             # the Rescore button's state: why it is off ("" when on),
+             # the reason the POST would give
+             rescore_off=_rescore_refusal(root, season, archive)[0]))
+
+
+def _rescore_refusal(root: Path, season: str, archive: str = "") -> tuple:
+    """(why a rescore of this tree is refused, whether the refusal goes
+    back to the Retrospective index), ("", False) when it may run. One
+    rule for POST /retro/{season}/rescore and the season page's Rescore
+    button, which shows the reason with the button off. `why` reads after
+    "Not rescored: " and, capitalized, as the button's reason."""
+    from app.core import retro
+    if retro_prep._being_removed(root):
+        # "the run is being deleted or moved"
+        return retro_prep._REMOVING_WHY.split(";")[0], True
+    if archive:
+        # an archived or imported run: its page says read only, and a
+        # rescore would rewrite its scores (an imported one's with this
+        # machine's truth)
+        return "this copy is read only; rescore the live season", False
+    if _is_sealed_root(root):
+        return ("the sealed validation record is read only; its scores "
+                "stand"), False
+    if _replaying(root, season, archive):
+        return (f"{season} is replaying; it is scored when the replay "
+                "ends"), False
+    if not retro.season_sample_files(root):
+        return f"{season} has no completed weeks", True
+    if retro_prep._job_running(root):
+        return (f"{season} is being scored now; its page shows the "
+                "progress"), False
+    return "", False
+
+
+@router.post("/retro/{season}/rescore")
+def retro_rescore(request: Request, season: str, archive: str = Form("")):
+    """Score a stored season again from its weeks, in the background
+    finalize job, then open its page, which shows the job's progress until
+    it lands. A POST, never a GET: opening a page, or a link another site
+    plants, never starts the work (the same-host guard checks a POST's
+    Origin). Refused, with the reason on the page (_rescore_refusal, the
+    season page's Rescore button's rule): a malformed id, a tree being
+    deleted or moved, an archived or imported run (`archive`: read only),
+    the sealed validation record (read only), a season still replaying
+    (the worker scores it at its end), a tree with no completed week, and a
+    tree already being scored (its page shows that job's progress)."""
+    if not _valid_season(season) or (archive and not _valid_archive(archive)):
+        _flash("Not rescored: unrecognized season or archive.", "warn")
+        return RedirectResponse("/retro", status_code=303)
+    page = f"/retro/{season}" + (f"?archive={archive}" if archive else "")
+    root, _is_seal = retro_seasons._season_root(season, archive)
+    why, to_index = _rescore_refusal(root, season, archive)
+    if why:
+        _flash(f"Not rescored: {why}.", "warn")
+        return RedirectResponse("/retro" if to_index else page,
+                                status_code=303)
+    job = retro_prep._ensure_results_job(root, season, force=True)
+    if job.get("refused"):
+        # a delete began since the check above, or the tree is gone
+        _flash(f"Not rescored: {job['error'].split(';')[0]}.", "warn")
+        return RedirectResponse("/retro", status_code=303)
+    return RedirectResponse(page, status_code=303)
 
 
 def season_page_context(root: Path, season: str, archive: str = "", *,

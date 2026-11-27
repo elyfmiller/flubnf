@@ -5,7 +5,9 @@ the marks that explain something and no more (docs/UI-KIT.md).
     one "i", beside the title, holds how to read the scores, the coverage
     colors, what the pooled and US figures are and the player's keys;
     badges, tags and labelled values say the rest, the run settings every
-    value in plain sight.
+    value in plain sight. On the console's page the Rescore button beside
+    the scores has its one "?" (what it does, or why it is off); the
+    report has no button and no "?".
   * A run's page: no mark at all; the medians' weeks are under their
     heading, a refused file says why beside its badge.
 
@@ -286,7 +288,8 @@ def test_the_tiles_carry_their_cells_and_the_us_era_in_plain_sight():
 
 def test_the_season_page_and_its_report_keep_one_mark(built):
     app_html, report_html = built
-    assert marks(app_html) == ["tt-rs-page"]
+    # the console's page: the "i" and the Rescore button's "?"
+    assert marks(app_html) == ["tt-rs-page", "tip-rs-rescore"]
     assert marks(report_html) == ["tt-rs-page"]
     # the report's "i" is the page's: the reader of the file keeps the facts
     assert _page_i(app_html) == _page_i(report_html)
@@ -302,7 +305,7 @@ def test_a_modified_replay_names_its_settings_and_digest(tmp_path,
     retro.write_meta(root, meta)
     _warm(root)
     html = _app_page(tmp_path, monkeypatch)
-    assert marks(html) == ["tt-rs-page"]
+    assert marks(html) == ["tt-rs-page", "tip-rs-rescore"]
     assert 'id="rs-knobs"' in html and 'id="tip-rs-knobs"' not in html
     row = html.split('<div class="rs-settings rt-settings">', 1)[1] \
         .split("</div>", 1)[0]
