@@ -234,16 +234,27 @@ def test_nav_is_the_operational_loop():
                                     "Methods", "Sandbox"]
 
 
-def test_storage_page_serves_on_both_routes_with_the_ledger_inside():
-    """/storage is the tab's route; /runs stays a live alias for bookmarks
-    and old links, and both keep the run ledger under its own heading."""
+def test_storage_page_serves_at_one_address_with_the_ledger_inside():
+    """/storage is the tab's one address, the nav's link; /runs, the
+    ledger's old address that bookmarks and older pages hold, redirects
+    there, so the address bar and the nav agree. The run ledger is inside,
+    under its own heading."""
+    r = client.get("/runs", follow_redirects=False)
+    assert r.status_code == 307 and r.headers["location"] == "/storage"
     for path in ("/storage", "/runs"):
         r = client.get(path)
         assert r.status_code == 200, path
+        assert r.url.path == "/storage", path
         assert "<h1>Storage</h1>" in r.text, path
         assert "Run ledger" in r.text, path
         assert re.search(r'<a class="tab active" href="/storage" aria-current="page">Storage</a>',
                          r.text), path
+    # no page of the console links the old address
+    tpl = Path(__file__).resolve().parents[1] / "ui"
+    for f in list((tpl / "templates").glob("*.html")) + list(
+            (tpl / "routes").glob("*.py")):
+        text = f.read_text(encoding="utf-8")
+        assert 'href="/runs"' not in text and '("/runs",' not in text, f.name
 
 
 def test_models_route_defaults_to_pf_and_owns_the_active_tab():

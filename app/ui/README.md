@@ -100,7 +100,8 @@ One line per module. "Imports" names the app/ui modules a module imports at top 
 | GET | `/retro/dataset/{id}/{stamp}` | `datasets_ui.py` | `replay_page` | `retro_dataset.html` | `_dataset_replay.html` links |
 | POST | `/retro/dataset/{id}/{stamp}/stop` | `datasets_ui.py` | `replay_stop` | redirect | `retro_dataset.html` form |
 | **Storage** | | | | | |
-| GET | `/storage`, `/runs` | `routes/storage.py` | `runs_page` | `runs.html` | nav |
+| GET | `/storage` | `routes/storage.py` | `runs_page` | `runs.html` | nav, every "Open Storage" |
+| GET | `/runs` | `routes/storage.py` | `runs_alias` | redirect to `/storage` | older pages and bookmarks |
 | GET | `/api/storage/reclaim` | `routes/storage.py` | `api_storage_reclaim` | | `runs.html` fetch |
 | POST | `/storage/reclaim` | `routes/storage.py` | `storage_reclaim` | | `runs.html` `#reclaim-form` |
 | POST | `/storage/delete` (`kind=experiment`, `ident=<name>/<id>`: a student experiment, on the runner computer's main console only) | `routes/storage.py` | `storage_delete` | | `runs.html` forms |

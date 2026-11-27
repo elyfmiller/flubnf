@@ -161,7 +161,7 @@ def test_an_unknown_run_is_a_404_with_a_short_page(tmp_path, monkeypatch):
     r = client.get("/runs/20990101T000000-nope<b>")
     assert r.status_code == 404
     assert "No run" in r.text and "<b>" not in r.text
-    assert 'href="/runs"' in r.text
+    assert 'href="/storage#ledgerfold"' in r.text    # the way to Storage
     assert ui_forecast.run_page(None, "..").status_code == 404
     # a recorded run still opens, with or without its workroot
     led = Ledger()

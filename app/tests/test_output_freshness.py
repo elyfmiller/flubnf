@@ -114,7 +114,7 @@ def test_a_run_report_route_takes_only_a_run_ids_shape(root):
             assert r.status_code == 404, (bad, tail)
             assert "NOT A RUN" not in r.text and "STATE ROOT" not in r.text
             assert "No report for this run" in r.text
-            assert 'href="/runs"' in r.text            # the way to Storage
+            assert 'href="/storage#ledgerfold"' in r.text  # the way to Storage
 
 
 # ---------------------------------------------------- the freshness stamp

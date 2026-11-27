@@ -1,5 +1,5 @@
-"""Storage (GET /storage, alias GET /runs): the disk inventory, the run
-ledger, and delete, clear and reclaim.
+"""Storage (GET /storage; GET /runs, an old address, redirects to it): the
+disk inventory, the run ledger, and delete, clear and reclaim.
 
 An APIRouter server.py includes before the forecast routes, so POST
 /runs/clear stays ahead of GET /runs/{run_id}: the first route a path
@@ -12,7 +12,7 @@ from contextlib import contextmanager
 from pathlib import Path
 
 from fastapi import APIRouter, Form, Request
-from fastapi.responses import HTMLResponse
+from fastapi.responses import HTMLResponse, RedirectResponse
 
 from app.core import runs as _runs
 from app.core import ttlcache
@@ -29,7 +29,7 @@ from app.ui.templating import templates
 router = APIRouter()
 
 
-# === Storage (/storage, /runs): inventory, delete, clear, reclaim -> runs.html ===
+# === Storage (/storage; /runs redirects): inventory, delete, clear, reclaim -> runs.html ===
 # The sealed records and the hub clone are never deletable (no control, and
 # refused again on POST); running/paused trees are refused server-side.
 # Every destructive POST requires a confirmation naming exactly what the
@@ -475,10 +475,9 @@ LEDGER_ROWS = 50
 
 
 @router.get("/storage", response_class=HTMLResponse)
-@router.get("/runs", response_class=HTMLResponse)
 def runs_page(request: Request):
-    """Storage tab: storage panel, then the run ledger. /runs is a kept
-    alias (old reports and bookmarks link it)."""
+    """Storage tab: storage panel, then the run ledger, at the tab's one
+    address (the nav's link and every "Open Storage")."""
     from app.core.runs import APP_STATE, is_research
     from app.core import retro
     from app.ui.routes.output import _files_deleted
@@ -515,6 +514,14 @@ def runs_page(request: Request):
         "clear_workroots": {"count": len(cw),
                             "size_h": retro.human_bytes(
                                 sum(w["bytes"] for w in cw))}})
+
+
+@router.get("/runs")
+def runs_alias():
+    """The ledger's old address (older pages, reports and bookmarks link
+    it): redirected to /storage, so the address bar and the nav agree. A
+    fragment (#ledgerfold) is kept by the browser."""
+    return RedirectResponse("/storage", status_code=307)
 
 
 @router.post("/runs/clear")

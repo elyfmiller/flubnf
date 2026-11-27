@@ -701,7 +701,8 @@ def run_page(request: Request, run_id: str):
         # a page of the console (under Storage, which lists the runs)
         return output_routes._notice(
             request, 404, "empty", f"No run {run_id} is recorded here",
-            tip="Storage lists the runs.", action=("/runs", "Open Storage"),
+            tip="Storage lists the runs.",
+            action=("/storage#ledgerfold", "Open Storage"),
             active="Storage", heading="Run")
     # its files: the workroot, or the archive that holds the run once
     # Storage deleted the workroot
@@ -852,7 +853,7 @@ def _no_run_report(request: Request, run_id: str):
     Output's notices, under Storage as the run page is (to Storage when
     the id is not a run id's shape)."""
     back = ((f"/runs/{run_id}", "Back to the run") if _runs.is_run_id(run_id)
-            else ("/runs", "Open Storage"))
+            else ("/storage#ledgerfold", "Open Storage"))
     return output_routes._notice(
         request, 404, "empty", "No report for this run", action=back,
         active="Storage", heading="Run report")

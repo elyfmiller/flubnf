@@ -332,8 +332,9 @@ def test_routes_one_path_reaches_keep_their_order():
 
 
 def test_a_route_name_still_finds_its_first_route():
-    """url_path_for takes the first route of a name: /runs (not /storage)
-    for runs_page, the console's /storage/delete for storage_delete."""
+    """url_path_for takes the first route of a name: /storage for
+    runs_page (/runs is runs_alias, a redirect), the console's
+    /storage/delete for storage_delete."""
     seen = set()
     for methods, path, name, kind, group in golden()["routes"]:
         if kind != "APIRoute" or name in seen:
@@ -342,7 +343,8 @@ def test_a_route_name_still_finds_its_first_route():
         params = re.findall(r"\{(\w+)\}", path)
         assert srv.app.url_path_for(name, **{p: "p" for p in params}) == \
             re.sub(r"\{\w+\}", "p", path), name
-    assert srv.app.url_path_for("runs_page") == "/runs"
+    assert srv.app.url_path_for("runs_page") == "/storage"
+    assert srv.app.url_path_for("runs_alias") == "/runs"
     assert srv.app.url_path_for("storage_delete") == "/storage/delete"
 
 
