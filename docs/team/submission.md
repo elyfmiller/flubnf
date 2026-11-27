@@ -6,6 +6,67 @@ and CDC's rules. The season's facts are in
 
 ## Now
 
+- 2026-11-27 (19:55 UTC): THE ATTACK RATE AND s0: THE FABLE 5.2 REVIEW
+  AND THE JOINT READ (Ely's three steps: this lane's read, written first
+  in its scratchpad serology_s0/lane_read.md; the reviewer's, given the
+  findings and sources but not the read; then this). The reviewer
+  re-retrieved the sources; every citation in the two searches holds;
+  this lane re-checked its new claims against the downloads.
+  ATTACK RATE, 12.4% (Tokars 2018 / Carrat 2008): HOLDS WITH CHANGES.
+  - 12.4% stands as the central value; state a range of 10-17%, the
+    CDC median 8.3% over the natural-infection symptomatic fractions:
+    0.84 (Leung 2015, outbreak studies) 9.9%, 0.75 (White et al. 2025,
+    US adults, weekly PCR, 2022-23: 201 of 269 symptomatic) 11.1%, 0.669
+    (Carrat) 12.4%, 0.56 (Cohen et al. 2021 Lancet Glob Health, PHIRST
+    South Africa, PMID 34019838: "268 (56%) of 478 infections were
+    symptomatic") 14.8%, 0.50 (convention) 16.6%. Cite White beside
+    Carrat: a reviewer will object that challenge studies in healthy
+    adults are not natural infection, and White is US natural
+    infection. Serologic definitions (Flu Watch 18%, SHIVERS 35%) are an
+    upper arm on a different meaning of "infection".
+  - Open (the reviewer's most serious point): Tokars' median is
+    2010-11 to 2015-16 (one season at 3.0%), while the seed divides the
+    NHSN-era typical season's admissions per person (2022-23 on). The
+    attack rate should describe the same seasons; CDC's recent burden
+    pages are blocked here (cdc.gov 403) and Morris 2025's 2016-20
+    range runs higher. The screen's 10% and 26% arms bracket it.
+  - The 18% is not wrong, only badly sourced: dropping Vinh 2021 is
+    right; i0 scales with the attack rate (0.69x at 12.4%).
+  s0: KEEP 0.85 AND THE RANGE 0.70-0.95; DO NOT ADOPT THE SEARCHER'S
+  0.60-0.92.
+  - This lane's read leaned lower (Yang 2015's onset S 0.645-0.706,
+    mapped through the model's waning to an August 1 s0 of 0.55-0.66).
+    The reviewer's two objections hold and this lane withdraws it:
+    Yang's S is weakly identified (the paper: the immunity period "was
+    less constrained and thus not analyzed"; nine seasons and a pandemic
+    span only 64.5-77.4%), and with the model's one-year waning the
+    immune pool at August 1 is about 0.96 x the attack rate (a season
+    centred six months earlier, e^-0.5 / (1 - e^-1)), so s0 about 0.88
+    at 12.4% and 0.83 at 18%; 0.55-0.70 needs multi-year immunity the
+    model does not have. Vaccination, left out of that calculation,
+    lowers it; drift raises it.
+  - The searcher's low end rested on one Portuguese J.2 figure (61.8%
+    at or above titre 40, read as full protection) that Hong Kong
+    contradicts (19.8% immune to J.2); its "nothing above 0.89" was one
+    credible bound; its Lee 2022 conversion misread "immune to at least
+    1 strain" of four.
+  - Co-circulation pushes an aggregate (single-strain) s0 up: an H3N2
+    infection does not deplete H1N1 or B susceptibles (the reviewer's
+    first-order depletion match, 1 / sum(w_k^2 / s_k)).
+  - Citation chain for s0 (no US serosurvey gives a number): pre-season
+    serology, Cheng et al. 2026 Euro Surveill (Hong Kong, PMID 41822984)
+    and Guiomar et al. 2026 Euro Surveill (Portugal, PMID 41684322);
+    titre to protection, Hobson 1972 (PMID 4509641) and Coudeville 2010
+    (PMID 20210985); the estimator, Xiong et al. 2026 Lancet Infect Dis
+    (PMID 42009019, doi 10.1016/S1473-3099(26)00061-7; s0 = 1 - the
+    relative reduction in R); the US model lower bound, Yang 2015; the
+    non-identifiability, Cope et al. 2018 PLoS Comput Biol (PMID
+    30114215); and the waning consistency above. The s0 0.70 arm of the
+    sensitivity screen is the test of the lower end.
+  Not reviewed by anyone yet: the Xiong appendix (the Georgia US
+  cohort's absolute immune fractions) and Kandula et al. 2017 AJE (PMID
+  28174833, subtype-specific US forecasting).
+
 - 2026-11-27 (19:18 UTC): A US SOURCE FOR THE ATTACK RATE: THE
   LITERATURE (Ely, Decided, same day). A research agent searched PubMed
   and Crossref; every number below was read in the retrieved abstract or
@@ -30,9 +91,10 @@ and CDC's rules. The season's facts are in
     - Somes et al. 2018 (Vaccine, PMID 29716771, placebo arms, not US
       only): infection with asymptomatic, unvaccinated, 22.5% children,
       10.7% adults; about 13% all ages weighted (agent's weighting).
-    - Yang, Lipsitch, Shaman 2015 (PNAS, PMID 25730851): 8.2% to 24.1%
-      by season, 2003-04 to 2012-13, US cities; mean of the
-      non-pandemic seasons 14.1%. Inferred by an SIRS model with a
+    - Yang, Lipsitch, Shaman 2015 (PNAS, PMID 25730851): 7.9% to 24.1%
+      by season (CORRECTED 19:55 UTC from 8.2%: 2011-12 is 7.9%),
+      2003-04 to 2012-13, US cities; mean of the non-pandemic seasons
+      14.1% with the corrected 2012-13 (17.4%), median 13.3%. Inferred by an SIRS model with a
       filter, so not independent of this model's own assumptions.
     - US household serology of the 1970s (Seattle, Fox et al. 1982,
       PMID 7114033: 17-24% overall, 6-13% of adults; Houston), child
@@ -4115,6 +4177,17 @@ and CDC's rules. The season's facts are in
   against the hub schema), then the submission lane copies it to the fork.
 
 ## For other lanes
+
+- 2026-11-27 (19:55 UTC), Submission to Model: s0's CITATIONS IN
+  flubnf/sihrs_priors.py, AFTER THE REVIEW (Now, same day; extends the
+  note below; no number changes; Ely decides). Remove Li et al. 2025
+  (an H5N1 study) and Hoze et al. 2025 (an R package paper with nothing
+  on influenza). Xiong is published: Lancet Infect Dis 2026;26(8):766-777,
+  doi 10.1016/S1473-3099(26)00061-7, PMID 42009019; and the gloss
+  "relative reduction in R is exactly s0" has the sign wrong: the paper's
+  relative reduction is 1 - Re/R0, so s0 = 1 - reduction (lines 86, 102
+  and 297). The chain to cite instead is in Now. The attack rate's
+  citations change only with its value, after the sensitivity screen.
 
 - 2026-11-27 (19:18 UTC), Submission to Model: A CITATION TO CHECK IN
   flubnf/sihrs_priors.py. S0_SOURCES["cdc_us_longitudinal_panel"] (Li
