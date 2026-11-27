@@ -37,6 +37,14 @@
 .rt-go{margin-left:auto}
 /* an archived run's Results link: the row's small button size */
 .archrow a.btn{padding:.22rem .6rem;font-size:var(--fs-label)}
+/* its Delete stands apart from Results (the kit's quiet danger); on a
+   phone the two take their own line, Results at its left, Delete at its
+   right */
+.archrow .rt-arch-del{margin-left:1rem}
+@media (max-width:40rem){
+  .archrow .grow{flex-basis:100%}
+  .archrow .rt-arch-del{margin-left:auto}
+}
 /* the live readout, what the estimate rests on (a "?" on the index,
    visually hidden on the season page) and the connection badge on one
    line */

@@ -698,6 +698,14 @@ button.danger{background:var(--bad);border-color:var(--bad);color:var(--on-bad)}
 button.danger:hover{
   background:color-mix(in srgb,#000 12%,var(--bad));
   border-color:color-mix(in srgb,#000 12%,var(--bad))}
+/* the destructive tier's quiet form, for a Delete in a row or a heading:
+   its word in --bad (a mark's word, 4.5:1 on the card) in a --bad outline
+   on no fill, so it never reads as the row's links; the filled .danger is
+   its confirmation's button. A disabled one stays the disabled control */
+button.quiet.danger:not([disabled]){background:transparent;color:var(--bad);
+  border-color:color-mix(in srgb,var(--bad) 55%,var(--line))}
+button.quiet.danger:not([disabled]):hover{color:var(--bad);
+  background:color-mix(in srgb,var(--bad) 9%,transparent)}
 /* a disabled control, in any tier: muted text in a dashed outline on no
    fill (dashed: unavailable, as the kit's empty state), from the theme's
    tokens; an opacity washed it out on the dark grounds. --mut holds 4.5:1

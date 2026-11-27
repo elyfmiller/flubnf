@@ -290,10 +290,14 @@
      {% set fx.items = fx.items + [("folder", a.size_h, "Size")] %}
      {{ tips.meta(fx.items, label="Archived run facts") }}</div>
     <a class="btn quiet" href="/retro/{{ s.name }}?archive={{ a.id }}">Results →</a>
-    <form method="post"
+    {# Delete apart from Results, in the danger tier's quiet form: a run
+       of a gigabyte or more never sits beside a link in the same style
+       (the confirmation below still asks first) #}
+    <form class="rt-arch-del" method="post"
       action="/retro/{{ s.name }}/archive/{{ a.id }}/delete">
      <input type="hidden" name="confirm" value="">
-     <button type="button" class="quiet" data-del-archive
+     <button type="button" class="quiet danger" data-del-archive
+       aria-label="Delete the {{ s.name }} run {{ a.imported or a.when }} ({{ a.size_h }})"
        data-season="{{ s.name }}" data-when="{{ a.imported or a.when }}"{% if a.imported %} data-imported="1"{% endif %}
        data-weeks="{{ a.weeks }}" data-size="{{ a.size_h }}">Delete</button>
     </form>

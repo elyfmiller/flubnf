@@ -5,14 +5,15 @@
 
 {# a storage row: the title line (name and badges), the size, the action
    (Delete, or a disabled Delete whose "?" says why), and a meta row of
-   facts under the title. No <div> inside a row: tests find a row by its
+   facts under the title. A Delete is the kit's quiet danger (nau.css
+   button.quiet.danger), so it never reads as the row's links. No <div> inside a row: tests find a row by its
    data-wid and read it up to its closing </div>. #}
 {% macro del_form(action, kind, ident, what, size, hint, confirm="") -%}
 <form class="st-act" method="post" action="{{ action }}">
  {% if kind %}<input type="hidden" name="kind" value="{{ kind }}">{% endif %}
  <input type="hidden" name="ident" value="{{ ident }}">
  <input type="hidden" name="confirm" value="">
- <button type="button" class="quiet st-del" aria-label="Delete {{ what }}" data-del-storage{% if confirm %} data-confirm="{{ confirm }}"{% endif %}
+ <button type="button" class="quiet danger st-del" aria-label="Delete {{ what }}" data-del-storage{% if confirm %} data-confirm="{{ confirm }}"{% endif %}
    data-what="{{ what }}" data-size="{{ size }}"
    data-hint="{{ hint }}">Delete</button>
 </form>
@@ -285,7 +286,7 @@
   <input type="hidden" name="confirm" value="">
  </form>
  {% endif %}
- {% set wr_aside %}{% if clear_workroots.count %}<button type="button" class="quiet st-btn" id="clear-workroots-btn" form="clear-workroots"
+ {% set wr_aside %}{% if clear_workroots.count %}<button type="button" class="quiet danger st-btn" id="clear-workroots-btn" form="clear-workroots"
     data-count="{{ clear_workroots.count }}"
     data-size="{{ clear_workroots.size_h }}">Delete
     {{ "the" if clear_workroots.count == 1 else "all" }}

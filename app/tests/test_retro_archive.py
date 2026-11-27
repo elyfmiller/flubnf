@@ -583,6 +583,13 @@ def test_the_index_lists_archives_with_their_facts_and_a_delete_control(
     assert f'action="/retro/{SEASON}/archive/{STAMP}/delete"' in html
     assert "data-del-archive" in html
     assert "FluBNFConfirm" in html                 # the shared confirmation
+    # Delete stands apart from Results, in the kit's quiet danger (a run
+    # of a gigabyte never sits beside a link in the same style)
+    row = html.split('<div class="archrow"', 1)[1].split("</form>", 1)[0]
+    assert row.index("Results →") < row.index('<form class="rt-arch-del"')
+    assert '<a class="btn quiet" href="/retro/' in row
+    assert '<button type="button" class="quiet danger" data-del-archive' in row
+    assert f'aria-label="Delete the {SEASON} run ' in row
 
 
 def test_archived_run_loads_through_the_playback_api(tmp_path, monkeypatch):
