@@ -516,23 +516,27 @@ async def upload(request: Request):
     if not ctype.startswith("multipart/form-data"):
         return PlainTextResponse("Expected a multipart/form-data upload.\n",
                                  status_code=400)
+    # the form the Data tab was opened from: in the box's address too, so a
+    # refusal before the form is read still keeps it
+    then_q = str(request.query_params.get("then") or "")
+    then_q = then_q if then_q in UPLOAD_THEN else ""
     try:
         form = await _capped_form(request, cap)
     except Exception:
         # a malformed body or too many fields: said as the check says it
         return _render_data(request, upload={
-            "name": "", "kind": "", "chk": _message_view(
+            "name": "", "kind": "", "then": then_q, "chk": _message_view(
                 "The upload could not be read; choose the file again.")},
             _code=400)
     mb = D.DEFAULT_LIMITS.max_bytes // (1024 * 1024)
     if form is None:
         return _render_data(request, upload={
-            "name": "", "kind": "", "chk": _message_view(
+            "name": "", "kind": "", "then": then_q, "chk": _message_view(
                 f"The upload is larger than the {mb} MB limit; nothing was "
                 "read or stored.")}, _code=413)
     if form is TOO_MANY_FILES:
         return _render_data(request, upload={
-            "name": "", "kind": "", "chk": _message_view(
+            "name": "", "kind": "", "then": then_q, "chk": _message_view(
                 _too_many_message())}, _code=413)
     fs, why, as_snaps = _files_of(form)
     name = str(form.get("name") or "").strip()
@@ -542,7 +546,7 @@ async def upload(request: Request):
     nxt = str(form.get("next") or "data")
     then = str(form.get("then") or "")
     back = {"name": name, "kind": kind or "", "target": target or "",
-            "then": then if then in UPLOAD_THEN else ""}
+            "then": then if then in UPLOAD_THEN else then_q}
     if not fs:
         return _render_data(request, upload={
             **back, "chk": _message_view(why)}, _code=400)
@@ -729,10 +733,11 @@ def _donor_entry(ds) -> dict:
 
 
 def future_week(dates, today=None) -> dict | None:
-    """{"week": the newest week, "before": the week before it or ""} when
-    the newest of `dates` (ISO week-ending days, ascending) ends after
-    `today`: a week whose last day has not come yet, which an upload of
-    Monday-dated rows gives, may be incomplete. None otherwise."""
+    """{"week": the newest week, "before": the newest week that has ended
+    by `today`, or ""} when the newest of `dates` (ISO week-ending days,
+    ascending) ends after `today`: a week whose last day has not come yet,
+    which an upload of Monday-dated rows gives, may be incomplete. None
+    otherwise."""
     from datetime import date
     if not dates:
         return None
@@ -744,7 +749,8 @@ def future_week(dates, today=None) -> dict | None:
         return None
     if not ahead:
         return None
-    return {"week": newest, "before": dates[-2] if len(dates) > 1 else ""}
+    done = [d for d in dates if d <= today.isoformat()]
+    return {"week": newest, "before": done[-1] if done else ""}
 
 
 def donor_need() -> int:

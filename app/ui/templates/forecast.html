@@ -50,23 +50,18 @@
   {%- endif %}
   {% endcall %}
   {% if dataset %}
-  {# which of your datasets; a plain GET form, like the Data tab's, sent as
-     soon as the choice changes, so the form below is always the chosen
-     dataset's (without script, the Use button sends it) #}
+  {# which of your datasets; a plain GET form, like the Data tab's, sent by
+     Use (a choice alone never loads a page). While the choice is not the
+     dataset the form below holds, Run models is off and says to press Use
+     (static/forecast_form.js), so the old dataset never runs unseen #}
   <form method="get" action="/forecast" class="row srcpick" id="fc-srcform">
    <span>{{ tips.label("Dataset", "fc-src", for_="fc-source") }}
    <select name="source" id="fc-source">
     {% for sid, sname in source_choices %}<option value="{{ sid }}" {% if dataset.id == sid %}selected{% endif %}>{{ sname }}</option>{% endfor %}
    </select></span>
-   <noscript><button class="quiet">Use</button></noscript>
+   <button class="quiet">Use</button>
    <a class="srcpick-upload" href="/data?then=forecast#datasets">Upload a dataset</a>
   </form>
-  <script>
-   (function () {
-     var s = document.getElementById('fc-source');
-     if (s) s.addEventListener('change', function () { s.form.submit(); });
-   })();
-  </script>
   {% endif %}
   {# the hub form carries the cost model's constants (estimates.page_params)
      for the Run row's time line (static/forecast_form.js) #}
@@ -583,6 +578,10 @@
      // the filter: shows the boxes whose name holds the text
      var FILTER = document.getElementById('fc-locfilter'),
          NOMATCH = document.getElementById('fc-nomatch');
+     // Enter in the filter is the filter's own: never the form's Run
+     if (FILTER) FILTER.addEventListener('keydown', function (e) {
+       if (e.key === 'Enter') e.preventDefault();
+     });
      if (FILTER) FILTER.addEventListener('input', function () {
        var q = FILTER.value.replace(/^\s+|\s+$/g, '').toLowerCase(), shown = 0;
        Array.prototype.forEach.call(LIST.querySelectorAll('label.ck'), function (l) {

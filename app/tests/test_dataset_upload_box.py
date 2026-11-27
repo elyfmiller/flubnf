@@ -140,9 +140,13 @@ def test_a_dataset_forecast_links_to_the_box_and_the_hub_is_unchanged():
     link = '<a class="srcpick-upload" href="/data?then=forecast#datasets">'
     assert link in page
     assert page.index(link) < page.index('id="fcform"')
-    # the picker loads the chosen dataset at once; Use only without script
-    assert "<noscript><button class=\"quiet\">Use</button></noscript>" in page
-    assert "s.form.submit()" in page
+    # a choice alone never loads a page: Use opens it (Run waits for it:
+    # test_forecast_runrow), with or without script
+    form = page[page.index('id="fc-srcform"'):]
+    form = form[:form.index("</form>")]
+    assert '<button class="quiet">Use</button>' in form
+    assert "<noscript>" not in form and ".submit()" not in page.split(
+        'id="fc-srcform"', 1)[1].split("</script>", 1)[0]
     # the hub tab carries no upload box: that is the Your data tab's
     hub = client.get("/forecast").text
     assert 'action="/run"' in hub and "all 53 locations" in hub
@@ -380,10 +384,18 @@ def test_the_data_tab_leads_with_the_form_it_was_opened_from():
     # an unknown then= is ignored: the box is the plain Data tab's
     page = client.get("/data?then=elsewhere").text
     assert "data-then=" not in page and "dt-back" not in page
-    # a refused store keeps where it was going back to
+    # a refused store keeps where it was going back to, from the form's
+    # field or, before the form is read, from the box's own address
     r = store(b"date,target_group,value\n2024-08-03,A,-1\n", then="replay")
     assert r.status_code == 422
     assert 'data-then="replay"' in r.text
+    page = client.get("/data?then=replay").text
+    assert 'action="/data/datasets?then=replay#datasets"' in page
+    r = client.post("/data/datasets?then=forecast", content=b"--x\r\nbroken",
+                    headers={"content-type":
+                             "multipart/form-data; boundary=x"})
+    assert r.status_code == 400
+    assert 'data-then="forecast"' in r.text
 
 
 def test_problems_come_grouped_by_kind_with_rows():
@@ -415,9 +427,12 @@ def test_problems_come_grouped_by_kind_with_rows():
 def test_a_refused_store_without_script_lands_on_its_problems():
     """Without script a refused store reloaded the Data tab at its top,
     the problems far below and not announced."""
-    page = client.get("/data?then=forecast").text
+    page = client.get("/data").text
     assert ('<form method="post" action="/data/datasets#datasets" '
             'enctype="multipart/form-data"') in page
+    page = client.get("/data?then=forecast").text
+    assert ('<form method="post" action="/data/datasets?then=forecast'
+            '#datasets" enctype="multipart/form-data"') in page
     r = store(b"date,target_group,value\n2024-08-03,A,-1\n")
     assert r.status_code == 422
     assert '<div class="card" id="datasets">' in r.text

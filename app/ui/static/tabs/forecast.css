@@ -21,9 +21,10 @@
         marks */
 
 /* ---- 1. settings card ---- */
-/* what a past week of a dataset sees: Vintage mode only */
+/* what a past week of a dataset sees: hidden in Real-time only, so it
+   shows in Vintage and without script (the server runs the typed week) */
 .fc-pastnote{margin:.3rem 0 .1rem;color:var(--mut);font-size:.9rem}
-#fcform:not(.mode-vintage) .fc-pastnote{display:none}
+#fcform.mode-realtime .fc-pastnote{display:none}
 /* why Run is off on a dataset week no model can forecast */
 .fc-runwhy{margin:.35rem 0 0;color:var(--mut);font-size:.9rem;flex-basis:100%}
 /* the anchor week under the date: an icon, the label, the week, the

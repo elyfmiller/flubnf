@@ -26,6 +26,8 @@
    fewer donor weeks than it needs at every horizon (the page's "best",
    datasets_ui.donor_best), at the default donor window and Weeks to drop.
    Anything else leaves Run on; the run itself says what it skipped.
+   Also off while the Dataset picker above the form names another dataset
+   than the one the form holds, until Use opens it (stale).
 
    ES5 (docs/UI-KIT.md); reads the form, posts nothing. */
 (function (root) {
@@ -216,6 +218,15 @@
     var line = doc.getElementById("fc-est");
     var alert = doc.getElementById("fc-ds-donors");
     var run = doc.getElementById("fc-run"), why = doc.getElementById("fc-runwhy");
+    // the Dataset picker (outside the form) and the dataset the form holds
+    var src = doc.getElementById("fc-source");
+    var held = form.querySelector('input[name="dataset"]');
+    function stale() {
+      if (!src || !held || src.value === held.value) return "";
+      var o = src.options[src.selectedIndex];
+      return "Run is off: press Use to open " + (o ? o.text : "that dataset") +
+        " first.";
+    }
     var counts = null, data = doc.getElementById("fc-donor-data");
     if (data) {
       try { counts = JSON.parse(data.textContent || "null"); }
@@ -236,13 +247,13 @@
         alert.hidden = !d;
       }
       if (run && why) {
-        var r = runWhy(o);
+        var r = stale() || runWhy(o);
         run.disabled = !!r;
         why.textContent = r;
         why.hidden = !r;
       }
     }
-    if (!line && !alert) return null;
+    if (!line && !alert && !why) return null;
     var timer = null;
     function soon() {
       clearTimeout(timer);
@@ -250,6 +261,7 @@
     }
     ["change", "input", "click", "fc-form-change", "ms-reset"].forEach(
       function (ev) { form.addEventListener(ev, soon); });
+    if (src) src.addEventListener("change", soon);
     Array.prototype.forEach.call(form.querySelectorAll("details[data-scope]"),
       function (d) { d.addEventListener("ms-refilter", soon); });
     // deferred, this runs before DOMContentLoaded and the panel's script

@@ -30,15 +30,9 @@
    <span><label for="dsr-ds">Dataset</label>
    <select name="dataset" id="dsr-ds">{% for sid, sname in dr.datasets %}
     <option value="{{ sid }}"{% if sid == d.id %} selected{% endif %}>{{ sname }}</option>{% endfor %}</select></span>
-   <noscript><button class="quiet">Use</button></noscript>
+   <button class="quiet">Use</button>
    <a class="srcpick-upload" href="/data?then=replay#datasets">Upload a dataset</a>
   </form>
-  <script>
-   (function () {
-     var s = document.getElementById('dsr-ds');
-     if (s) s.addEventListener('change', function () { s.form.submit(); });
-   })();
-  </script>
   <form method="post" action="/retro/dataset/run" id="dsr-form"{{ d.est | xmlattr }}>
    <input type="hidden" name="dataset" value="{{ d.id }}">
    {# what each replayed week sees, as a badge: vintage-true, or the final
@@ -80,7 +74,10 @@
         var n = ones.filter(function (c) { return c.checked; }).length;
         all.checked = n === ones.length;
         all.indeterminate = n > 0 && n < ones.length;
-        count.textContent = n === ones.length ? 'all ' + n : n + ' of ' + ones.length;
+        // none ticked replays every group (datasets_ui.replay_start)
+        count.textContent = n === ones.length ? 'all ' + n :
+          n ? n + ' of ' + ones.length :
+          'none ticked: all ' + ones.length + ' replay';
       }
       all.addEventListener('change', function () {
         ones.forEach(function (c) { c.checked = all.checked; });
@@ -88,6 +85,10 @@
         ones[0] && ones[0].dispatchEvent(new Event('change', {bubbles: true}));
       });
       ones.forEach(function (c) { c.addEventListener('change', paint); });
+      // Enter in the filter is the filter's own: never the form's Replay
+      filt.addEventListener('keydown', function (e) {
+        if (e.key === 'Enter') e.preventDefault();
+      });
       filt.addEventListener('input', function () {
         var q = filt.value.toLowerCase(), shown = 0;
         ones.forEach(function (c) {
@@ -122,7 +123,29 @@
     <div id="dsr-est"{% if not d.est_text %} hidden{% endif %}>{{ tips.meta([("clock", d.est_text, "Time")], label="Replay time") }}</div>
    </div>
    <script type="application/json" id="dsr-donor-data">{{ d.donors_json | safe }}</script>
-   <button class="gold" data-guard="console-run">Replay</button>
+   <button class="gold" id="dsr-run" data-guard="console-run">Replay</button>
+   {# a Dataset choice not yet opened with Use: Replay waits for it, so the
+      form's own dataset never replays unseen #}
+   <p class="rt-under" id="dsr-runwhy" role="status" hidden></p>
+   <script>
+    (function () {
+      var pick = document.getElementById('dsr-ds'),
+          run = document.getElementById('dsr-run'),
+          why = document.getElementById('dsr-runwhy'),
+          held = {{ d.id | tojson }};
+      if (!pick || !run || !why) return;
+      function sync() {
+        var stale = pick.value !== held;
+        run.disabled = stale;
+        why.hidden = !stale;
+        why.textContent = stale ? 'Replay is off: press Use to open ' +
+          pick.options[pick.selectedIndex].text + ' first.' : '';
+      }
+      pick.addEventListener('change', sync);
+      window.addEventListener('pageshow', sync);
+      sync();
+    })();
+   </script>
   </form>
   {# estimate.js (FluBNFEstimate) is in retro.html's head, on both tabs #}
   <script src="/static/dataset_replay.js" defer></script>

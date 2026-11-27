@@ -776,6 +776,32 @@ def test_run_is_off_where_no_model_can_forecast_the_week(tmp_path):
 
 
 @needs_js
+def test_run_waits_for_use_when_the_picker_names_another_dataset(tmp_path):
+    """The Dataset picker loads nothing by itself (a choice alone never
+    navigates); until Use opens the chosen dataset, Run models is off and
+    says so, so the form's own dataset never runs unseen."""
+    from test_dataset_engines import grouped_bytes
+    other = stored(grouped_bytes(), "Other")
+    ds = stored(TEMPLATE.read_bytes(), "Kids")
+    html = _page(url=f"/forecast?source={ds.id}").text
+    got = _served(tmp_path, html, ds.forecast_dates()[-1], """
+      function run() {
+        var r = document.getElementById("fc-run"),
+            w = document.getElementById("fc-runwhy");
+        return [!!r.disabled, w.hidden ? "" : w.textContent];
+      }
+      var src = document.getElementById("fc-source");
+      var out = [run()];
+      src.value = %s; src.fire("change"); flush(); out.push(run());
+      src.value = %s; src.fire("change"); flush(); out.push(run());
+      return out;""" % (json.dumps(other.id), json.dumps(ds.id)))
+    assert got[0] == [False, ""] and got[2] == [False, ""]
+    assert got[1][0] is True
+    assert got[1][1].startswith("Run is off: press Use to open ")
+    assert got[1][1].endswith(" first.")
+
+
+@needs_js
 def test_run_why_by_its_rules(tmp_path):
     base = {"best": 12, "need": 30, "groundhogOnly": True, "pfOk": True,
             "windowDefault": True, "dropDefault": True}

@@ -35,7 +35,7 @@
 {% set then = then or (upload.then if upload and upload.then else "") %}
 {% set accept = ".csv,.tsv,.txt,text/csv,text/tab-separated-values,text/plain" %}
 <link rel="stylesheet" href="/static/tabs/data.css">
-<form method="post" action="/data/datasets#datasets" enctype="multipart/form-data"
+<form method="post" action="/data/datasets{% if then %}?then={{ then }}{% endif %}#datasets" enctype="multipart/form-data"
   class="dsup{% if upload %} has-file{% endif %}" id="{{ fid }}" data-dsup data-where="{{ where }}"{% if then %} data-then="{{ then }}"{% endif %}>
  {% if then %}<input type="hidden" name="then" value="{{ then }}">{% endif %}
  <div class="dsboxes">
