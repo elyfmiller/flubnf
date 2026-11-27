@@ -198,14 +198,20 @@ Chart legend chips, a swatch and a word each, instead of a sentence that names c
                  "tip": "What was later reported, from the newest archived data."}], id="fc-lg") }}
 ```
 
-### Fold: `tips.fold(summary, id="", open=False, after="", cls="")`
+### Fold: `tips.fold(summary, id="", open=False, after="", cls="", remember=False)`
 
-Progressive disclosure for detail the reader asks for: a closed fold whose summary says what is inside ("3 missing locations") and a list in the body (a call block). `after` is markup in the summary (a badge). It replaces lists printed under a row, and paragraphs of caveats that a tip would make too long.
+Progressive disclosure for detail the reader asks for: a closed fold whose summary says what is inside ("3 missing locations", "Hub clone details") and a list in the body (a call block). `after` is markup in the summary (a badge). It replaces lists printed under a row, and paragraphs of caveats that a tip would make too long.
+
+A page states its outcome in plain words on the line above a fold, and puts the operator detail behind it (commits and origin, engine builds, shard widths, runners, host names, process ids, workroots). Anything that changes what a reader concludes stays outside the fold, or on the fold's own line as a badge in `after`.
+
+`open=True` is the page asking for the fold open (something inside needs a look). `remember=True`, with an `id`, keeps each reader's own choice in their browser: `tips.js` stores `fold:<id>` in localStorage when the reader opens or closes it, and opens it again on the next visit; a fold the page asks open stays open. A link to something inside a closed fold opens it, on load and on a hash change, without counting as the reader's choice. Storage that is off or throws leaves the fold as the page drew it, and without script it is a plain `<details>`.
 
 ```jinja
 {% call tips.fold(c.missing | length ~ " missing", id="cov-" ~ loop.index) %}
 <ul>{% for loc, why in c.missing %}<li><b>{{ loc }}</b>: {{ why }}</li>{% endfor %}</ul>
 {% endcall %}
+{{ tips.alert("ok", "No new flu data since Nov 21: you are up to date", id="hub-outcome-line", live="") }}
+{% call tips.fold("Hub clone details", id="hub-clone-fold", remember=True) %}...{% endcall %}
 ```
 
 ### Meta row: `tips.meta(items, label="")`

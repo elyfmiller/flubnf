@@ -130,7 +130,7 @@ def _data_context(loc: str = "", vintage: str = "", freshness=None) -> dict:
     if lw and (not vs or lw > vs[-1]):
         ctx["live_entry"] = lw
         ctx["vintages"] = [lw] + ctx["vintages"]
-    ctx["hub_behind"] = _clone_behind(freshness)
+    ctx["hub_new"] = _new_data(freshness)
     # no clone at all: the card says so and what fetches it (nothing on
     # this page can; Update data pulls an existing clone)
     ctx["hub_missing"] = state.data_mod.hub_missing()
@@ -143,6 +143,9 @@ def _data_context(loc: str = "", vintage: str = "", freshness=None) -> dict:
     ctx["comparators"] = state.data_mod.comparators()
     ctx["comparators_missing"] = [k for k, ok in ctx["comparators"].items()
                                   if not ok]
+    # what the last check found, in one plain line (none before a check)
+    ctx["hub_outcome"] = _hub_outcome(
+        freshness, [] if ctx["hub_absent"] else ctx["comparators_missing"])
     # the "Your datasets" card (built here so /freshness keeps it)
     from app.ui import datasets_ui as _dsu
     ctx.update({"datasets": _dsu.dataset_rows(), "upload": None, "ds": None})
@@ -234,21 +237,91 @@ def _data_age(week, today=None) -> dict | None:
             "state": "warn" if days > STALE_AFTER_DAYS else "neutral"}
 
 
-def _clone_behind(f) -> bool:
-    """Whether a freshness check found origin ahead of the clone (new
-    weeks, a new vintage or commits): Update data is then the page's
-    primary action. False when unchecked or offline."""
-    if f is None:
-        return False
+def _new_data(f) -> bool:
+    """Whether a freshness check found flu data the clone lacks (the
+    outcome line's rule, _hub_outcome): a newer week in the hub's target
+    file, a newer archived week, or a target file on disk that is not the
+    hub's. Update data is then the page's primary action. Commits that
+    bring no new week are not new data. False when unchecked or offline."""
     try:
-        if f.remote_live and (not f.local_live or f.remote_live > f.local_live):
-            return True
-        if (f.remote_latest and f.local_latest
-                and f.remote_latest > f.local_latest):
-            return True
-        return bool(f.behind)
+        o = _hub_outcome(f)
     except Exception:
         return False
+    return bool(o and o["new"])
+
+
+def _day(iso) -> str:
+    """A week's date as a reader says it: "Nov 21" (no year; the Data
+    through row above gives it in full)."""
+    from datetime import date as _d
+    d = _d.fromisoformat(str(iso)[:10])
+    return f"{d:%b} {d.day}"
+
+
+def _new_weeks(local, remote) -> str:
+    """The weeks a pull brings, in words: "the week ending Nov 28 is",
+    "the weeks ending Nov 28 and Dec 5 are", "the weeks ending Nov 28 to
+    Dec 12 are"; "weeks through Nov 28 are" with no local week."""
+    from datetime import date as _d, timedelta
+    r = _d.fromisoformat(str(remote)[:10])
+    if not local:
+        return f"weeks through {_day(r)} are"
+    first = _d.fromisoformat(str(local)[:10]) + timedelta(days=7)
+    n = max(1, (r - first).days // 7 + 1)
+    if n == 1:
+        return f"the week ending {_day(r)} is"
+    joiner = "and" if n == 2 else "to"
+    return f"the weeks ending {_day(first)} {joiner} {_day(r)} are"
+
+
+def _hub_outcome(f, missing=()) -> dict | None:
+    """The FluSight hub card's plain outcome after Check for new data:
+    {"state": a tips.alert kind, "text": one line, "new": whether Update
+    data is the next step}; None before a check (or with no hub folder,
+    which the card's own alert covers). Commits and origin stay in the
+    card's "Hub clone details" fold; this line says what they mean.
+    `missing`: the comparator folders the clone lacks (a pull adds them)."""
+    if f is None:
+        return None
+    detail = f.detail or ""
+    if detail.startswith("no hub clone"):
+        return None
+    if detail.startswith("fetch failed"):
+        return {"state": "warn", "new": False,
+                "text": ("Could not reach the FluSight hub: check the "
+                         "internet connection and try again")}
+    try:
+        if f.remote_live and (not f.local_live or f.remote_live > f.local_live):
+            return {"state": "info", "new": True,
+                    "text": ("New flu data: "
+                             f"{_new_weeks(f.local_live, f.remote_live)} "
+                             "ready to update")}
+        if (f.remote_latest and f.local_latest
+                and f.remote_latest > f.local_latest):
+            return {"state": "info", "new": True,
+                    "text": ("New flu data: the archived week ending "
+                             f"{_day(f.remote_latest)} is ready to update")}
+        since = f.local_live or f.local_latest
+        lead = f"No new flu data since {_day(since)}" if since else "No new flu data"
+    except (TypeError, ValueError):
+        return None
+    if f.tree_stale:
+        return {"state": "info", "new": True,
+                "text": ("Your copy of the flu data differs from the "
+                         "hub's: Update data replaces it")}
+    if f.behind and not f.remote_live:
+        # commits came, but the hub's file could not be read to say
+        # whether they hold a new week
+        return {"state": "info", "new": True,
+                "text": "The hub has changed since your last update: "
+                        "Update data brings the changes in"}
+    if f.behind is None and not f.is_fresh:
+        return None                       # nothing was compared
+    if missing:
+        return {"state": "info", "new": True,
+                "text": (f"{lead}, but the hub's {' and '.join(missing)} "
+                         "forecasts are missing: Update data adds them")}
+    return {"state": "ok", "new": False, "text": f"{lead}: you are up to date"}
 
 
 def _season_vars(labels) -> dict:
@@ -500,16 +573,18 @@ def freshness(request: Request):
     f = state.data_mod.check_freshness()
     if _wants_json(request):
         cls, words = f.pill()
-        # "behind": Update data is the page's primary (a clone behind
-        # origin, or one lacking the comparator folders a pull adds),
-        # never with no hub folder, where a pull is refused
-        missing = [k for k, ok in state.data_mod.comparators().items()
-                   if not ok]
-        behind = ((_clone_behind(f) or bool(missing))
-                  and not state.data_mod.hub_missing(data=False))
+        # "new_data": Update data is the page's primary (flu data the
+        # clone lacks, or comparator folders a pull adds; never commits
+        # alone), never with no hub folder, where a pull is refused.
+        # "outcome": the plain line the card shows above its fold
+        absent = bool(state.data_mod.hub_missing(data=False))
+        missing = [] if absent else [
+            k for k, ok in state.data_mod.comparators().items() if not ok]
+        outcome = _hub_outcome(f, missing)
+        new = (_new_data(f) or bool(missing)) and not absent
         return JSONResponse({"ok": True, "fresh": f.is_fresh, "pill": cls,
                              "words": words, "detail": f.detail,
-                             "behind": behind})
+                             "new_data": new, "outcome": outcome})
     return templates.TemplateResponse(request, "data.html",
                                       _data_context(freshness=f))
 

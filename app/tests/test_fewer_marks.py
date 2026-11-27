@@ -81,7 +81,7 @@ KEEP = {
     "/": ({"tt-hm-map"},
           ("tip-hm-miss", "tip-home-pin", "tip-eb-", "tip-hm-approx")),
     "/data": ({"tip-archive", "tip-dsup-data-about"},
-              ("tip-hub-empty", "tip-hub-detail", "tip-newest-gaps",
+              ("tip-hub-empty", "tip-newest-gaps",
                "tip-dsup-data-kind", "tip-ds-")),
     "/output": ({"tt-out-files"},
                 ("tip-out-live-", "tip-out-lchk-", "tip-out-notice",

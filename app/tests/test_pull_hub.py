@@ -412,15 +412,17 @@ def test_the_buttons_answer_json_when_asked(hub, monkeypatch):
     r = client.post("/freshness", headers={"Accept": "application/json"})
     assert r.json() == {"ok": True, "fresh": True, "pill": "ok",
                         "words": "up to date", "detail": "up to date with origin",
-                        "behind": False}
+                        "new_data": False,
+                        "outcome": {"state": "ok", "new": False,
+                                    "text": "No new flu data: you are up to date"}}
     r = client.post("/freshness")
     assert r.status_code == 200
     assert ('<span class="uk-badge uk-badge--ok" id="hub-pill" '
             'data-state="ok">') in r.text
     assert r.text.split('id="hub-pill"')[1].split("</span></span>")[0] \
         .endswith('<span class="uk-badge-t">up to date')
-    # the check's own words in the "?" beside the badge
-    assert 'id="tip-hub-detail">up to date with origin</span>' in r.text
+    # the check's own words under the badge, in the clone fold
+    assert '<p class="hint" id="hub-detail">up to date with origin</p>' in r.text
 
 
 def test_the_page_carries_the_progress_bar_and_the_script(hub, monkeypatch):
@@ -432,7 +434,7 @@ def test_the_page_carries_the_progress_bar_and_the_script(hub, monkeypatch):
     assert '<div class="uk-progress uk-progress--busy" id="hub-bar">' in html
     assert 'role="progressbar" aria-labelledby="hub-bar-l"' in html
     assert 'id="hub-status" role="status" aria-live="polite"' in html
-    assert "FluBNFUI.setBadge(pill,STATES[d.pill]||'neutral'" in html
+    assert "ui.setBadge(pill,STATES[d.pill]||'neutral'" in html
     assert "err.innerHTML=ui.alert('error',msg)" in html
     assert "headers:{'Accept':'application/json'}" in html
     # the forms still post on their own without script

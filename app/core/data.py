@@ -416,9 +416,11 @@ class Freshness:
     tree_stale: bool = False             # the file on disk is not HEAD's
 
     def pill(self) -> tuple:
-        """(class, words) for the Data tab's hub-clone pill: ok "up to
-        date"; warn "N weeks behind", "new vintage", "N commits behind",
-        "stale files"; bad "offline"."""
+        """(class, words) for the Data tab's hub-clone badge, in the card's
+        "Hub clone details" fold: ok "up to date"; warn "N weeks behind",
+        "new vintage", "stale files"; neutral "N commits behind" (commits
+        that bring no new week ask nothing of the reader); bad
+        "offline"."""
         if self.detail.startswith("no hub clone"):
             return "bad", "missing"
         if self.detail.startswith("fetch failed"):
@@ -434,11 +436,12 @@ class Freshness:
         if (self.remote_latest and self.local_latest
                 and self.remote_latest > self.local_latest):
             return "warn", "new vintage"
-        if self.behind:
-            return "warn", (f"{self.behind} commit"
-                            f"{'s' if self.behind != 1 else ''} behind")
+        # a file on disk that is not origin's matters more than a count
         if self.tree_stale:
             return "warn", "stale files"
+        if self.behind:
+            return "neutral", (f"{self.behind} commit"
+                               f"{'s' if self.behind != 1 else ''} behind")
         if self.is_fresh:
             return "ok", "up to date"
         return "warn", "not checked"
@@ -550,7 +553,9 @@ def check_freshness(fetch: bool = True) -> Freshness:
         detail = (f"new vintage {remote_latest} upstream (local "
                   f"{local_latest}): Update data")
     elif behind:
-        detail = f"{behind} commit(s) behind origin, no new vintage yet"
+        # "no new week" only when origin's file was read to say so
+        detail = (f"{behind} commit{'s' if behind != 1 else ''} behind "
+                  "origin" + (", no new week of data" if remote_live else ""))
     elif stale and behind == 0:
         detail = "the target file on disk is not origin's: Update data"
     elif behind == 0:

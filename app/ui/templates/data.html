@@ -6,9 +6,10 @@
 {% macro nw(t) %}<span class="dt-nw">{{ t }}</span>{% endmacro %}
 <h1>Data</h1>
 <div class="cols dt-cols">
- {# the FluSight hub: what a run reads, the clone against origin, the
-    comparators and the newest week's reporting, one labelled row each;
-    each row's label and badge say what it means #}
+ {# the FluSight hub: what a run reads, the comparators and the newest
+    week's reporting, one labelled row each (each row's label and badge
+    say what it means); then the check and the pull, the check's outcome
+    in plain words, and the clone against origin in a closed fold #}
  <div><div class="card hubcard">
   {% set live_newer = live_week and (not n_vintages or live_week > latest_vintage) %}
   {{ tips.heading("FluSight hub", "hub") }}
@@ -35,15 +36,6 @@
       so; the Archive's "?" keeps the rule #}
    {{ tips.stat("Data through", "none", id="live-week") }}
    {% endif %}
-   {# the clone against origin: a badge for the state, the check's own
-      words in the "?" beside it (the script below fills both) #}
-   {% set pc, pw = freshness.pill() if freshness else (("bad", "missing") if hub_missing else ("", "not checked")) %}
-   {% set hub_state = {"ok": "ok", "warn": "warn", "bad": "error"}.get(pc, "neutral") %}
-   {% set hub_detail = freshness.detail if freshness else hub_missing %}
-   {# the badge and its "?" held together (uk-badge-pair), so a wrapping
-      line never splits them; #hub-detail stays the span the script shows #}
-   {% set clone %}<span class="uk-badge-pair">{{ tips.badge(hub_state, pw, id="hub-pill") }}<span id="hub-detail"{% if not hub_detail %} hidden{% endif %}>{{ tips.tip("hub-detail", "the last check", hub_detail) }}</span></span>{% endset %}
-   {{ tips.stat("Hub clone", clone, id="hub-clone") }}
    {# the hub's baseline and official ensemble, which runs are scored
       against (an older sparse clone may lack them; Update data adds
       them). With no hub data the alert above names the step that
@@ -57,24 +49,44 @@
    <div class="uk-stat"><dt>Newest week</dt><dd class="dt-newest-dd">{{ newest.row(newest_report) }}</dd></div>
    {% endif %}
   {% endcall %}
-  {# one row: the primary pull and the quiet check. No confirmation: pulling
-     is safe and resumable (the flash banner reports it); the data-pull guard
+  {# one row: the check, then the pull. No confirmation: pulling is safe
+     and resumable (the flash banner reports it); the data-pull guard
      still intercepts a pull during run preparation #}
-  {# the primary is what to do next: Update data once a check shows the
-     clone behind (or with no data at all), else the check (the script
-     swaps them when a check answers); never Update data with no hub
-     folder, since a pull is refused then #}
-  {% set pull_first = not hub_absent and (hub_behind or comparators_missing or (not live_week and not n_vintages)) %}
+  {# the primary is what to do next: Update data once a check finds new
+     flu data (never commits alone: routes/data.py _new_data), the
+     comparator folders missing, or no data at all; else the check (the
+     script swaps them when a check answers); never Update data with no
+     hub folder, since a pull is refused then #}
+  {% set pull_first = not hub_absent and (hub_new or comparators_missing or (not live_week and not n_vintages)) %}
   <div class="row hubacts">
+  <form method="post" action="/freshness"><button class="{{ 'quiet' if pull_first else 'gold' }}" id="hub-check">Check for new data</button></form>
   <form method="post" action="/data/pull">
    <button class="{{ 'gold' if pull_first else 'quiet' }}" id="hub-pull" data-guard="data-pull">Update data</button></form>
-  <form method="post" action="/freshness"><button class="{{ 'quiet' if pull_first else 'gold' }}" id="hub-check">Check for new data</button></form>
   </div>
   {# while a pull or check runs (the script below): a sliding bar labelled
      with what runs, spoken once by the status line; a failure is an alert #}
   <div id="hub-progress" hidden>{{ tips.progress("Working", id="hub-bar") }}</div>
   <p id="hub-status" role="status" aria-live="polite" class="uk-sr"></p>
   <div id="hub-error"></div>
+  {# what the last check found, in plain words (routes/data.py
+     _hub_outcome): "No new flu data since Nov 21: you are up to date" or
+     "New flu data: the week ending Nov 28 is ready to update". Nothing
+     before a check; the script puts a new check's answer here, and the
+     status line above speaks it #}
+  <div id="hub-outcome">{% if hub_outcome %}{{ tips.alert(hub_outcome.state, hub_outcome.text, id="hub-outcome-line", live="") }}{% endif %}</div>
+  {# the clone against origin (commits, origin, the check's own words),
+     under the outcome in a closed fold that remembers this reader's
+     choice: a badge for the state and the check's line (the script
+     fills both) #}
+  {% set pc, pw = freshness.pill() if freshness else (("bad", "missing") if hub_missing else ("", "not checked")) %}
+  {% set hub_state = {"ok": "ok", "warn": "warn", "bad": "error"}.get(pc, "neutral") %}
+  {% set hub_detail = freshness.detail if freshness else hub_missing %}
+  {% call tips.fold("Hub clone details", id="hub-clone-fold", remember=True) %}
+  {% call tips.stats("uk-stats--kv", label="Hub clone") %}
+   {{ tips.stat("Hub clone", tips.badge(hub_state, pw, id="hub-pill"), id="hub-clone") }}
+  {% endcall %}
+  <p class="hint" id="hub-detail"{% if not hub_detail %} hidden{% endif %}>{{ hub_detail }}</p>
+  {% endcall %}
  </div></div>
  {# the archive: its own numbers as tiles, one dot per archived vintage on
     its season's row (August 1 at left), a ring for a shipped snapshot.
@@ -324,11 +336,13 @@
 </script>
 {% endif %}
 <script>
- // Update data and Check for new data post in the background: both buttons
- // off and the bar sliding, labelled with what runs (said once by the
- // status line); then the page reloads (the pull's notice is the banner)
- // or the hub-clone badge and its "?" take the answer. A failure to reach
- // the console is an alert. Without script the forms post as forms.
+ // Check for new data and Update data post in the background: both
+ // buttons off and the bar sliding, labelled with what runs (said once by
+ // the status line); then the page reloads (the pull's notice is the
+ // banner) or the check's answer lands: its outcome line (spoken by the
+ // status line), and the hub-clone badge and the check's own words in
+ // the fold under it. A failure to reach the console is an alert.
+ // Without script the forms post as forms.
  (function(){
   var prog=document.getElementById('hub-progress'),
       lab=document.getElementById('hub-bar-l'),
@@ -353,28 +367,32 @@
     e.preventDefault();
     var pull=f.getAttribute('action')==='/data/pull';
     if(err)err.innerHTML='';
-    busy(true,pull?'Pulling the hub clone':'Checking origin');
+    busy(true,pull?'Updating the flu data':'Checking the FluSight hub for new data');
     fetch(f.getAttribute('action'),{method:'POST',credentials:'same-origin',
           headers:{'Accept':'application/json'}})
      .then(function(r){return r.json();})
      .then(function(d){
        if(pull){location.reload();return;}
-       var pill=document.getElementById('hub-pill'),
-           wrap=document.getElementById('hub-detail'),
-           det=document.getElementById('tip-hub-detail');
-       if(pill&&window.FluBNFUI)
-         FluBNFUI.setBadge(pill,STATES[d.pill]||'neutral',d.words||'');
-       if(det)det.textContent=d.detail||'';
-       if(wrap)wrap.hidden=!d.detail;
-       // the next step is the primary: Update data when the clone is behind
+       var ui=window.FluBNFUI,
+           pill=document.getElementById('hub-pill'),
+           det=document.getElementById('hub-detail'),
+           out=document.getElementById('hub-outcome'),
+           said=d.outcome&&d.outcome.text?d.outcome.text:'';
+       // the plain outcome first ("No new flu data since Nov 21: you are
+       // up to date"); its role is the status line's, so no role here
+       if(out)out.innerHTML=said&&ui?ui.alert(d.outcome.state,said,'',null,''):'';
+       if(pill&&ui)ui.setBadge(pill,STATES[d.pill]||'neutral',d.words||'');
+       if(det){det.textContent=d.detail||'';det.hidden=!d.detail;}
+       // the next step is the primary: Update data only when there is new
+       // flu data to bring in (commits alone are not)
        var pb=document.getElementById('hub-pull'),
            cb=document.getElementById('hub-check');
        if(pb&&cb){
-         pb.className=d.behind?'gold':'quiet';
-         cb.className=d.behind?'quiet':'gold';
+         pb.className=d.new_data?'gold':'quiet';
+         cb.className=d.new_data?'quiet':'gold';
        }
        busy(false,'');
-       stat.textContent=d.words?'Hub clone: '+d.words:'';
+       stat.textContent=said;
      })
      .catch(function(){
        busy(false,'');
