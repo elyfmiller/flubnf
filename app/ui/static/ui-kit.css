@@ -174,7 +174,9 @@ a:hover > .uk-badge > .uk-badge-t{text-decoration-thickness:2px}
 .uk-alert .uk-badge,.uk-alert .uk-tag,.uk-alert .uk-name,
 .tipbox .uk-badge,.tipbox .uk-tag,.tipbox .uk-name,
 .uk-seg > [aria-pressed="true"] .uk-badge,.uk-seg > [aria-current] .uk-badge,
-.uk-seg > [aria-pressed="true"] .uk-tag,.uk-seg > [aria-current] .uk-tag{
+.uk-seg > [role="tab"][aria-selected="true"] .uk-badge,
+.uk-seg > [aria-pressed="true"] .uk-tag,.uk-seg > [aria-current] .uk-tag,
+.uk-seg > [role="tab"][aria-selected="true"] .uk-tag{
   color:inherit}
 
 /* ---- 5. alert: one line to act on now, a 6% tint of its kind ---- */
@@ -404,7 +406,8 @@ details.uk-fold[open] > summary::before{transform:rotate(45deg)}
 /* ---- 13. segmented switch: one choice among a few, joined ---- */
 /* <div class="uk-seg" role="group" aria-label="...">: buttons whose
    aria-pressed says which is on, or links with the current choice a span
-   carrying aria-current; one outline, a divider between, the choice
+   carrying aria-current, or (role="tablist") tabs whose aria-selected
+   says which panel shows; one outline, a divider between, the choice
    filled as a primary button is */
 .uk-seg{display:inline-flex;max-width:100%;border:1px solid var(--field-line);
   border-radius:var(--r-sm);overflow:hidden;vertical-align:middle}
@@ -418,7 +421,8 @@ details.uk-fold[open] > summary::before{transform:rotate(45deg)}
   text-decoration:none}
 .uk-seg > button:focus-visible,.uk-seg > a:focus-visible{
   outline:var(--focus-w,2px) solid var(--gold);outline-offset:-3px}
-.uk-seg > button[aria-pressed="true"],.uk-seg > [aria-current]{
+.uk-seg > button[aria-pressed="true"],.uk-seg > [aria-current],
+.uk-seg > [role="tab"][aria-selected="true"]{
   background:var(--gold-bright);color:var(--on-accent)}
 /* where it wraps (a phone, large text), each row fills the width and a
    rule parts the rows: every choice draws a line above itself (clipped on
@@ -445,7 +449,8 @@ details.uk-fold[open] > summary::before{transform:rotate(45deg)}
 /* Windows high contrast: the system colors take over; keep the edges */
 @media (forced-colors:active){
   .uk-alert,.uk-tt-pop,.uk-step-mark,.uk-seg{border-color:CanvasText}
-  .uk-seg > button[aria-pressed="true"],.uk-seg > [aria-current]{
+  .uk-seg > button[aria-pressed="true"],.uk-seg > [aria-current],
+  .uk-seg > [role="tab"][aria-selected="true"]{
     background:Highlight;color:HighlightText}
   .uk-progress-fill{background:Highlight}
 }

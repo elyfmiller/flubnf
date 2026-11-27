@@ -571,16 +571,16 @@ function covLegend(){
     + '<span class="cov-wide">further over (too wide)</span>.';
 }
 
-// the scale switch: a label, two aria-pressed buttons, the one-line hint;
-// `note` false leaves the hint out (a host that says it in a tip)
+// the scale switch: a label, the kit's segmented switch (two
+// aria-pressed buttons), the one-line hint; `note` false leaves the hint
+// out (a host that says it in a tip)
 function scaleSwitch(scale, note){
   return '<span class="hint" id="pb-scale-l">relWIS scale</span>'
-    + '<span class="seg" role="group" aria-labelledby="pb-scale-l">'
+    + '<span class="uk-seg" role="group" aria-labelledby="pb-scale-l">'
     + SCALES.map(function(s){
         var on = s === scale;
         return '<button type="button" data-scale="' + s + '"'
-          + (on ? ' class="gold"' : '') + ' aria-pressed="' + on + '">'
-          + s + '</button>';
+          + ' aria-pressed="' + on + '">' + s + '</button>';
       }).join('')
     + '</span>' + (note === false ? '' : '<span class="hint">The CDC FluSight dashboard reports '
     + 'both.</span>');

@@ -1002,11 +1002,10 @@ table.pbstats tr + tr th,#sf-table tr + tr th{text-transform:none;
   gap:.05rem .8rem;margin:.35rem 0 .1rem;font-size:var(--fs-hint)}
 .tilekv dt{color:var(--mut)}
 .tilekv dd{margin:0;font-weight:650;font-variant-numeric:tabular-nums}
-/* the relWIS scale switch: label, two pills, the one-line hint */
+/* the relWIS scale switch: label, the kit's segmented switch, the
+   one-line hint */
 .pbscale{display:flex;flex-wrap:wrap;align-items:center;gap:.25rem .6rem;
   margin:0 0 .45rem}
-.pbscale .seg{margin:0;gap:.3rem}
-.pbscale .seg button{padding:.08rem .6rem;font-size:var(--fs-label)}
 .sw{display:inline-block;width:.7rem;height:.7rem;border-radius:3px;
   margin-right:.35rem;vertical-align:-1px}
 .fdmodels{display:flex;gap:.3rem 1rem;flex-wrap:wrap;margin:0 0 .4rem}
@@ -1277,8 +1276,9 @@ tr[aria-current="true"] td{font-weight:600}
   .sbmodels th:nth-child(4),.sbmodels td:nth-child(4){display:none}}
 
 /* sandbox model views */
-/* pills pick a view; wide networks scroll sideways, BNG text wraps */
-.mviews{display:flex;flex-wrap:wrap;gap:.4rem;margin:.2rem 0 .6rem}
+/* the kit's segmented switch picks a view (tabs); wide networks scroll
+   sideways, BNG text wraps */
+.mviews{margin:.2rem 0 .6rem}
 .mview-draw{overflow-x:auto;min-height:2.5rem;padding:.2rem 0}
 .mview-draw svg{display:block;max-width:none}
 

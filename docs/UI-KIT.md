@@ -236,7 +236,7 @@ The short name of the formula or figure beside it: an equation's caption, as pla
 
 ### Segmented switch: `<div class="uk-seg" role="group" aria-label="...">`
 
-One choice among a few, joined in one outline: the chart's view, the map's model, a horizon. The children are buttons whose `aria-pressed` says which is on (a script flips it), or links with the current choice a `<span aria-current="true">`; the choice is filled as a primary button is. It has no macro because its buttons are the page's own (ids, handlers); the kit only draws them.
+One choice among a few, joined in one outline: the chart's view, the map's model, a horizon. The children are buttons whose `aria-pressed` says which is on (a script flips it), or links with the current choice a `<span aria-current="true">`, or, where the switch shows one of several panels and its arrow keys move among them (the Sandbox's diagram views), tabs in a `role="tablist"` whose `aria-selected` says which shows; the choice is filled as a primary button is. It has no macro because its buttons are the page's own (ids, handlers); the kit only draws them.
 
 ```jinja
 <div class="uk-seg" role="group" aria-label="Chart view">
