@@ -29,6 +29,13 @@ and CDC's rules. The season's facts are in
   form's step (0.5 to 0.25 at the to_date seed, 0.749 to 0.720) points
   the same way. Not a reason to stop the screen: the narrowing per w is
   what it adds. Scripts: this lane's scratchpad, wscreen/tools/agg.py.
+  This lane's scorer for the arms is ready (wscreen/tools/score_cells.py
+  and rule.py, written apart from the console's and score_arm.py): its
+  WIS and log WIS equal flubnf.wis on 3,000 random cells (largest
+  relative difference 5e-16); on upstream 3a83d410 it scores exactly the
+  screen's 17,466 cells in all 84 weeks, and its baseline WIS totals
+  agree to 0.005% (the truth difference above); rule.py applies item 3
+  and was run on stand-in arms only.
 
 - 2026-11-26 (05:37 UTC): ROUND 2026-11-28: THE ORACLE AT WEIGHT 0.5,
   LOOKED AT BY THIS LANE AND THE INDEPENDENT REVIEWER (Ely's rerun out of
@@ -4039,7 +4046,12 @@ and CDC's rules. The season's facts are in
   to the PC (this lane's 11-10 entry), so the seasons are replayed again.
   1. Replays: 2023-24, 2024-25 and 2025-26, once each, in today's live
      form (stage-rule seed, w 0.25, narrowing 0.7), private engine as the
-     round, the hub commit of the 10-24 screen. Keep every week's filter
+     round. The 10-24 screen's research hub clone (09c96ec8) stayed on
+     the lab Mac: name the hub commit the vintages and the settled truth
+     come from (17:50 UTC: this lane scores against that commit's
+     target-data; the screen's truth and upstream 3a83d410's differ by
+     a few admissions near the peaks, up to 0.08% of a week's baseline
+     WIS). Keep every week's filter
      samples: the runner's lean storage drops them. Announce here before
      starting (the PC rule of 2026-11-09).
   2. Arms on the stored samples, no refit: w in {1 (the filter alone),
