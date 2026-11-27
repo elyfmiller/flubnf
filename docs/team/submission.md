@@ -4004,8 +4004,12 @@ and CDC's rules. The season's facts are in
   near the field median; nothing scorable yet). What would settle it,
   as this lane and the independent reviewer both read it:
   1. This season so far: rounds 10-17 to 11-21 at 0.25, 0.5 and the
-     filter alone from the same runs (each week's oracle.json holds all
-     three, or a replay), scored on revised truth: relative WIS by
+     filter alone from the same runs (CORRECTED 11-27 17:35 UTC: a live
+     week's oracle.json holds the filter alone and 0.25 only, its
+     secondary being fixed at 0.25 like the live weight; a 0.5 needs the
+     step re-applied to the stored filter samples, and `flubnf oracle
+     backfill` applies the registered 0.5 with no narrowing, not the
+     live seed and narrowing), scored on revised truth: relative WIS by
      horizon, coverage, a week-cluster bootstrap; split by states whose
      reporting dropped against steady ones (the heavier filter weight
      passes a reporting dip through as a slowdown).
