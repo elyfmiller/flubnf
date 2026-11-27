@@ -6,6 +6,47 @@ repositories outside this one; it pushes only this file here.
 
 ## Now
 
+- 2026-11-27: **The 11-07 gate re-run on main 2a540a34: PASS. Both runs
+  are identical to the gate's, value for value.** Ely's yes, relayed by
+  App: "Yes, run it".
+  - Why: #1 (merged 2026-11-12, on `main` with #7) changed the engine-side
+    code after the gate ran: `pf.py` +628 lines, `retro.py` +262,
+    `sandbox.py` +54, `lwf.py` +39, `settings.py` +7. That is BNG2.pl once
+    per location, the compiled-model cache in the state folder, and the
+    STOP notes. The gate's clone (26acbadf, now 6e76ccb6) had none of it.
+    The lock and pyproject's dependencies are unchanged.
+  - Setup:
+    - The clone `flubnf-stranger`, detached at 2a540a34, then back on `dev`.
+    - The gate's driver and console script, changed only in the output
+      folder, the hub path, the run labels and a check of both commits.
+    - A console at 127.0.0.1:8790 with a temporary state folder per run,
+      started by POST `/run` with the round's five values, as at the gate.
+    - The hub: a sparse copy in a temporary folder at cdcepi d7b98e4d,
+      hub `main` at the gate's run time. Its live target file is the
+      gate's (sha256 853825f7..., hub commit fcc3c636). None of the four
+      folders the console reads changed between 2026-11-05 13:08 UTC and
+      the gate.
+    - Ely's hub, Ely's state, port 8710 and Model's folders were not
+      touched.
+  - Results:
+    - P1, private, 2fdadee0: 159 of 159 cells ok. Its file equals the
+      gate's P1 in all 4,876 values, and the submitted 11-07 file in all
+      4,692 of its values. The 184 extra rows are Delaware and Hawaii,
+      dropped from the submission.
+    - L1, public, 8410f794, wheel 18a59bc2...: 159 of 159 cells ok. Its
+      file equals the gate's L1 in all 4,876 values.
+    - The Groundhog's files equal the gate's in both runs.
+    - Every recorded input equals the gate's: the data's sha256, the
+      oracle's banks, rules and seeds, the settings digest 5bcdc553, and
+      the engine builds.
+  - So #1's engine changes leave the 11-07 numbers unchanged on both
+    engines, to the count, and the gate's PASS holds for `main` 2a540a34.
+  - The timings are not usable. Model's weight-screen replay ran 32 pybnf
+    processes at below-normal priority on the 20 threads throughout. P1
+    took 522 s (399 at the gate), L1 1,365 s (820).
+  - Kept: `C:\Users\efinn\flubnf-recheck-2026-11-27` (P1, L1, the hub
+    copy, the scripts, `compare.json`).
+
 - 2026-11-10 (night): the repository move, from this lane's side. Nothing
   of this lane's was unpushed at the freeze.
   - Both of this lane's clones were reset onto the new history:
