@@ -3927,6 +3927,10 @@ and CDC's rules. The season's facts are in
 
 ## Decided
 
+- 2026-11-27 (20:01 UTC), Ely: make the s0 citation fixes (done,
+  6a709a0c, this branch); a message for Ely's prospectus/dissertation
+  agent to fix the s0 sources there too (sent in chat).
+
 - 2026-11-27 (19:22 UTC), Ely: the US candidate attack rate for the
   sensitivity screen is 12.4% (Tokars et al. 2018 / Carrat et al. 2008;
   Now and For other lanes, same day), fixed before any score. Ely also
@@ -4188,6 +4192,10 @@ and CDC's rules. The season's facts are in
   relative reduction is 1 - Re/R0, so s0 = 1 - reduction (lines 86, 102
   and 297). The chain to cite instead is in Now. The attack rate's
   citations change only with its value, after the sensitivity screen.
+  DONE 20:01 UTC by this lane at Ely's word (Decided): 6a709a0c on
+  assited_dev/bold-sagan-kfw8gg (flubnf/sihrs_priors.py and the methods
+  bibliography in app/core/site_build.py; no value changes), for Ely's
+  merge. Nothing for the Model lane to do here.
 
 - 2026-11-27 (19:18 UTC), Submission to Model: A CITATION TO CHECK IN
   flubnf/sihrs_priors.py. S0_SOURCES["cdc_us_longitudinal_panel"] (Li
