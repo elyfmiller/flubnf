@@ -675,7 +675,7 @@ def test_a_status_inside_a_link_reads_as_a_link():
 #: the tabs' own counts and kinds that are not controls, by sheet: the same
 #: look as a quiet mark (plain words with no box)
 TAB_WORDS = {
-    "forecast.css": (".fc-count", ".ms-n", ".fc-chip-n",
+    "forecast.css": (".ms-n", ".fc-chip-n",
                      ".ms-row.ms-changed > .lblrow > label::after"),
     "models.css": (".md-tag",),
     "home.css": (".hm-facts li",),
@@ -715,7 +715,12 @@ def test_the_tabs_own_words_keep_their_other_signal():
     assert forced == {"border-left": "3px solid CanvasText",
                       "margin-left": "calc(-.5rem - 3px)"}
     assert _rule(fcr, ".ms-row.ms-changed")["margin-left"] == "-.5rem"
-    assert fc[".fc-count"]["color"] == "var(--mut)"
+    # the pickers' live count ("12 of 53"), shared by the Forecast tab and
+    # the Retrospective's Your data, so in nau.css: quiet words, no box
+    count = [d for sel, d in _rules(NAU) if sel == ".fc-count"]
+    assert count and all(d["color"] == "var(--mut)" for d in count)
+    assert all(not {k for k in d if _BOX.match(k) and d[k] not in _NO_BOX}
+               for d in count)
     # a preset stays a button with its outline; its count takes the
     # button's own color, and its parentheses are in the page, not drawn
     # around it by the sheet ("((3))" if both were)

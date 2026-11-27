@@ -373,8 +373,8 @@ def test_init_drives_both_lines_on_the_form_as_served(tmp_path, monkeypatch):
       set('[name="engine"]', "all"); out.push(both());
       set('[data-knob="pf.replicates"]', "5", "input");
       set('[data-knob="pf.particles"]', "2,000", "input"); out.push(both());
-      var g = fm.querySelector('[name="groups"]');
-      g.options[0].selected = false; g.fire("change"); out.push(both());
+      var g = fm.querySelector('input[name="groups"]');
+      g.checked = false; g.fire("change"); out.push(both());
       set('[data-knob="run.season_start"]', %(ss)s); out.push(both());
       set('[data-knob="pf.replicates"]', "1e4", "input"); out.push(both());
       set('[data-knob="pf.replicates"]', "2.5", "input"); out.push(both());

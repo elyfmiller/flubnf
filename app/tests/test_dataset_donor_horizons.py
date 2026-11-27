@@ -91,9 +91,23 @@ def badge(html: str) -> tuple:
 
 
 def notice(html: str) -> str:
-    """The Groundhog's alert line under the preview's heading."""
+    """The Groundhog's count and its fix, as the preview says them: the
+    count under the outcome line, and the fix in the outcome line (after
+    "Can't forecast yet." or "Can forecast some horizons only, with X."),
+    or after the count when another model can forecast already. Joined as
+    the one line they were before the outcome line led the preview."""
     m = re.search(r'id="dsup-data-gh".*?(Too little history[^<]*)<', html)
-    return m.group(1).strip() if m else ""
+    if not m:
+        return ""
+    text = m.group(1).strip()
+    o = re.search(r'id="dsup-data-outcome".*?<span class="uk-alert-text">'
+                  r'([^<]*)</span>', html, re.S)
+    lead = (r"^(?:Can&#39;t forecast yet\.|Can forecast some horizons only,"
+            r" with [^.]+\.)\s*(.*)$")
+    fix = re.match(lead, o.group(1).strip(), re.S) if o else None
+    if fix and fix.group(1):
+        text += " " + fix.group(1).strip()
+    return text
 
 
 @pytest.fixture(autouse=True)

@@ -332,7 +332,7 @@ def test_the_form_carries_the_estimate_and_the_line(hub, monkeypatch):
     # in the Run row, after Run models; no "?"
     row = html[html.index('<div class="fc-runrow">'):]
     row = row[:row.index('<div id="fc-est"')]
-    assert '<button class="gold" data-guard="console-run">Run models</button>' \
+    assert '<button class="gold" data-guard="console-run" id="fc-run">Run models</button>' \
         in row
     assert "uk-tip" not in line
     # the two scripts, each loaded once
@@ -381,7 +381,7 @@ def test_a_fault_in_the_line_leaves_the_page(hub, monkeypatch):
     monkeypatch.setattr(RS, "_own_cost_ratio", boom)
     html = _page().text
     assert 'id="fc-est"' not in html and "data-est-" not in html
-    assert '<button class="gold" data-guard="console-run">Run models</button>' \
+    assert '<button class="gold" data-guard="console-run" id="fc-run">Run models</button>' \
         in html
 
 
@@ -631,7 +631,8 @@ def test_several_groups_count_group_weeks(tmp_path):
     data = re.search(r'<script type="application/json" id="fc-donor-data">'
                      r'(.*?)</script>', html).group(1)
     assert json.loads(data) == {"need": 30, "weeks": DU.donor_weeks(ds),
-                                "unit": "group-weeks"}
+                                "best": DU.donor_best(ds),
+                                "unit": "group-weeks", "pf_ok": False}
     got = _served(tmp_path, html, newest, """
       var out = [donors()];
       set('[data-knob="groundhog.bandwidth"]', "6", "input"); out.push(donors());
@@ -680,11 +681,13 @@ def test_a_thin_week_says_the_groundhog_has_too_little_history():
     data = re.search(r'<script type="application/json" id="fc-donor-data">'
                      r'(.*?)</script>', html).group(1)
     assert json.loads(data) == {"need": 30, "weeks": DU.donor_weeks(ds),
-                                "unit": "weeks"}
-    # informs only: Run models is the plain button, no reason button, and
-    # the line has no "?"
+                                "best": DU.donor_best(ds),
+                                "unit": "weeks", "pf_ok": False}
+    # the line informs: Run models is the plain button as served (the
+    # script turns it off where nothing can run: test_run_is_off_...),
+    # no reason button, and the line has no "?"
     form = _form_html(html)
-    assert '<button class="gold" data-guard="console-run">Run models</button>' \
+    assert '<button class="gold" data-guard="console-run" id="fc-run">Run models</button>' \
         in form
     assert "uk-reason" not in form and "reason_button" not in form
     alert = form[form.index('id="fc-ds-donors"'):]
@@ -742,6 +745,49 @@ def test_no_counts_no_line(monkeypatch):
     html = _page(url=f"/forecast?source={ds.id}").text
     assert 'id="fc-ds-donors"' not in html
     assert 'id="fc-donor-data"' not in html
+
+
+@needs_js
+def test_run_is_off_where_no_model_can_forecast_the_week(tmp_path):
+    """The 2026-11-27 user review (B5): a dataset week the Groundhog
+    cannot forecast at any horizon, on a dataset the filter cannot fit,
+    left Run models on. The script turns it off with the reason under it,
+    and back on for a week or a donor window it cannot judge."""
+    ds = stored(one_series_bytes(), "Flu")
+    dates = ds.forecast_dates()
+    best = DU.donor_best(ds)
+    assert best[dates[-1]] < 30 and best[dates[0]] < 30
+    html = _page(url=f"/forecast?source={ds.id}").text
+    assert '<p class="fc-runwhy" id="fc-runwhy" role="status" hidden></p>' \
+        in html
+    got = _served(tmp_path, html, dates[-1], """
+      function run() {
+        var r = document.getElementById("fc-run"),
+            w = document.getElementById("fc-runwhy");
+        return [!!r.disabled, w.hidden ? "" : w.textContent];
+      }
+      var out = [run()];
+      set('[data-knob="groundhog.bandwidth"]', "6", "input"); out.push(run());
+      set('[data-knob="groundhog.bandwidth"]', "", "input"); out.push(run());
+      anchor("1999-01-02"); out.push(run());
+      return out;""")
+    off = [True, "Run is off: no model can forecast this week."]
+    assert got == [off, [False, ""], off, [False, ""]]
+
+
+@needs_js
+def test_run_why_by_its_rules(tmp_path):
+    base = {"best": 12, "need": 30, "groundhogOnly": True, "pfOk": True,
+            "windowDefault": True, "dropDefault": True}
+    cases = [base, {**base, "pfOk": False}, {**base, "best": 30},
+             {**base, "groundhogOnly": False}, {**base, "best": None},
+             {**base, "windowDefault": False}, {**base, "dropDefault": False}]
+    got = _js(tmp_path, "var cs = " + json.dumps(cases) + ", out = [];"
+              " for (var i = 0; i < cs.length; i++)"
+              " out.push(F.runWhy(cs[i])); return out;")
+    lead = "Run is off: no model can forecast this week."
+    assert got == [lead + " Choose a model with the filter.", lead,
+                   "", "", "", "", ""]
 
 
 @needs_js

@@ -96,7 +96,7 @@ def test_the_upload_check_reads_them_as_ready():
                         files={"file": ("f.csv", raw, "text/csv")},
                         data={"kind": ""}).json()
         assert j["ok"] and not j["needs_mapping"]
-        assert j["status"].startswith("Ready to use: 3 groups, 60 weeks")
+        assert j["status"].startswith("Can forecast: 3 groups, 60 weeks")
 
 
 def test_a_primary_header_still_wins():

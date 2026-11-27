@@ -1,7 +1,8 @@
 """The upload box (templates/_dataset_upload.html, static/dataset_upload.js,
-POST /data/datasets/check): one partial on the Data, Forecast and
-Retrospective tabs; an instant check that stores nothing and shows every
-problem, a column mapping or a preview; "Forecast this" and "Replay this"
+POST /data/datasets/check): on the Data tab, which the Forecast and
+Retrospective tabs' "Upload a dataset" open; an instant check that stores
+nothing and shows every problem, a column mapping or a preview led by what
+can forecast it; "Save and set up forecast" and "Save and set up replay"
 store the file and open it with sensible defaults.
 
 No hub and no engine: FLUBNF_HUB=/nonexistent; the store lives in tmp_path.
@@ -68,8 +69,9 @@ def boxes(page):
     return re.findall(r'<form[^>]*data-dsup data-where="(\w+)"', page)
 
 
-#: the preview's "Ready to use" badge (a check that stores nothing)
-READY = '<span class="uk-badge-t">Ready to use</span>'
+#: a check's preview is shown (it stores nothing); its outcome line says
+#: which models can forecast the file (test_dataset_sufficiency)
+READY = '>Preview</h3>'
 #: the mark an unset column or target select once wore beside its label;
 #: the select's own "choose…" says it
 CHOOSE_MARK = '<span class="uk-badge-t">choose</span>'
@@ -87,9 +89,21 @@ def fact(html, label):
 
 # -------------------------------------------------------- one shared box
 
-def test_the_box_is_on_data_forecast_and_retrospective():
-    for url, where in (("/data", "data"), ("/forecast?tab=own", "forecast"),
-                       ("/retro?tab=own", "replay")):
+def test_the_box_is_on_the_data_tab_and_the_forms_link_to_it():
+    """One upload box, on the Data tab; the Forecast and Retrospective
+    tabs' Your data link to it, and it comes back to them (the 2026-11-27
+    user review, C7: two upload places, and a preview squeezed beside
+    another dataset's form)."""
+    for url, link in (("/forecast?tab=own", "/data?then=forecast#datasets"),
+                      ("/retro?tab=own", "/data?then=replay#datasets")):
+        page = client.get(url).text
+        assert boxes(page) == [], url
+        assert 'src="/static/dataset_upload.js"' not in page, url
+        assert "No datasets yet" in page, url
+        assert f'<a class="btn gold" href="{link}">Upload a dataset</a>' \
+            in page, url
+    for url in ("/data", "/data?then=forecast", "/data?then=replay"):
+        where = "data"
         page = client.get(url).text
         assert boxes(page) == [where], url
         assert page.count('src="/static/dataset_upload.js"') == 1, url
@@ -117,13 +131,18 @@ def test_the_box_is_on_data_forecast_and_retrospective():
     assert "week-start Sundays" not in client.get("/data").text
 
 
-def test_the_box_stays_on_a_dataset_forecast_and_the_hub_is_unchanged():
+def test_a_dataset_forecast_links_to_the_box_and_the_hub_is_unchanged():
     raw = grouped_bytes()
     loc = store(raw, next="data").headers["location"]
     ds_id = loc.split("source=")[1].split("#")[0]
     page = client.get(f"/forecast?source={ds_id}").text
-    assert boxes(page) == ["forecast"]
-    assert page.index('id="fc-upload"') < page.index('id="fcform"')
+    assert boxes(page) == []
+    link = '<a class="srcpick-upload" href="/data?then=forecast#datasets">'
+    assert link in page
+    assert page.index(link) < page.index('id="fcform"')
+    # the picker loads the chosen dataset at once; Use only without script
+    assert "<noscript><button class=\"quiet\">Use</button></noscript>" in page
+    assert "s.form.submit()" in page
     # the hub tab carries no upload box: that is the Your data tab's
     hub = client.get("/forecast").text
     assert 'action="/run"' in hub and "all 53 locations" in hub
@@ -326,16 +345,45 @@ def test_a_valid_file_previews_and_stores_nothing():
     # the date as written sits under its week
     assert ('<td class="wk">2019-08-03<span class="dsasw">8/3/19</span></td>'
             in html)
-    assert '<button class="gold" name="next" value="forecast">Forecast this' \
-        in html
-    assert 'name="next" value="replay">Replay this' in html
+    assert ('<button class="gold" name="next" value="forecast">Save and set '
+            'up forecast</button>') in html
+    assert 'name="next" value="replay">Save and set up replay' in html
+    assert "Forecast this" not in html and "Replay this" not in html
     assert D.list_datasets() == []
 
 
 def test_the_replay_panel_leads_with_replay_this():
     html = check(grouped_bytes(), where="replay").json()["html"]
-    assert '<button class="gold" name="next" value="replay">Replay this' in html
+    assert ('<button class="gold" name="next" value="replay">Save and set up '
+            'replay') in html
     assert "Save only" not in html
+
+
+def test_the_data_tab_leads_with_the_form_it_was_opened_from():
+    """Opened from a form's "Upload a dataset" (then=), the Data tab's box
+    makes the button back to that form the primary one, keeps it through a
+    refused store, and offers the way back."""
+    for then in ("forecast", "replay"):
+        page = client.get(f"/data?then={then}").text
+        assert f'data-then="{then}"' in page
+        assert f'<input type="hidden" name="then" value="{then}">' in page
+        assert (f'<button class="gold" name="next"\n   value="{then}">Upload '
+                'and check</button>') in page
+        assert "dt-back" in page
+        r = client.post(f"/data/datasets/check?where=data&then={then}",
+                        files={"file": ("k.csv", grouped_bytes(),
+                                        "text/csv")})
+        html = r.json()["html"]
+        assert (f'<button class="gold" name="next" value="{then}">Save and '
+                'set up') in html
+        assert 'value="data">Save only' in html
+    # an unknown then= is ignored: the box is the plain Data tab's
+    page = client.get("/data?then=elsewhere").text
+    assert "data-then=" not in page and "dt-back" not in page
+    # a refused store keeps where it was going back to
+    r = store(b"date,target_group,value\n2024-08-03,A,-1\n", then="replay")
+    assert r.status_code == 422
+    assert 'data-then="replay"' in r.text
 
 
 def test_problems_come_grouped_by_kind_with_rows():
@@ -367,7 +415,7 @@ def test_problems_come_grouped_by_kind_with_rows():
 def test_a_refused_store_without_script_lands_on_its_problems():
     """Without script a refused store reloaded the Data tab at its top,
     the problems far below and not announced."""
-    page = client.get("/forecast?tab=own").text
+    page = client.get("/data?then=forecast").text
     assert ('<form method="post" action="/data/datasets#datasets" '
             'enctype="multipart/form-data"') in page
     r = store(b"date,target_group,value\n2024-08-03,A,-1\n")
@@ -496,7 +544,8 @@ def test_a_date_and_count_file_is_ready_as_one_series():
     """Once refused for want of a group column, with nothing to choose."""
     j = check(COUNTS, name="county_cases.csv").json()
     assert j["ok"] and READY in j["html"] and not j["needs_mapping"]
-    assert j["status"] == "Ready to use: 1 group, 3 weeks."
+    # three weeks are too few for any model: said, not "ready"
+    assert j["status"] == "Can't forecast yet: 1 group, 3 weeks."
     assert fact(j["html"], "Groups") == "1 county_cases"
     # stored under the name typed, the series keeps the file's name
     r = client.post("/data/datasets",
@@ -536,11 +585,12 @@ def test_a_status_line_is_read_out_not_the_whole_result():
     a short status line says what the check found instead. The script
     keeps a focused column or target select focused across its re-check
     (it once replaced the result and dropped the focus to the page)."""
-    page = client.get("/forecast?tab=own").text
+    page = client.get("/data").text
     assert '<p class="dsup-status" data-dsup-status role="status"></p>' in page
     assert "<div class=\"dsup-result\" data-result>" in page
+    # led by the outcome line, never "ready" for a file nothing can forecast
     assert check(grouped_bytes()).json()["status"].startswith(
-        "Ready to use: 3 groups, ")
+        "Can forecast: 3 groups, ")
     assert check(b"day,area,amount\n2024-08-03,A,1\n").json()["status"] == \
         "Choose which column is which."
     two = (b"target_end_date,target,location,observation\n"
@@ -619,7 +669,7 @@ def test_the_check_is_local_and_same_origin_only():
     assert r.status_code == 403
 
 
-# ------------------------------------------------- "Forecast/Replay this"
+# --------------------------------------- "Save and set up forecast/replay"
 
 def test_forecast_this_opens_the_forecast_tab_on_the_dataset():
     r = store(grouped_bytes(), next="forecast", kind="")

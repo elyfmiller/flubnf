@@ -23,7 +23,7 @@
 {% endif %}
 {%- endmacro %}
 
-{% macro result(chk, where) -%}
+{% macro result(chk, where, then="") -%}
 {% set fid = "dsup-" ~ where %}
 {% if chk.problems %}
 <div class="dsproblems"{% if chk.refused %} role="alert"{% endif %}>
@@ -61,11 +61,15 @@
 {% if not chk.preview %}{{ notes(chk, fid) }}{% endif %}
 {% if chk.preview %}{% set pv = chk.preview %}
 <div class="dspreview dt-panel">
- {{ tips.heading("Preview", fid ~ "-pv", level=3, cls="dt-subhead", after=tips.badge("ok", "Ready to use")) }}
- {# the data are too short for the Groundhog to forecast every horizon,
-    and what would fix it, both by the newest week's scarcest horizon
-    (datasets_ui.model_view: shown, never stored) #}
- {% if chk.groundhog %}{{ tips.alert("warn", chk.groundhog ~ (" " ~ chk.groundhog_fix if chk.groundhog_fix else ""), id=fid ~ "-gh", live="") }}{% endif %}
+ {{ tips.heading("Preview", fid ~ "-pv", level=3, cls="dt-subhead") }}
+ {# what storing it leads to, first: which models can forecast it, or
+    that none can yet and what would fix it (datasets_ui.outcome_line);
+    the Groundhog's donor count under it when it is short (by the newest
+    week's scarcest horizon; shown, never stored) #}
+ {% if chk.outcome %}{{ tips.alert(chk.outcome[0], chk.outcome[1], id=fid ~ "-outcome", live="") }}{% endif %}
+ {# the Groundhog's fix goes with its count when another model can
+    forecast already (the outcome line then has no fix of its own) #}
+ {% if chk.groundhog %}<p class="dt-ghnote" id="{{ fid }}-gh">{{ chk.groundhog }}{% if chk.outcome and chk.outcome[0] == "ok" and chk.groundhog_fix %} {{ chk.groundhog_fix }}{% endif %}</p>{% endif %}
  {# what the file holds, one labelled value each #}
  {% call tips.stats("uk-stats--row dt-facts", label="What the file holds") %}
   {# the national group is badged on its sparkline; named here when it
@@ -102,10 +106,13 @@
   <tbody>{% for r in pv.first_rows %}<tr><td class="num">{{ r.row }}</td><td class="wk">{{ r.week }}{% if pv.dates_differ %}<span class="dsasw">{{ r.date }}</span>{% endif %}</td><td>{{ r.group }}</td><td class="num">{{ r.value }}</td>{% if pv.population %}<td class="num">{{ r.population }}</td>{% endif %}</tr>{% endfor %}</tbody>
  </table></div>
  <div class="row dsup-actions">
-  <button class="{{ 'quiet' if where == 'replay' else 'gold' }}" name="next" value="forecast">Forecast this</button>
-  <button class="{{ 'gold' if where == 'replay' else 'quiet' }}" name="next" value="replay">Replay this</button>
+  {# the primary button goes back to the form the upload is for: the one
+     the Data tab was opened from (then), else the page's own #}
+  {% set first = then or ("replay" if where == "replay" else "forecast") %}
+  <button class="{{ 'gold' if first == 'forecast' else 'quiet' }}" name="next" value="forecast">Save and set up forecast</button>
+  <button class="{{ 'gold' if first == 'replay' else 'quiet' }}" name="next" value="replay">Save and set up replay</button>
   {% if where == "data" %}<button class="quiet" name="next" value="data">Save only</button>{% endif %}
-  {{ tips.tip(fid ~ "-go", "these buttons", "Forecast this and Replay this store the dataset, then open the Forecast tab (its newest week, every group) or the Retrospective tab's Your data (its newest flu season, October to June)" ~ ("; Save only stores it and stays here" if where == "data" else "") ~ ". Nothing runs until you start it there.") }}
+  {{ tips.tip(fid ~ "-go", "these buttons", "Each stores the dataset. Set up forecast then opens the Forecast tab on it (its newest week, every group); set up replay opens the Retrospective tab's Your data on it (its newest flu season, October to June)" ~ ("; Save only stays here" if where == "data" else "") ~ ". Nothing runs until you start it there.") }}
  </div>
 </div>
 {% endif %}

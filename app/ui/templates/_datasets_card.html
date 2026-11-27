@@ -7,7 +7,11 @@
 {% import "_dataset_upload.html" as dsup %}
 <div class="card" id="datasets">
  {{ tips.heading("Your datasets", "ds-about") }}
- {{ dsup.box("data", upload) }}
+ {# opened from a Forecast or Retrospective form's "Upload a dataset": the
+    way back to it without storing anything #}
+ {% set ut = upload_then if upload_then is defined and upload_then else (upload.then if upload and upload.then else "") %}
+ {% if ut %}<p class="dt-back"><a href="{{ '/retro?tab=own' if ut == 'replay' else '/forecast?tab=own' }}">Back to {{ "the Retrospective's Your data" if ut == "replay" else "the Forecast tab's Your data" }}</a></p>{% endif %}
+ {{ dsup.box("data", upload, then=upload_then if upload_then is defined else "") }}
  {% if datasets %}
  {# one line per dataset; under 600px each row stacks (nau.css .dstable),
     the cells naming themselves by data-label #}

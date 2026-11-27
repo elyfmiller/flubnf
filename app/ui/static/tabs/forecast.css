@@ -22,7 +22,11 @@
 
 /* ---- 1. settings card ---- */
 /* the dataset's truth badge under its picker */
-.fc-truth{margin:.1rem 0 .55rem}
+/* what a past week of a dataset sees: Vintage mode only */
+.fc-pastnote{margin:.3rem 0 .1rem;color:var(--mut);font-size:.9rem}
+#fcform:not(.mode-vintage) .fc-pastnote{display:none}
+/* why Run is off on a dataset week no model can forecast */
+.fc-runwhy{margin:.35rem 0 0;color:var(--mut);font-size:.9rem;flex-basis:100%}
 /* the anchor week under the date: an icon, the label, the week, the
    "not archived" badge; or one warn line when no week is on or before */
 .fc-anchor{margin:.35rem 0 .15rem;font-size:var(--fs-label);line-height:1.5}
@@ -35,11 +39,6 @@
 .fc-anchor-ok b{color:var(--ink);font-weight:700;
   font-variant-numeric:tabular-nums}
 .fc-anchor-none{color:var(--warn);font-weight:600}
-/* the pick's live count ("12 of 53"): quiet words inside the Locations
-   label, written by the page script (no box: only a control has one) */
-.fc-count{margin-left:.3rem;color:var(--mut);font-size:var(--fs-label);
-  font-weight:500;font-variant-numeric:tabular-nums}
-.fc-count:empty{display:none}
 /* a badge on its own line under a field (the particle filter off, the
    engine build); a long one wraps inside the column instead of running
    past the card's edge */
@@ -241,10 +240,6 @@ details[data-scope] > summary{scroll-margin-top:.75rem}
 /* a preset's count: in its button's own color with no fill, set in
    parentheses as the other presets write theirs ("States only (52)") */
 .fc-chip-n{font-variant-numeric:tabular-nums}
-/* the filter over the list, as wide as it */
-.fc-locfilter{width:100%;margin:0 0 .3rem}
-.checklist .ck[hidden]{display:none}
-.fc-nomatch{margin:.2rem 0;color:var(--mut);font-size:var(--fs-label)}
 /* more boxes below the fold: the list's foot fades */
 .checklist.fc-more{-webkit-mask-image:linear-gradient(to bottom,black 78%,transparent);
   mask-image:linear-gradient(to bottom,black 78%,transparent)}

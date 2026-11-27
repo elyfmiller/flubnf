@@ -1,17 +1,18 @@
 {# The Retrospective tab's "Your data" tab (app/ui/datasets_ui.py
-   retro_context): with no dataset the shared upload box alone ("Replay
-   this" stores a file and reopens this tab on it); else the settings of a
-   replay of one dataset (picked by a plain GET form, like the Forecast
-   tab's, so the weeks and groups are rendered without script) beside its
-   replays. Never among the FluSight seasons. Tips imported by retro.html,
-   which links the tab's sheet. #}
-{% import "_dataset_upload.html" as dsup %}
+   retro_context): with no dataset a pointer to the Data tab's upload box
+   (its "Save and set up replay" stores a file and reopens this tab on it);
+   else the settings of a replay of one dataset (picked by a plain GET
+   form, like the Forecast tab's, sent when the choice changes, so the
+   weeks and groups are rendered without script) beside its replays.
+   Never among the FluSight seasons. Tips imported by retro.html, which
+   links the tab's sheet. #}
 {% set dr = dataset_replay %}{% set d = dr.ds %}
 {% set about = "Each week of the range is forecast with only the data before it and scored against the dataset's later weeks, relative to an in-house persistence baseline (not FluSight-baseline). Replays are kept with the dataset, apart from the FluSight seasons, and never published." %}
 {% if not d %}
 <div class="card" id="dataset-replay">
  {% call tips.heading("Your data", "rt-ds-about", rich=True, tip_label="replaying your own data") %}<span class="uk-tt-line">A weekly CSV of your own, replayed week by week.</span><span class="uk-tt-line">{{ about }}</span>{% endcall %}
- {{ dsup.box("replay") }}
+ {% set up %}<a class="btn gold" href="/data?then=replay#datasets">Upload a dataset</a>{% endset %}
+ {{ tips.empty("No datasets yet", "folder", action=up, id="dsr-own-none", tiptext="A weekly CSV of your own: date, group and value, population optional. It is checked on the Data tab, then opens here to replay.") }}
 </div>
 {% else %}
 <div id="dataset-replay">
@@ -25,16 +26,19 @@
 <div class="cols">
  <div><div class="card"><h2>Settings</h2>
   {# which of your datasets; a plain GET form, like the Forecast tab's #}
-  <form method="get" action="/retro" class="row srcpick">
+  <form method="get" action="/retro" class="row srcpick" id="dsr-srcform">
    <span><label for="dsr-ds">Dataset</label>
    <select name="dataset" id="dsr-ds">{% for sid, sname in dr.datasets %}
     <option value="{{ sid }}"{% if sid == d.id %} selected{% endif %}>{{ sname }}</option>{% endfor %}</select></span>
-   <button class="quiet">Use</button>
+   <noscript><button class="quiet">Use</button></noscript>
+   <a class="srcpick-upload" href="/data?then=replay#datasets">Upload a dataset</a>
   </form>
-  <details class="dsup-fold" id="dsr-upload">
-   <summary>Upload another</summary>
-   {{ dsup.box("replay") }}
-  </details>
+  <script>
+   (function () {
+     var s = document.getElementById('dsr-ds');
+     if (s) s.addEventListener('change', function () { s.form.submit(); });
+   })();
+  </script>
   <form method="post" action="/retro/dataset/run" id="dsr-form"{{ d.est | xmlattr }}>
    <input type="hidden" name="dataset" value="{{ d.id }}">
    {# what each replayed week sees, as a badge: vintage-true, or the final
@@ -50,17 +54,58 @@
     <span><label for="dsr-last">To</label><select name="last" id="dsr-last">{% for w in d.dates %}
      <option{% if w == d.default_last %} selected{% endif %}>{{ w }}</option>{% endfor %}</select></span>
    </div>
-   <label for="dsr-groups">Groups</label>
-   {# as tall as its groups (2 to 6 rows): no empty box below the list #}
-   <select name="groups" id="dsr-groups" multiple size="{{ [2, [6, d.groups | length] | min] | max }}">{% for g in d.groups %}
-    <option selected>{{ g }}</option>{% endfor %}</select>
+   {# the groups as the Forecast tab picks them: a fold with a filter over
+      one box per group (all ticked), and "all N groups" to tick or clear
+      them; only the groups' own boxes post (none ticked replays every
+      group: datasets_ui.replay_start) #}
+   <div class="lblrow"><label id="dsr-groups-lbl">Groups <span id="dsr-gcount" class="fc-count"></span></label></div>
+   {% call tips.fold("Pick groups", id="dsr-grouppick", open=True, cls="fc-locpick") %}
+   <input type="search" id="dsr-gfilter" class="fc-locfilter" placeholder="Filter" autocomplete="off"
+     aria-label="Filter the groups" aria-controls="dsr-checklist">
+   <div class="checklist" id="dsr-checklist" role="group" aria-labelledby="dsr-groups-lbl">
+    <label class="ck"><input type="checkbox" id="dsr-gall" checked> <b>all {{ d.groups | length }} groups</b></label>
+    {% for g in d.groups %}<label class="ck"><input type="checkbox" class="dsr-gone" name="groups" value="{{ g }}" checked> {{ g }}</label>
+    {% endfor %}<p class="fc-nomatch" id="dsr-gnomatch" hidden>No match</p>
+   </div>
+   {% endcall %}
+   <script>
+    (function () {
+      var all = document.getElementById('dsr-gall'),
+          ones = Array.prototype.slice.call(document.querySelectorAll('.dsr-gone')),
+          filt = document.getElementById('dsr-gfilter'),
+          none = document.getElementById('dsr-gnomatch'),
+          count = document.getElementById('dsr-gcount');
+      if (!all) return;
+      function paint() {
+        var n = ones.filter(function (c) { return c.checked; }).length;
+        all.checked = n === ones.length;
+        all.indeterminate = n > 0 && n < ones.length;
+        count.textContent = n === ones.length ? 'all ' + n : n + ' of ' + ones.length;
+      }
+      all.addEventListener('change', function () {
+        ones.forEach(function (c) { c.checked = all.checked; });
+        paint();
+        ones[0] && ones[0].dispatchEvent(new Event('change', {bubbles: true}));
+      });
+      ones.forEach(function (c) { c.addEventListener('change', paint); });
+      filt.addEventListener('input', function () {
+        var q = filt.value.toLowerCase(), shown = 0;
+        ones.forEach(function (c) {
+          var hit = !q || c.value.toLowerCase().indexOf(q) >= 0;
+          c.parentNode.hidden = !hit; if (hit) shown++;
+        });
+        none.hidden = shown > 0;
+      });
+      paint();
+    })();
+   </script>
    <label for="dsr-engine">Models</label>
    <select name="engine" id="dsr-engine">{% for e, text in dr.engine_names.items() %}
     <option value="{{ e }}"{% if e == "all" and not (d.pf and dr.pf_state == "ready") %} disabled{% endif %}>{{ text }}</option>{% endfor %}</select>
    {# the engine build's badge on its own line under the select #}
    {% if d.pf and dr.pf_state == "ready" %}{% set eb_ds %}{% with eb_id = "dsr", eb_short = true %}{% include "_engine_build.html" %}{% endwith %}{% endset %}
    {% if eb_ds | trim %}<p class="rt-under">{{ eb_ds | trim }}</p>{% endif %}{% endif %}
-   <div class="lblrow"><label class="ck" for="dsr-fs"><input type="checkbox" name="flusurv" value="1" id="dsr-fs"> Add FluSurv-NET donors (US flu hospitalizations only)</label></div>
+   <div class="lblrow"><label class="ck" for="dsr-fs"><input type="checkbox" name="flusurv" value="1" id="dsr-fs"> Add FluSurv-NET donors (US flu hospital data only)</label></div>
    {# the shared Model settings panel (weeks to drop is in its fit window),
       ids prefixed dsr-; its counts-only rows follow the data's kind #}
    {% with knob_panel = dr.knob_panel %}{% include "_model_settings.html" %}{% endwith %}
