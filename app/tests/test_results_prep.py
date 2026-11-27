@@ -498,9 +498,12 @@ def test_the_season_page_offers_rescore_beside_its_scores(tmp_path, _stubbed,
                                                           _routed,
                                                           monkeypatch):
     """A quiet Rescore button by the Season scores heading posts to the
-    rescore route, under the season's job guard, with one "?" saying what
-    it does; opening the page never rescores. An archived run's carries
-    its archive. The exported report has no button."""
+    rescore route, with one "?" saying what it does; it carries no run
+    guard (the server refuses what would clash, and the guard's modal
+    would offer to stop runs a rescore does not need stopped). Opening the
+    page never rescores. An archived run's copy is read only: its button
+    is off with the reason, and the POST refuses it. The exported report
+    has no button."""
     from app.core import retro_archive
     _mk_tree(_routed)
     forces = []
@@ -519,8 +522,8 @@ def test_the_season_page_offers_rescore_beside_its_scores(tmp_path, _stubbed,
     assert f'action="/retro/{SEASON}/rescore"' in html.split(
         'class="rt-rescore"', 1)[0][-80:]
     assert 'name="archive"' not in form               # the live season
-    assert ('<button type="submit" class="quiet" data-guard="retro-run">'
-            'Rescore</button>') in form
+    assert '<button type="submit" class="quiet">Rescore</button>' in form
+    assert "data-guard" not in form and "retro-run" not in form
     assert "disabled" not in form
     assert ("Scores every week of this season again from its stored "
             "forecasts, against the newest truth data on this computer "
@@ -539,12 +542,25 @@ def test_the_season_page_offers_rescore_beside_its_scores(tmp_path, _stubbed,
     rep = rep.read_text(encoding="utf-8")
     assert "Season scores" in rep and 'class="rt-rescore"' not in rep
     assert f'action="/retro/{SEASON}/rescore"' not in rep
-    # an archived run's button carries its archive
+    # an archived run: read only, so off with the reason, and refused
+    from app.ui.state import _status as status
     retro_archive.archive_run(_routed, SEASON, stamp="20980101T000000Z")
     ui_shared._invalidate_scans()
     html = client.get(f"/retro/{SEASON}?archive=20980101T000000Z").text
-    assert ('<input type="hidden" name="archive" value="20980101T000000Z">'
-            in _rescore_form(html))
+    form = _rescore_form(html)
+    assert "disabled" in form
+    assert ("This copy is read only; rescore the live season.</span>"
+            in form)
+    status["flash"] = ""
+    r = client.post(f"/retro/{SEASON}/rescore",
+                    data={"archive": "20980101T000000Z"},
+                    follow_redirects=False)
+    assert r.headers["location"] == \
+        f"/retro/{SEASON}?archive=20980101T000000Z"
+    assert ("Not rescored: this copy is read only; rescore the live "
+            "season.") in status["flash"]
+    status["flash"] = ""
+    assert forces == [False, True]                 # nothing started
 
 
 def test_rescore_is_off_with_the_reason_the_server_would_give(
@@ -590,6 +606,9 @@ def test_rescore_is_off_with_the_reason_the_server_would_give(
     empty.mkdir(parents=True)
     assert ui_retro._rescore_refusal(empty, SEASON) == (
         f"{SEASON} has no completed weeks", True)
+    # an archived or imported copy, by its archive id
+    assert ui_retro._rescore_refusal(root, SEASON, "20980101T000000Z") == (
+        "this copy is read only; rescore the live season", False)
     monkeypatch.setattr(ui_retro_prep, "_being_removed", lambda r: True)
     assert ui_retro._rescore_refusal(root, SEASON) == (
         "the run is being deleted or moved", True)

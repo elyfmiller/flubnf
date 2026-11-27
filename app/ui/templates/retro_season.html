@@ -445,17 +445,18 @@
     neutral dot: an info badge's circled "i" would read as a second "i");
     the page's "i" says which figures read it (scoring.earlier_rule_note) #}
  {% set rule_badge = tips.badge("neutral", "earlier cell rule", id="rs-rule") if rule_note else "" %}
- {# Rescore, beside the scores it redoes (POST /retro/{season}/rescore,
-    the season's job controls' guard), its "?" saying what it does; off,
-    its "?" says the reason the server would give
-    (routes/retro._rescore_refusal), never hidden; not in the exported
-    report #}
+ {# Rescore, beside the scores it redoes (POST /retro/{season}/rescore),
+    its "?" saying what it does; off, its "?" says the reason the server
+    would give (routes/retro._rescore_refusal: what would clash with it is
+    refused there, so it carries no run guard, whose modal would offer to
+    stop a run it does not need stopped), never hidden; not in the
+    exported report #}
  {% set rescore %}{% if not export and rescore_off is defined %}
  {% set rs_what = "Scores every week of this season again from its stored forecasts, against the newest truth data on this computer (Update data on the Data tab fetches it). No forecast is run again." %}
  <form method="post" action="/retro/{{ season }}/rescore" class="rt-rescore">
   {% if archive %}<input type="hidden" name="archive" value="{{ archive }}">{% endif %}
   {% if rescore_off %}{{ tips.reason_button("Rescore", "rs-rescore-why", (rescore_off[:1] | upper) ~ rescore_off[1:] ~ ".", cls="quiet", type="submit", label="why rescoring is unavailable") }}
-  {%- else %}<button type="submit" class="quiet" data-guard="retro-run">Rescore</button>{{ tips.tip("rs-rescore", "rescoring", rs_what) }}{% endif %}
+  {%- else %}<button type="submit" class="quiet">Rescore</button>{{ tips.tip("rs-rescore", "rescoring", rs_what) }}{% endif %}
  </form>
  {%- endif %}{% endset %}
  {{ tips.heading("Season scores", "rs-scores", cls="rt-sec-h", after=(tips.tag(conv_label) ~ rule_badge) if (heads or tm.us) else rule_badge, aside=rescore) }}

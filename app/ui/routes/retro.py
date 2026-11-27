@@ -1300,6 +1300,11 @@ def _rescore_refusal(root: Path, season: str, archive: str = "") -> tuple:
     if retro_prep._being_removed(root):
         # "the run is being deleted or moved"
         return retro_prep._REMOVING_WHY.split(";")[0], True
+    if archive:
+        # an archived or imported run: its page says read only, and a
+        # rescore would rewrite its scores (an imported one's with this
+        # machine's truth)
+        return "this copy is read only; rescore the live season", False
     if _is_sealed_root(root):
         return ("the sealed validation record is read only; its scores "
                 "stand"), False
@@ -1316,16 +1321,16 @@ def _rescore_refusal(root: Path, season: str, archive: str = "") -> tuple:
 
 @router.post("/retro/{season}/rescore")
 def retro_rescore(request: Request, season: str, archive: str = Form("")):
-    """Score a stored season (or one archived run of it, `archive`) again
-    from its weeks, in the background finalize job, then open its page,
-    which shows the job's progress until it lands. A POST, never a GET:
-    opening a page, or a link another site plants, never starts the work
-    (the same-host guard checks a POST's Origin). Refused, with the reason
-    on the page (_rescore_refusal, the season page's Rescore button's rule):
-    a malformed id, a tree being deleted or moved, the sealed validation
-    record (read only), a season still replaying (the worker scores it at
-    its end), a tree with no completed week, and a tree already being
-    scored (its page shows that job's progress)."""
+    """Score a stored season again from its weeks, in the background
+    finalize job, then open its page, which shows the job's progress until
+    it lands. A POST, never a GET: opening a page, or a link another site
+    plants, never starts the work (the same-host guard checks a POST's
+    Origin). Refused, with the reason on the page (_rescore_refusal, the
+    season page's Rescore button's rule): a malformed id, a tree being
+    deleted or moved, an archived or imported run (`archive`: read only),
+    the sealed validation record (read only), a season still replaying
+    (the worker scores it at its end), a tree with no completed week, and a
+    tree already being scored (its page shows that job's progress)."""
     if not _valid_season(season) or (archive and not _valid_archive(archive)):
         _flash("Not rescored: unrecognized season or archive.", "warn")
         return RedirectResponse("/retro", status_code=303)
