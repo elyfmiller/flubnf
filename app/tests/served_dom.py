@@ -299,10 +299,19 @@ var MiniDOM = (function () {
   El.prototype.removeEventListener = function (t, fn) {
     var l = this.listeners[t] || [], i = l.indexOf(fn);
     if (i >= 0) l.splice(i, 1); };
+  // an event's target and currentTarget: plain objects take them as
+  // properties; a native Event (node's, from a page's `new CustomEvent`)
+  // has read-only getters for both, shadowed here by own properties
+  function setEv(ev, k, v) {
+    try { ev[k] = v; } catch (e) { /* a getter only */ }
+    if (ev[k] !== v)
+      Object.defineProperty(ev, k, {value: v, writable: true,
+                                    configurable: true});
+  }
   El.prototype.dispatchEvent = function (ev) {
-    ev.target = ev.target || this;
+    if (!ev.target) setEv(ev, "target", this);
     for (var n = this; n; n = ev.bubbles === false ? null : n.parentNode) {
-      ev.currentTarget = n;
+      setEv(ev, "currentTarget", n);
       var l = (n.listeners[ev.type] || []).slice();
       for (var i = 0; i < l.length; i++) l[i].call(n, ev);
     }

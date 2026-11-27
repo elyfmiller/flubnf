@@ -226,9 +226,10 @@ def test_the_source_is_two_tabs_and_your_data_opens_a_dataset():
     page = client.get("/forecast").text
     assert '<a href="/forecast" aria-current="page">FluSight hub</a>' in page
     assert '<a href="/forecast?tab=own">Your data</a>' in page
-    # no dataset yet: the Your data tab is the upload box alone
+    # no dataset yet: the Your data tab points to the Data tab's upload box
     own = client.get("/forecast?tab=own").text
-    assert 'id="dsup-forecast"' in own and 'id="fcform"' not in own
+    assert 'href="/data?then=forecast#datasets"' in own
+    assert 'id="fcform"' not in own and "data-dsup" not in own
     assert '<a href="/forecast?tab=own" aria-current="page">Your data</a>' in own
     ds = stored()
     page = client.get("/forecast").text
@@ -405,9 +406,10 @@ def test_retro_has_its_own_tab_for_datasets():
     assert '<a href="/retro" aria-current="page">FluSight hub</a>' in page
     assert '<a href="/retro?tab=own">Your data</a>' in page
     assert 'id="dataset-replay"' not in page and 'action="/retro/run"' in page
-    # no dataset yet: the Your data tab is the upload box alone
+    # no dataset yet: the Your data tab points to the Data tab's upload box
     own = client.get("/retro?tab=own").text
-    assert 'id="dataset-replay"' in own and 'id="dsup-replay"' in own
+    assert 'id="dataset-replay"' in own
+    assert 'href="/data?then=replay#datasets"' in own and "data-dsup" not in own
     assert 'id="dsr-form"' not in own and 'action="/retro/run"' not in own
     assert '<a href="/retro?tab=own" aria-current="page">Your data</a>' in own
     ds = stored()

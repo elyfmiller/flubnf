@@ -4,16 +4,21 @@ fans draw, the location presets, the last form kept across a restart and
 the form against the last run."""
 import json
 import os
+import re
 import sys
 import time
 from datetime import date
 from pathlib import Path
 
+import pytest
+
 sys.path.insert(0, str(Path(__file__).resolve().parents[2]))
 
 from fastapi.testclient import TestClient           # noqa: E402
 
+import served_dom as SD                             # noqa: E402
 from app.ui import forecast_aids as FA              # noqa: E402
+from app.ui import state as ui_state                # noqa: E402
 from app.ui.server import app as srv                # noqa: E402
 
 client = TestClient(srv)
@@ -160,15 +165,26 @@ def test_the_last_form_survives_a_restart_without_its_date(monkeypatch, tmp_path
 
 def test_the_page_carries_the_aids():
     # presets and the filter post nothing: no name on them
-    assert 'data-preset="all"' in TEMPLATE and 'id="fc-locfilter"' in TEMPLATE
+    assert '<option value="all">All 53</option>' in TEMPLATE
+    assert 'id="fc-locfilter"' in TEMPLATE
     filt = TEMPLATE.split('id="fc-locfilter"')[1].split(">")[0]
     assert "name=" not in filt
-    chips = TEMPLATE.split('class="fc-presets"')[1].split("</div>")[0]
-    assert "name=" not in chips
-    # the failed preset's count in parentheses the page writes (no
-    # stylesheet adds them), as "States only (52)" beside it
-    assert ('>Failed last run (<span class="fc-chip-n">{{ pre.failed | length }}'
-            '</span>)</button>') in chips
+    pick = TEMPLATE.split('class="fc-presets"')[1].split("</div>")[0]
+    assert '<select id="fc-preset" aria-label="Location presets">' in pick
+    assert "name=" not in pick
+    # one select: the three fixed picks, the remembered ones when there
+    # are any (the failed one counted in parentheses, as "States only
+    # (52)" beside it), and Custom, which the script shows for any other
+    # pick and which cannot be chosen
+    for opt in ('<option value="states">States only (52)</option>',
+                '<option value="us">US only</option>',
+                '>Last pick</option>',
+                '>Failed last run ({{ pre.failed | length }})</option>',
+                '<option value="custom" disabled hidden>Custom</option>'):
+        assert opt in pick, opt
+    assert "if (o.value === 'custom') o.hidden = !!hit;" in TEMPLATE
+    assert ("if (o.selected && o.value !== 'custom') apply(o);"
+            in TEMPLATE)
     # the expanded view's arrows are named; the card's arrows page by key
     assert 'id="fanx-prev" aria-label="previous location"' in TEMPLATE
     assert 'id="fanx-next" aria-label="next location"' in TEMPLATE
@@ -177,3 +193,69 @@ def test_the_page_carries_the_aids():
     assert '<button class="quiet" data-guard="console-run">Run again' in TEMPLATE
     html = client.get("/forecast").text
     assert 'id="fc-datestats"' in html and 'id="fc-locfilter"' in html
+
+
+#: what the location script needs beyond the small DOM: a window, a class
+#: list, and global listeners (the list's fade measures nothing here)
+_LOC_STUBS = """
+globalThis.window = globalThis;
+globalThis.addEventListener = function () {};
+Object.defineProperty(Object.getPrototypeOf(document), 'classList', {
+  get: function () {
+    var el = this;
+    function list() { return (el.getAttribute('class') || '').split(/\\s+/)
+                               .filter(Boolean); }
+    return {contains: function (c) { return list().indexOf(c) >= 0; },
+            toggle: function (c, on) {
+              var l = list().filter(function (x) { return x !== c; });
+              if (on === undefined ? list().indexOf(c) < 0 : on) l.push(c);
+              el.setAttribute('class', l.join(' '));
+            }};
+  }});
+"""
+
+
+@pytest.mark.skipif(not SD.HAVE_JS, reason="no JavaScript engine")
+def test_the_preset_select_sets_the_list_and_shows_the_pick(tmp_path):
+    """The four preset chips became one select (review 2026-11-27, B21):
+    choosing a preset sets the boxes as the chip did, and the select shows
+    the pick's preset, or Custom for any other pick. Run on the served
+    page's own markup and script."""
+    ui_state._last_form.clear()
+    html = client.get("/forecast").text
+    script = next(x for x in re.findall(r"<script>(.*?)</script>", html, re.S)
+                  if "// the location checklist." in x)
+    f = tmp_path / "locations.js"
+    f.write_text(script, encoding="utf-8")
+    got = SD.run(tmp_path / "js", html, [f], """
+      var sel = document.getElementById('fc-preset');
+      function state() {
+        var custom = sel.options.filter(function (o) {
+          return o.value === 'custom'; })[0];
+        return [sel.options.filter(function (o) { return o.selected; })
+                   .map(function (o) { return o.value; }).join(),
+                custom.hidden,
+                document.getElementById('lcount').textContent,
+                document.getElementById('ck-all').checked,
+                document.getElementById('ck-us').checked,
+                document.querySelectorAll('.ck-one:checked').length];
+      }
+      function choose(v) {
+        sel.options.forEach(function (o) { o.selected = o.value === v; });
+        sel.fire('change');
+      }
+      var out = [state()];
+      choose('states'); out.push(state());
+      choose('us'); out.push(state());
+      var ohio = document.querySelectorAll('.ck-one').filter(function (c) {
+        return c.value === 'Ohio'; })[0];
+      ohio.checked = true; ohio.fire('change'); out.push(state());
+      choose('all'); out.push(state());
+      return out;""", prelude=_LOC_STUBS)
+    assert got == [
+        ["all", True, "all 53", True, True, 52],
+        ["states", True, "52 selected", False, False, 52],
+        ["us", True, "US only", False, True, 0],
+        ["custom", False, "1 + US selected", False, True, 1],
+        ["all", True, "all 53", True, True, 52],
+    ]

@@ -13,10 +13,12 @@
    it counts and that it is the saved model (Save redraws it). #}
 <link rel="stylesheet" href="/static/model-views.css"><script defer src="/static/model-views.js"></script>
 <div class="card" id="cmap" data-model="{{ editing.name }}">{{ tips.heading("Diagram", "sb-diagram") }}
- <div class="mviews" role="tablist" aria-label="model view" hidden>
-  <button type="button" class="pill mode" id="mv-tab-flow" data-view="flow" role="tab" aria-selected="true" aria-controls="cmap-svg">Model</button>
-  <button type="button" class="pill mode" id="mv-tab-contactmap" data-view="contactmap" role="tab" aria-selected="false" aria-controls="cmap-svg" tabindex="-1" hidden>Binding sites</button>
-  <button type="button" class="pill mode" id="mv-tab-network" data-view="network" role="tab" aria-selected="false" aria-controls="cmap-svg" tabindex="-1" hidden>Reaction network</button>
+ {# the views as tabs drawn as the kit's segmented switch: the tab shown
+    is aria-selected, arrow keys move among them #}
+ <div class="mviews uk-seg" role="tablist" aria-label="model view" hidden>
+  <button type="button" id="mv-tab-flow" data-view="flow" role="tab" aria-selected="true" aria-controls="cmap-svg">Model</button>
+  <button type="button" id="mv-tab-contactmap" data-view="contactmap" role="tab" aria-selected="false" aria-controls="cmap-svg" tabindex="-1" hidden>Binding sites</button>
+  <button type="button" id="mv-tab-network" data-view="network" role="tab" aria-selected="false" aria-controls="cmap-svg" tabindex="-1" hidden>Reaction network</button>
  </div>
  {# one panel for the three views: the tab that shows names it #}
  <div id="cmap-svg" class="mview-draw" role="tabpanel" aria-labelledby="mv-tab-flow">{{ tips.empty("Drawing the model", "clock", compact=True) }}</div>
@@ -144,7 +146,7 @@
   // the selected tab: aria-selected, the one tab stop (roving tabindex),
   // and the panel's name
   function mark() {
-    card.querySelectorAll('.pill.mode').forEach(function (o) {
+    card.querySelectorAll('.mviews > [role=tab]').forEach(function (o) {
       var on = o.dataset.view === view;
       o.setAttribute('aria-selected', on ? 'true' : 'false');
       o.tabIndex = on ? 0 : -1;
@@ -152,7 +154,7 @@
     });
   }
   function tabs(list) {
-    card.querySelectorAll('.pill.mode').forEach(function (b) {
+    card.querySelectorAll('.mviews > [role=tab]').forEach(function (b) {
       b.hidden = list.indexOf(b.dataset.view) < 0;
     });
     mark();
@@ -189,12 +191,12 @@
         box.appendChild(note('The diagram could not be fetched', false, 'error'));
       });
   }
-  card.querySelectorAll('.pill.mode').forEach(function (b) {
+  card.querySelectorAll('.mviews > [role=tab]').forEach(function (b) {
     b.addEventListener('click', function () { pick(b.dataset.view); });
     // the tab pattern's keys: arrows move among the shown tabs (and show
     // the one reached), Home and End jump to the ends
     b.addEventListener('keydown', function (e) {
-      var shown = Array.prototype.filter.call(card.querySelectorAll('.pill.mode'),
+      var shown = Array.prototype.filter.call(card.querySelectorAll('.mviews > [role=tab]'),
                                               function (o) { return !o.hidden; });
       var i = shown.indexOf(b), n = shown.length, j = -1;
       if (e.key === 'ArrowRight') j = (i + 1) % n;

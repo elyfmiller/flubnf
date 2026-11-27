@@ -293,7 +293,7 @@ def test_network_route_draws_a_saved_model_and_reports_bngs_words(box):
     assert "error" in client.get("/api/sandbox/models/nope/network").json()
 
 
-def test_editor_page_carries_the_view_pills(box):
+def test_editor_page_carries_the_view_tabs(box):
     sb.new_model("mine")
     html = client.get("/sandbox?model=mine").text
     assert 'id="cmap"' in html and 'id="cmap-svg"' in html
@@ -312,7 +312,10 @@ def test_editor_page_carries_the_view_pills(box):
     # arrow keys, Home and End move among the shown tabs
     for key in ("'ArrowRight'", "'ArrowLeft'", "'Home'", "'End'"):
         assert key in html, key
-    assert '<div class="mviews" role="tablist" aria-label="model view" hidden>' in html
+    # drawn as the kit's segmented switch, the tab shown filled (its
+    # aria-selected), never as pills (review 2026-11-27, G-U3)
+    assert '<div class="mviews uk-seg" role="tablist" aria-label="model view" hidden>' in html
+    assert "pill" not in html.split('id="cmap"', 1)[1].split("</script>", 1)[0]
     assert "url('network')" in html                             # the card's own script fetches it
 
 

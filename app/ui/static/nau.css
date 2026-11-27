@@ -510,7 +510,7 @@ button.dm-step[disabled]{opacity:.4}
 .dm-fs-out{flex:none;min-width:3.4em;text-align:right;font-weight:700;
   font-variant-numeric:tabular-nums}
 button.dm-reset{min-height:24px;margin:0;padding:.12rem .65rem;border:1px solid var(--field-line);
-  border-radius:var(--r-pill);background:transparent;color:var(--nav-ink);
+  border-radius:var(--r-sm);background:transparent;color:var(--nav-ink);
   font-size:var(--fs-label);font-weight:600}
 button.dm-reset:hover{background:color-mix(in srgb,var(--nav-ink) 8%,transparent)}
 button.dm-reset[disabled]{opacity:.45}
@@ -732,8 +732,6 @@ code{background:var(--bg);padding:.12rem .35rem;border-radius:5px;font-size:.85e
 .relwis{font-variant-numeric:tabular-nums;font-weight:650}
 .hint{color:var(--mut);font-size:var(--fs-hint)}
 .big{font-size:var(--fs-big);font-weight:750;font-variant-numeric:tabular-nums}
-.pill{display:inline-block;padding:.1rem .55rem;border-radius:99px;
-  border:1px solid var(--line);font-size:var(--fs-micro)}
 progress{width:100%;height:12px;appearance:none;-webkit-appearance:none;
   border:1px solid var(--line);border-radius:99px;background:var(--track);
   overflow:hidden}
@@ -762,6 +760,16 @@ progress::-moz-progress-bar{background:var(--accent-ink);border-radius:99px}
 .ck{display:flex;gap:.5rem;align-items:center;font-size:.85rem;color:var(--ink);
   margin:.12rem 0;cursor:pointer}
 .ck input{width:auto;accent-color:var(--gold-bright)}
+/* the location and group pickers (Forecast, and the Retrospective's Your
+   data): the pick's live count ("12 of 53") in quiet words inside the
+   label, written by the page script (no box: only a control has one);
+   the filter over the list, as wide as it; a filtered-out box hidden */
+.fc-count{margin-left:.3rem;color:var(--mut);font-size:var(--fs-label);
+  font-weight:500;font-variant-numeric:tabular-nums}
+.fc-count:empty{display:none}
+.fc-locfilter{width:100%;margin:0 0 .3rem}
+.checklist .ck[hidden]{display:none}
+.fc-nomatch{margin:.2rem 0;color:var(--mut);font-size:var(--fs-label)}
 /* run progress: --accent-ink fill (3:1 against the track in light) */
 .runbar{height:14px;border-radius:99px;background:var(--track);
   border:1px solid var(--line);overflow:hidden;margin:.45rem 0}
@@ -1002,11 +1010,10 @@ table.pbstats tr + tr th,#sf-table tr + tr th{text-transform:none;
   gap:.05rem .8rem;margin:.35rem 0 .1rem;font-size:var(--fs-hint)}
 .tilekv dt{color:var(--mut)}
 .tilekv dd{margin:0;font-weight:650;font-variant-numeric:tabular-nums}
-/* the relWIS scale switch: label, two pills, the one-line hint */
+/* the relWIS scale switch: label, the kit's segmented switch, the
+   one-line hint */
 .pbscale{display:flex;flex-wrap:wrap;align-items:center;gap:.25rem .6rem;
   margin:0 0 .45rem}
-.pbscale .seg{margin:0;gap:.3rem}
-.pbscale .seg button{padding:.08rem .6rem;font-size:var(--fs-label)}
 .sw{display:inline-block;width:.7rem;height:.7rem;border-radius:3px;
   margin-right:.35rem;vertical-align:-1px}
 .fdmodels{display:flex;gap:.3rem 1rem;flex-wrap:wrap;margin:0 0 .4rem}
@@ -1125,12 +1132,6 @@ kbd{display:inline-block;min-width:1.5em;padding:.02rem .38em;border:1px solid v
 .dsfirst abbr{text-decoration:none}
 .dsup-actions{margin-top:.4rem}
 .dsup-actions button{margin-top:.3rem}
-details.dsup-fold{margin:.2rem 0 .5rem}
-details.dsup-fold>summary{cursor:pointer;color:var(--gold);font-size:.9rem;
-  font-weight:600;list-style:none}
-details.dsup-fold>summary::-webkit-details-marker{display:none}
-details.dsup-fold>summary::before{content:"\25B8"}
-details.dsup-fold[open]>summary::before{content:"\25BE"}
 /* a long unbroken name (up to 80 characters) wraps, in the table and as
    the browser's heading, instead of widening both */
 .dstable td.dsname,#h-ds-browse{overflow-wrap:anywhere}
@@ -1142,6 +1143,8 @@ details.dsup-fold[open]>summary::before{content:"\25BE"}
 .srcpick{align-items:flex-end;margin-bottom:.4rem}
 .srcpick > span{min-width:0;max-width:100%}
 .srcpick select{width:auto;min-width:min(12rem,100%);max-width:100%}
+/* beside a dataset picker: the link to the Data tab's upload box */
+.srcpick-upload{align-self:center;font-size:.92rem;padding-bottom:.15rem}
 /* storage panel headline: total disk use beside its scope note */
 .stotal{display:flex;gap:.6rem;align-items:baseline;flex-wrap:wrap;
   margin:.1rem 0 .5rem;max-width:none}
@@ -1161,32 +1164,8 @@ footer.buildline{text-align:center;padding:.6rem 0 1rem}
     scroll-behavior:auto!important}
 }
 
-/* Forecast form modes (Real-time / Vintage) and the advanced group */
-.modes{display:flex;gap:.4rem;margin:.1rem 0 .5rem;align-items:center}
-.modes .pill.mode{margin-top:0}
-.pill.mode{cursor:pointer;background:transparent;color:var(--ink);border:1px solid var(--gold);font:inherit;font-size:.85rem}
-.pill.mode[aria-selected="true"],.pill.mode[aria-pressed="true"]{background:var(--gold-bright);color:var(--on-accent);border-color:var(--gold-bright)}
-.pill.mode:focus-visible{outline:2px solid var(--gold-bright);outline-offset:2px}
+/* Forecast form modes (Real-time / Vintage: the kit's uk-seg) */
 #fcform.mode-realtime #vintage-pick{display:none}
-details.adv{margin:.7rem 0 .4rem}
-details.adv>summary{cursor:pointer;color:var(--gold);font-size:.9rem;list-style:none}
-details.adv>summary::-webkit-details-marker{display:none}
-details.adv>summary::before{content:"\25B8"}
-details.adv[open]>summary::before{content:"\25BE"}
-
-/* the Advanced settings fold reads as a control, not a footnote */
-.adv > summary.advbtn{display:inline-block;padding:.38rem .9rem;border:1.5px solid var(--accent);
- border-radius:999px;color:var(--accent-ink);font-weight:600;cursor:pointer;list-style:none;margin-top:.6rem}
-.adv > summary.advbtn::-webkit-details-marker{display:none}
-/* open: the card's color on --accent-ink, 5:1+ in every theme and mode
-   (white on raw cyan was 2.1:1) */
-.adv[open] > summary.advbtn{background:var(--accent-ink);
- border-color:var(--accent-ink);color:var(--card)}
-/* its "default" or "modified" mark (a kit badge) brings no fill of its
-   own: on the filled button it takes the button's color, and its state
-   rests on its icon and its word (the muted and the warning colors are
-   under 2:1 on this fill) */
-.adv[open] > summary.advbtn .uk-badge{color:inherit}
 /* the Model settings panel (templates/_model_settings.html): one fold
    per stage, its fields in a bare fieldset (its badges and fixed list:
    static/tabs/forecast.css) */
@@ -1277,8 +1256,9 @@ tr[aria-current="true"] td{font-weight:600}
   .sbmodels th:nth-child(4),.sbmodels td:nth-child(4){display:none}}
 
 /* sandbox model views */
-/* pills pick a view; wide networks scroll sideways, BNG text wraps */
-.mviews{display:flex;flex-wrap:wrap;gap:.4rem;margin:.2rem 0 .6rem}
+/* the kit's segmented switch picks a view (tabs); wide networks scroll
+   sideways, BNG text wraps */
+.mviews{margin:.2rem 0 .6rem}
 .mview-draw{overflow-x:auto;min-height:2.5rem;padding:.2rem 0}
 .mview-draw svg{display:block;max-width:none}
 
@@ -1328,8 +1308,10 @@ tr[aria-current="true"] td{font-weight:600}
 svg .dg-h-ink{fill:color-mix(in srgb,var(--slate) 55%,var(--ink))}
 
 /* polish: forecast-output-runs */
-/* view toggles (data view, fan model): small pills like the Real-time /
-   Vintage modes, so a selected view never reads as the primary action */
+/* the Forecast chart's model buttons (forecast.html, built by script):
+   the last pill-shaped switch, kept only while that chart keeps its
+   switch; every other switch is the kit's uk-seg. Delete with it
+   (app/tests/test_no_pills.py lists it) */
 .seg{display:flex;flex-wrap:wrap;gap:.4rem;margin:.45rem 0}
 .seg button{margin:0;padding:.15rem .7rem;border-radius:99px;
   font-size:.85rem;font-weight:600}
@@ -1365,9 +1347,6 @@ form.rerun-run{margin:.6rem 0 .2rem;gap:.2rem}
   svg.cumchart .svgt-sm{font-size:26px}
   svg.cumchart .svgt-md{font-size:30px}
 }
-#dsr-groups option:checked{color:var(--ink);background:linear-gradient(
-  color-mix(in srgb,var(--gold-bright) 30%,var(--card)),
-  color-mix(in srgb,var(--gold-bright) 30%,var(--card)))}
 .rd-pick{display:flex;flex-wrap:wrap;gap:.5rem 1rem;align-items:center;
   margin:.2rem 0 .4rem}
 .rd-pick select{width:auto;min-width:12rem;max-width:100%;margin:0}

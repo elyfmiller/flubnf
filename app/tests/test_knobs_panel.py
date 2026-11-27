@@ -106,7 +106,13 @@ def _panel_html(html, root="model-settings"):
 def test_forecast_panel_renders_every_forecast_knob_with_its_help():
     ui_state._last_form.clear()                   # the page a fresh app shows
     html = client.get("/forecast").text
-    assert 'id="model-settings"' in html and 'id="ms-badge"' in html
+    assert 'id="model-settings"' in html and 'id="ms-state"' in html
+    # the panel is a disclosure row: the kit fold's chevron and words, its
+    # count beside them; never a filled button (review 2026-11-27, B21)
+    assert ('<summary><span class="uk-fold-sum">Model settings</span>'
+            '<span class="fc-ms-state" id="ms-state" aria-live="polite">'
+            '</span></summary>') in html
+    assert "advbtn" not in html
     f = _panel_form(html)
     names = {n for n, _ in f.fields} | f.disabled
     for k in K.REGISTRY:
@@ -268,9 +274,10 @@ def test_a_refused_submission_keeps_the_typed_values_and_reads_modified(
     assert got.get("submit_modified") == "1"
     # the refusal opens the panel (over a close the user stored before
     # it), says why under its head, and shows the reason field to fill;
-    # the badge says the files would take the hub names
-    assert '<details class="adv" open data-refused id="model-settings"' in html
-    assert 'id="ms-badge"' in html and ">modified · hub names</span>" in html
+    # the summary counts the changes and says the files would take the
+    # hub names
+    assert '<details class="uk-fold ms-panel" open data-refused id="model-settings"' in html
+    assert 'id="ms-state" aria-live="polite">2 changed · hub names</span>' in html
     panel = _panel_html(html)
     assert ('id="ms-refused"><svg' in panel
             and "Exporting under the hub names needs a reason;" in panel)
@@ -287,15 +294,16 @@ def test_a_refused_submission_keeps_the_typed_values_and_reads_modified(
     # ... on that page only: the next visit shows the panel closed, as
     # the user leaves it, the typed values kept
     html = client.get("/forecast").text
-    assert '<details class="adv" id="model-settings"' in html
+    assert '<details class="uk-fold ms-panel" id="model-settings"' in html
     assert 'id="ms-refused"' not in html
     assert dict(_panel_form(html).fields)["knob.oracle.w"] == "0.25"
 
 
 def test_the_shipped_page_reads_shipped():
+    # nothing changed: the summary says nothing beside its title
     ui_state._last_form.clear()
     html = client.get("/forecast").text
-    assert ">default</span>" in html
+    assert 'id="ms-state" aria-live="polite"></span>' in html
     assert 'id="ms-override" hidden' in html
 
 
@@ -319,8 +327,8 @@ def test_the_panel_never_opens_by_itself():
     ran, and on every visit after a run with modified settings, pushing
     the forecasts out of sight. The browser posts the Season start the
     script filled in (August 1 of the forecast's season); that value is
-    the default, so the page reads "default". Changed settings read
-    "modified" in the summary's badge and leave the panel closed, during
+    the default, so the summary counts no change. Changed settings are
+    counted in the summary ("1 changed") and leave the panel closed, during
     a run and after it."""
     ui_state._last_form.clear()
     ui_state._last_form.update({
@@ -332,33 +340,33 @@ def test_the_panel_never_opens_by_itself():
     ui_state._status.update({"running": "all:x", "run_label": "x",
                              "workroot": None, "expected_total": None})
     html = client.get("/forecast").text
-    assert '<details class="adv" id="model-settings"' in html
-    assert ">default</span>" in html
+    assert '<details class="uk-fold ms-panel" id="model-settings"' in html
+    assert 'id="ms-state" aria-live="polite"></span>' in html
     # the filled value is not kept as a typed one: the script refills it
     assert dict(_panel_form(html).fields).get("season_start", "") == ""
-    # a run with a real change still renders closed; its badge says so,
+    # a run with a real change still renders closed; its count says so,
     # and how the files will be named (the override starts unticked)
     ui_state._last_form["knobs"] = {"oracle.w": "0.25"}
     html = client.get("/forecast").text
-    assert '<details class="adv" id="model-settings"' in html
-    assert ">modified · non-hub names</span>" in html
+    assert '<details class="uk-fold ms-panel" id="model-settings"' in html
+    assert ">1 changed · non-hub names</span>" in html
     # a season start of the user's own is kept, and reads modified
     ui_state._last_form.update({"knobs": {}, "season_start": "2097-09-15"})
     html = client.get("/forecast").text
     assert dict(_panel_form(html).fields)["season_start"] == "2097-09-15"
-    assert ">modified · non-hub names</span>" in html
-    assert '<details class="adv" id="model-settings"' in html
-    # idle again: changed settings still leave it closed, badged
-    # "modified"; so do the defaults
+    assert ">1 changed · non-hub names</span>" in html
+    assert '<details class="uk-fold ms-panel" id="model-settings"' in html
+    # idle again: changed settings still leave it closed, counted (the
+    # weight and the season start of the user's own); so do the defaults
     ui_state._status.update({"running": None})
     try:
         ui_state._last_form["knobs"] = {"oracle.w": "0.25"}
         html = client.get("/forecast").text
-        assert '<details class="adv" id="model-settings"' in html
-        assert ">modified · non-hub names</span>" in html
+        assert '<details class="uk-fold ms-panel" id="model-settings"' in html
+        assert ">2 changed · non-hub names</span>" in html
         ui_state._last_form.update({"knobs": {}, "season_start": "2097-08-01"})
         html = client.get("/forecast").text
-        assert '<details class="adv" id="model-settings"' in html
+        assert '<details class="uk-fold ms-panel" id="model-settings"' in html
     finally:
         ui_state._last_form.clear()
     # only a refusal opens it
@@ -526,13 +534,15 @@ def test_the_panel_comes_into_view_when_opened_near_the_windows_foot():
     assert "details[data-scope] > summary{scroll-margin-top:.75rem}" in css
 
 
-def test_the_badge_says_how_the_files_will_be_named():
+def test_the_summary_says_how_the_files_will_be_named():
     """The review of M2: the override starts unticked each run and the
     panel closed, so the closed summary says how a modified run's files
     will be named."""
     js = (Path(__file__).resolve().parents[1] / "ui" / "static"
           / "model_settings.js").read_text()
-    assert "'modified · ' + (tick.checked ? 'hub names' : 'non-hub names')" in js
+    assert ("var word = !any ? '' : n + ' changed' + (!tick ? ''\n"
+            "        : ' · ' + (tick.checked ? 'hub names' : 'non-hub names'));"
+            ) in js
     ui_state._last_form.clear()
     ui_state._last_form.update({
         "forecast_date": FD, "locations": ["Ohio"], "engine": "all",
@@ -541,13 +551,13 @@ def test_the_badge_says_how_the_files_will_be_named():
         "knobs": {"oracle.w": "0.25"}, "submit_modified": True,
         "modified_reason": "r", "ms_refused": False})
     try:
-        assert ">modified · hub names</span>" in client.get("/forecast").text
+        assert ">1 changed · hub names</span>" in client.get("/forecast").text
         ui_state._last_form["submit_modified"] = False
-        assert ">modified · non-hub names</span>" in client.get("/forecast").text
+        assert ">1 changed · non-hub names</span>" in client.get("/forecast").text
     finally:
         ui_state._last_form.clear()
-    # no override on a replay's panel: the word alone
+    # no override on a replay's panel: the count alone
     p = ui_forms._knob_panel("retro", {"knobs": {"oracle.w": "0.25"}})
     html = srv.templates.env.get_template("_model_settings.html").render(
         knob_panel=p, form=None)
-    assert '<span class="uk-badge-t">modified</span>' in html
+    assert 'id="ms-state" aria-live="polite">1 changed</span>' in html

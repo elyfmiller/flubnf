@@ -28,12 +28,16 @@
    the browser loads the file once). #}
 {% import "_tips.html" as tips %}
 {% import "_dataset_check.html" as dscheck %}
-{% macro box(where, upload=none) -%}
+{% macro box(where, upload=none, then="") -%}
 {% set fid = "dsup-" ~ where %}
+{# then: the form the Data tab was opened from (forecast, replay), whose
+   button is the primary one; a refused store keeps it #}
+{% set then = then or (upload.then if upload and upload.then else "") %}
 {% set accept = ".csv,.tsv,.txt,text/csv,text/tab-separated-values,text/plain" %}
 <link rel="stylesheet" href="/static/tabs/data.css">
-<form method="post" action="/data/datasets#datasets" enctype="multipart/form-data"
-  class="dsup{% if upload %} has-file{% endif %}" id="{{ fid }}" data-dsup data-where="{{ where }}">
+<form method="post" action="/data/datasets{% if then %}?then={{ then }}{% endif %}#datasets" enctype="multipart/form-data"
+  class="dsup{% if upload %} has-file{% endif %}" id="{{ fid }}" data-dsup data-where="{{ where }}"{% if then %} data-then="{{ then }}"{% endif %}>
+ {% if then %}<input type="hidden" name="then" value="{{ then }}">{% endif %}
  <div class="dsboxes">
   <div class="dsbox dt-zone">
    <div class="dt-zonehead"><span class="dt-zonetitle">Weekly CSV</span>
@@ -79,9 +83,9 @@
    </select></div>
  </div>
  <p class="dsup-status" data-dsup-status role="status"></p>
- <div class="dsup-result" data-result>{% if upload and upload.chk %}{{ dscheck.result(upload.chk, where) }}{% endif %}</div>
+ <div class="dsup-result" data-result>{% if upload and upload.chk %}{{ dscheck.result(upload.chk, where, then) }}{% endif %}</div>
  <div class="dsup-go"><button class="gold" name="next"
-   value="{{ where }}">Upload and check</button></div>
+   value="{{ then or where }}">Upload and check</button></div>
 </form>
 <script src="/static/dataset_upload.js" defer></script>
 {%- endmacro %}
