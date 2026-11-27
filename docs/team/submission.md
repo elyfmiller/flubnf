@@ -3865,6 +3865,13 @@ and CDC's rules. The season's facts are in
 
 ## Decided
 
+- 2026-11-27 (19:22 UTC), Ely: the US candidate attack rate for the
+  sensitivity screen is 12.4% (Tokars et al. 2018 / Carrat et al. 2008;
+  Now and For other lanes, same day), fixed before any score. Ely also
+  wants a real citable source for s0 (the one cited, Li et al. 2025, is
+  an H5N1 study): a search, and the independent Fable 5.2 reviewer to
+  check this lane's findings on both.
+
 - 2026-11-27 (18:55 UTC), Ely: run a sensitivity screen of the
   seeding assumptions (the 18% attack rate, s0 0.85) after the weight
   screen (For other lanes, same day). Look for a US serology source and
@@ -4144,6 +4151,13 @@ and CDC's rules. The season's facts are in
      (Ely: a US serology source to replace the Vietnam proxy), each value
      taken from the literature and fixed BEFORE any score, so the screen
      tests a cited value rather than tuning one.
+     FIXED 19:22 UTC 11-27 (Ely, Decided), before any score: the US
+     candidate is 0.124 = the CDC's median all-ages symptomatic incidence,
+     8.3% (Tokars, Olsen, Reed 2018, Clin Infect Dis 66(10):1511-1518,
+     doi 10.1093/cid/cix1060, PMID 29206909), divided by the symptomatic
+     fraction of infection, 66.9% (Carrat et al. 2008, Am J Epidemiol
+     167(7):775-785, doi 10.1093/aje/kwm375, PMID 18230677). It is the
+     first arm on both data sets, at s0 0.85; the range ends follow.
   3. Data, cheapest first:
      a. This season so far: each arm replayed on the 2026-27 as-of weeks
         from the first round (as-of 2026-10-03) on, the hub's archived
