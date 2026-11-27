@@ -12,7 +12,8 @@ name from a constant that already holds it (submit.MODEL_ABBR,
 custom_run.MEMBER_LABELS, runs.ENGINE_LABELS, report_v2.MODEL_SHORT,
 knobs.MEMBERS) instead.
 
-The ceilings are the counts on `dev` at 320df9bc. When a change removes names,
+The ceilings are the counts on `dev` after #12 to #15 (91 files and 845 lines
+before them). When a change removes names,
 lower them to the new counts in the same commit, so the room cannot be spent
 again. Raise them only for a change that cannot be made otherwise, and say
 why in its commit message.
@@ -31,8 +32,8 @@ SCANNED = ("app", "flubnf")
 SUFFIXES = {".py", ".html", ".js", ".css"}
 NAMES = re.compile(r"""(['"])(?:pf|analogue)\1|Oracle SIHRS|Groundhog""")
 
-MAX_FILES = 91
-MAX_LINES = 845
+MAX_FILES = 89
+MAX_LINES = 840
 
 
 def _is_test(path: Path) -> bool:
