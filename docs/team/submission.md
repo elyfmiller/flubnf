@@ -6,6 +6,25 @@ and CDC's rules. The season's facts are in
 
 ## Now
 
+- 2026-11-27 (18:43 UTC): THE WEIGHT SCREEN IS RUNNING; ITS FROZEN TEXT
+  CHECKED. The Model lane's replays started 17:52:58 UTC on the PC (public
+  engine 8410f794, the rounds' engine; about 19 to 20 hours, so Saturday
+  11-28 afternoon UTC). PREREG.txt (origin/dev 73365300,
+  docs/team/model-oracle-weight-screen-2026-11/) verifies against its
+  sha256 0626c2ba... and is item 3 as Ely confirmed it, with this lane's
+  two readings (window B, k picked in the same window) and three of its
+  own: weight 1 means through the step (the filter alone, F, reported
+  apart: its pilot found them different), the live cap on every arm,
+  ties in the k pick to the k nearer 0.7 then the larger.
+  This lane's scorer now follows the frozen text where it differs from
+  the width screen's: the bootstrap stratified by season with
+  default_rng(20261127), the tie rule, common cells. Truth and baseline:
+  hub 09c96ec8 (cdcepi, "Archive target data", 2026-09-30); on it this
+  lane's baseline totals equal the width screen's in all 84 weeks to its
+  stored rounding (5e-5), so that screen's truth was this commit too.
+  Next: score the arms' capped quantiles when they land, apply rule.py,
+  compare with the Model lane's report, joint recommendation to Ely.
+
 - 2026-11-27 (17:48 UTC): THE ORACLE WEIGHT: THE FILTER ALONE LOSES
   FROM DECEMBER ON TOO, ON THE RECORDS ALREADY IN THE REPOSITORY. Read
   after Ely confirmed the rule (Decided, 11-27), from the width screen's
