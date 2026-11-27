@@ -6,6 +6,41 @@ and CDC's rules. The season's facts are in
 
 ## Now
 
+- 2026-11-27 (20:38 UTC): ROUND 2026-11-28 MERGED; THE DASHBOARD'S FIRST
+  2026-27 SEASON SCORES. cdcepi merged pull request #4237 on 2026-11-26
+  at 15:26 ET (a5394482; our 692c91a5 unchanged). The FluSight dashboard
+  updated 2026-11-25 21:03 UTC (reichlab/flusight-dashboard predevals/data
+  69879ff), truth through 11-21. scripts/dashboard_score.py on every
+  team's hub files (cdcepi 5938030) matches its "2026-2027 season" and
+  "Last 4 weeks" sets for all 79 to 85 models to 2e-14.
+  Relative WIS (pairwise, scaled to FluSight-baseline; place among the
+  models in the set):
+  - The dashboard's season set (5 rounds: its config lists the 2026-27
+    reference dates without 11-07 and 11-14, for every model), states,
+    83 models: Oracle SIHRS 0.744 (52nd), log 0.604 (55th), 50% / 95%
+    coverage 0.69 / 0.98; Groundhog CGR 0.797 (60th), log 0.562 (48th);
+    FluSight-ensemble 0.561 (13th). National, 79: Oracle 0.517 (48th),
+    Groundhog 0.610 (58th), ensemble 0.354 (13th).
+  - All seven scored rounds (10-10 to 11-21; this lane's figure, not a
+    dashboard set), states, 85 models: Oracle 0.712 (52nd), log 0.573
+    (56th); Groundhog 0.738 (57th), log 0.531 (43rd); ensemble 0.531
+    (9th). National, 81: Oracle 0.532 (51st), Groundhog 0.607 (60th).
+  - Last 4 weeks (rounds 10-31 to 11-21), states, 85: Oracle 0.678
+    (42nd), Groundhog 0.730 (53rd); national, 81: 0.517 (52nd), 0.580
+    (58th). Last 2 weeks, states, 82: 0.729 (43rd), 0.837 (59th).
+  - NAU teams, states, seven rounds: ABERT 0.544 (11th; 936 of 1,144
+    cells), vulPES 0.595 (27th), epymorph 0.669 (45th), FourCAT 0.701
+    (48th), Oracle 0.712 (52nd), Groundhog 0.738 (57th); UGA INFLAenza
+    0.580 (24th).
+  - Where the gap is, states, mean WIS per forecast: Oracle 35.9
+    (spread 24.1, below truth 7.7, above 4.2), Groundhog 35.5 (25.6,
+    6.3, 3.6), ensemble 25.4 (15.4, 7.7, 2.3): the interval width is
+    about 85% of the Oracle's gap to the ensemble and 90% of the
+    Groundhog's, as on 10-30.
+  - Since the first scores (10-30, three partial rounds): states Oracle
+    0.72 (49th of 65) to 0.71 (52nd of 85), Groundhog 0.75 (52nd) to
+    0.74 (57th); national Oracle 0.50 to 0.53, Groundhog 0.73 to 0.61.
+
 - 2026-11-27 (19:55 UTC): THE ATTACK RATE AND s0: THE FABLE 5.2 REVIEW
   AND THE JOINT READ (Ely's three steps: this lane's read, written first
   in its scratchpad serology_s0/lane_read.md; the reviewer's, given the
