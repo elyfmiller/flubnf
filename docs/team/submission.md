@@ -3996,6 +3996,58 @@ and CDC's rules. The season's facts are in
 
 ## For other lanes
 
+- 2026-11-27 (17:39 UTC), Submission to Model: THE ORACLE WEIGHT SCREEN
+  ON THE WINDOWS PC. Replaces item 1 of the 11-26 request below (Ely,
+  11-27: the lab Mac is not available; this lane's agent on the PC runs
+  the replays). Question: does a filter weight above 0.25 forecast better
+  in today's form, over the season and from December on, so that a change
+  could start at round 2026-12-05?
+  Why a new screen: in the 10-24 width screen the step from 0.5 to 0.25
+  was taken at the to_date seed with no narrowing, and the narrowing 0.7
+  was then chosen at 0.25. No weight has been scored in today's form, and
+  holding k at 0.7 favours 0.25. The lab Mac's stored weeks did not come
+  to the PC (this lane's 11-10 entry), so the seasons are replayed again.
+  1. Replays: 2023-24, 2024-25 and 2025-26, once each, in today's live
+     form (stage-rule seed, w 0.25, narrowing 0.7), private engine as the
+     round, the hub commit of the 10-24 screen. Keep every week's filter
+     samples: the runner's lean storage drops them. Announce here before
+     starting (the PC rule of 2026-11-09).
+  2. Arms on the stored samples, no refit: w in {1 (the filter alone),
+     0.75, 0.5, 0.375, 0.25} by k in {0.6, 0.7, 0.8, 1.0}. The live cap
+     (10x the larger level, shrink) the same way in every arm, or in none.
+     This needs `flubnf oracle backfill` to pass the weight, the narrowing
+     and the seed settings: it calls apply_week with none of them, so it
+     gives the registered 0.5 unnarrowed. Check before scoring: the arm
+     w 0.25, k 0.7 equals the replay's own member.
+  3. Rule, proposed by this lane; Ely confirms it before the
+     pre-registration is frozen and pushed, and that is before any score:
+     - Pooled relative WIS, natural scale, state cells, FluSight's cell
+       rule, against FluSight-baseline; week-cluster bootstrap, 2,000.
+     - Each w takes its k by leave-one-season-out. The comparator is
+       0.25 at k 0.7 (live); 0.25 at its own k is reported beside it.
+     - Windows: A, the whole season; B, reference dates from December 1
+       on (what a change from round 12-05 would cover).
+     - Change from round 12-05 only if some w beats the comparator in
+       window B with the natural interval below 0, log relative WIS no
+       more than 0.010 worse, better in at least two of three seasons,
+       and 95% coverage at least 0.90. If several pass, the best in B on
+       the natural scale; within 0.005 of each other, the one nearer
+       0.25. Otherwise stay at 0.25.
+     - Reported beside it, not part of the rule: by horizon, by season,
+       and window A.
+  4. Records in the repository: per arm the quantiles per week and
+     location (or the scored cell table), so this lane scores them
+     again with its own scorer before the joint recommendation to Ely.
+  5. This season: rounds run on Ely's laptop keep the filter's own
+     samples (pf_filter.json.gz in the run folder). If Ely copies rounds
+     11-14 and 11-21 to the PC, the same arms on them, reported as a
+     check that this season does not point the other way; too few weeks
+     for the rule.
+  6. Timing: round 12-05's window closes Thursday 12-03 (hub tasks.json,
+     end 2 days before the reference date; the hub README still says
+     Wednesday 11 PM ET, so plan on Wednesday 12-02). A result by Tuesday
+     12-01 can still change it; a later one applies from round 12-12.
+
 - 2026-11-26 (05:37 UTC), Submission to Model: WEIGHT THE FILTER MORE
   FROM ROUND 2026-12-05? Ely wants an analysis of whether the Oracle
   should move from weight 0.25 toward the filter (0.5) starting next
