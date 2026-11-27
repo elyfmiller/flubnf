@@ -13,6 +13,46 @@ until 2026-11-09 and on the Windows PC since then.
 
 ## Now
 
+- 2026-11-27 (17:55 UTC): THE ORACLE WEIGHT SCREEN'S REPLAYS, ANNOUNCED
+  BEFORE THEY START. This answers item 1 of Submission's request of
+  2026-11-27 17:39 UTC (submission.md, For other lanes) and follows the
+  PC rule of 2026-11-09. Nothing is scored before the pre-registration is
+  frozen, and it is not frozen until Ely confirms the rule (Decided,
+  same day).
+  - What: 2023-24, 2024-25 and 2025-26, once each. That is the 84
+    scoreable as-of weeks (30, 27 and 27; a FluSight-baseline file for
+    the reference date), the width screen's count.
+  - Form: today's live form. Replicates 3, particles 10,000, the
+    stage-rule seed (pf.seed_denominator season_total_early), the Oracle
+    step at weight 0.25, narrowing 0.7. The cap (10x the larger level,
+    shrink) is not a replay setting; the arms apply it to the hub rows
+    afterwards.
+  - Engine: the public engine, lanl/PyBNF 8410f794, which the rounds
+    have used since 11-14 (Decided). The request named the private
+    engine.
+  - Hub: this lane's hub clone at 09c96ec8, the width screen's commit,
+    for the vintages and the baseline files. It moved there from
+    3a83d410 (the cap screen's) for the replays.
+  - Code: [model-oracle-weight-screen-2026-11/](model-oracle-weight-screen-2026-11/),
+    replay.py and replay.ps1 through `flubnf retro run`. Nothing in how a
+    week is fitted changes. The runner keeps three things per week beside
+    the replay, because the replay prunes its week folder down to the
+    samples record:
+    - the filter's own samples before the Oracle step (a replay
+      otherwise keeps only their quantiles);
+    - the arguments the step was given;
+    - the recent observations the output floor read.
+    Each weight and narrowing is then rebuilt from these with no refit
+    (arms.py). The arm at weight 0.25, narrowing 0.7 must equal each
+    week's stored member exactly, checked before any score.
+  - Where: `%USERPROFILE%\flubnf-model-research\oracle-weight-screen-2026-11`,
+    outside the repository.
+  - When: a pilot of one week and two states first, then the three
+    seasons, at below-normal priority. A round took 820 s on the public
+    engine here (Engine's 11-07 gate), so about 19 to 20 hours, ending
+    Saturday 11-28 in the afternoon UTC. That is clear of round 12-05's
+    window (data Wednesday 12-02, due Thursday 12-03).
+
 - 2026-11-11 (07:10 UTC): THE CAP'S LEVEL ON THE ORACLE: IT RESPONDS AS THE
   GROUNDHOG DOES, SO NOTHING HERE ARGUES AGAINST `larger` FOR BOTH. Ely
   decided `larger` for both members at 10x and offered the PC to test the
@@ -1456,6 +1496,13 @@ until 2026-11-09 and on the Windows PC since then.
 
 ## Decided
 
+- 2026-11-27 (Ely, to this lane, on Submission's request for an Oracle
+  weight screen):
+  - The replays are announced here first.
+  - The filter samples are kept.
+  - The pre-registration is not frozen until Ely confirms the rule.
+  - The replays run on the public engine (8410f794), the rounds' engine,
+    not on the private engine the request named.
 - 2026-11-11 (Ely, relayed by App, for the 2026-11-11 run): the tail cap's
   level is output.tail_level = larger, the larger of the last reported
   week and the three-week mean, for both members. The cap stays at 10x
@@ -1628,6 +1675,23 @@ until 2026-11-09 and on the Windows PC since then.
 
 ## For other lanes
 
+- 2026-11-27 (17:55 UTC), Submission: your weight-screen request of 17:39
+  UTC is taken. The replays are announced under Now and start after this
+  push. Three differences from the request:
+  - Engine: public (8410f794), as the rounds run, not private (Decided).
+  - The arms do not go through `flubnf oracle backfill`, and this lane
+    changes no code of it. arms.py calls app.core.oracle.apply_week on
+    the kept filter samples, with the weight and narrowing written into
+    the run's knob record, then the same output floor. The seed setting
+    acts in the fit, so it is already in the filter samples.
+  - Weight 1 through the step is not the filter alone (the knob's own
+    note says so). The draft pre-registration will carry both, so the
+    rule says which one it means.
+  The draft and the rule go to Ely before any freeze.
+- 2026-11-27 (17:55 UTC), Engine and App: the PC runs this lane's replays
+  from about 18:00 UTC today to about Saturday 11-28 afternoon UTC
+  (public engine, below-normal priority, the lane's own clone, hub clone
+  and a temporary state folder). Say here if that is in the way.
 - 2026-11-11 (07:10 UTC), Submission and App: THE ORACLE ANSWER FOR TODAY'S
   RUN. The Oracle SIHRS keeps `larger`, as Ely decided: output.tail_level
   = larger for both members, the cap at 10x, mode shrink. Not
