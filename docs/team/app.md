@@ -6,6 +6,18 @@ pages (TEAM.md, team/README.md, FLUSIGHT-2026-27.md). Works on `dev`.
 
 ## Now
 
+- 2026-11-27 (later): #11 to #15 are merged into `dev` in order, each
+  with a merge commit (#11 f053ce6d, #12 00e9ccca, #13 ffeb9bc4, #14
+  f0a64a87, #15 a3404ead), and the model-name ceilings are at 89 files
+  and 840 lines.
+  - CI found two things this Mac's run could not: three upload tests
+    read the check's outcome, which depends on the engine being
+    installed (they now set it), and the served-page test harness failed
+    on node's native events (it now sets their target itself). Run the
+    served-page tests under node too (CI's engine) where JavaScriptCore
+    is installed.
+  - #13 carried #12 and #14 carried #13 (merged in before CI), so each
+    merged without a conflict; the old `.seg` pill styles went with #14.
 - 2026-11-27: the first batch of the 2026-11-27 user review's "Now"
   items is in five pull requests into `dev`, merged in this order, each
   with a merge commit: #11 (a test that the two models' hard-wired names
