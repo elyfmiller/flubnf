@@ -6,6 +6,18 @@ and CDC's rules. The season's facts are in
 
 ## Now
 
+- 2026-11-27 (21:17 UTC): WHERE THE ORACLE LOSES IN PAST SEASONS: THE
+  PEAK WEEKS. From the width screen's C0 week sums (the 10-24 live form:
+  stage-rule seed, w 0.25, k 0.7, no cap; 84 weeks of 2023-24 to
+  2025-26; state cells; ratio of WIS sums against FluSight-baseline, not
+  the dashboard's pairwise measure), by reference date against the US
+  peak week (hub 09c96ec8: 2023-12-30, 2025-02-08, 2026-01-03):
+  early growth (6+ weeks before) 0.662; run-up (5 to 2 before) 0.638;
+  PEAK (1 before to 1 after) 0.849, log 0.878, 95% coverage 0.91, worst
+  in every season (0.980, 0.819, 0.830); decline (2 to 5 after) 0.600
+  but 0.367 to 0.904 by season, log 0.814; tail 0.539. States peak at
+  other weeks than the US, so the phases are approximate.
+
 - 2026-11-27 (20:38 UTC): ROUND 2026-11-28 MERGED; THE DASHBOARD'S FIRST
   2026-27 SEASON SCORES. cdcepi merged pull request #4237 on 2026-11-26
   at 15:26 ET (a5394482; our 692c91a5 unchanged). The FluSight dashboard
