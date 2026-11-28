@@ -354,12 +354,12 @@ REGISTRY: tuple = (
          lo=0.0, hi=5.0),
     Knob("output.tail_cap", "Upper-tail cap", BOTH, "output", "method", "float",
          TC.CAP_PRODUCTION, "flubnf.tailcap:CAP_PRODUCTION",
-         "Quantiles above the median clipped at this many times the recent level; 0 is no cap.",
+         "The upper tail's limit: this many times the location's recent level; 0 is no cap.",
          lo=0.0, hi=100.0,
-         note=("Research, off at 0: in each location and horizon the levels "
-               "above the median are clipped at n times the mean of the last "
-               "three reported weeks, never below the median, and a run "
-               "records n and the cells it touched.")),
+         note=("Research, off at 0: Upper-tail level picks the recent level "
+               "and Upper-tail form how the upper tail is pulled in to the "
+               "limit, never below the median; a run records n and the "
+               "cells it touched.")),
     Knob("output.tail_mode", "Upper-tail form", BOTH, "output", "method",
          "choice", TC.MODE_PRODUCTION, "flubnf.tailcap:MODE_PRODUCTION",
          "clip: levels above the median clipped at the limit; shrink: the location-wide exponent form.",

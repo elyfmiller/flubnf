@@ -17,7 +17,8 @@ page the server renders (served_dom.tree).
     the limit and applies it to the whole upper tail (exponent_needed,
     shrink_block), so the 99% quantile can stay above. The line says
     which form does what, and no longer holds every quantile to the limit
-    whatever the form.
+    whatever the form. The setting's own hint and note (Model settings,
+    Methods' table of settings) hold for either form and every level.
 """
 from __future__ import annotations
 
@@ -174,6 +175,36 @@ def test_the_cap_line_says_what_each_form_holds():
     assert "0 is no cap" in said and "Before cap" in said
     for dash in ("–", "—"):
         assert dash not in said
+
+
+def _by_id(root, el_id: str) -> str:
+    return _words(next(el for el in _flat(root)
+                       if el["attrs"].get("id") == el_id))
+
+
+def test_the_cap_setting_holds_for_either_form_and_every_level():
+    """The setting's own words, its hint under the field in Model settings
+    and its row in Methods' table of settings, hold whatever the
+    Upper-tail form and level: the limit is n times the location's recent
+    level, as the Glossary's line has it, the level setting picks that
+    level and the form how the tail meets the limit. Neither says the
+    levels above the median are clipped (shrink pulls the whole tail in
+    and can leave the 99% above), nor that the level is the three-week
+    mean (it can be the last week or the larger)."""
+    phrase = "times the location's recent level"
+    assert phrase in _said("Upper-tail cap")
+    r = client.get("/forecast")
+    assert r.status_code == 200, r.text[:300]
+    hint = _by_id(SD.tree(r.text), "ks-output-tail_cap-hint")
+    row = _by_id(_methods(), "set-output-tail_cap")
+    for text in (hint, row):
+        assert phrase in text and "0 is no cap" in text, text
+        assert "clip" not in text and "mean" not in text, text
+    assert knobs.BY_KEY["output.tail_level"].label in row
+    assert knobs.BY_KEY["output.tail_mode"].label in row
+    assert "never below the median" in row
+    # a field hint no longer than it was
+    assert len(knobs.BY_KEY["output.tail_cap"].help.split()) <= 16
 
 
 def _rows(sd_by_horizon: dict, median: float = 100.0) -> list:
