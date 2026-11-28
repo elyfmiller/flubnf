@@ -3,11 +3,16 @@
 
   * the Data tab's FluSight hub card says what a check found in plain
     words: "No new flu data since Nov 21: you are up to date" when the
-    hub has no new week, whatever the clone's commit count, and "New flu
-    data: the week ending Nov 28 is ready to update" when it has one.
-    Check for new data comes first; Update data is the primary button
-    only when there is new data. The commit count, origin and the check's
-    own words sit in a closed "Hub clone details" fold under the line;
+    clone is level with the hub, an info line naming the hub's other new
+    files (teams' forecasts, the round's ensemble) when commits came
+    without a new week, and "New flu data: the week ending Nov 28 is
+    ready to update" when there is one. A failed check says why: no
+    connection, or git's own reason when git refused the clone; with no
+    hub folder, or commits that could not be counted, it says so too, so
+    every check ends in a line. Check for new data comes first; Update
+    data is the primary button only when there is new data. The commit
+    count, origin and the check's own words sit in a closed "Hub clone
+    details" fold under the line;
   * the kit's fold (tips.fold) is closed unless the page asks, labelled
     with what it holds, and with `remember` keeps each reader's open or
     closed choice in the browser (localStorage "fold:<id>"); it works
@@ -45,7 +50,11 @@ needs_js = pytest.mark.skipif(
     not SD.HAVE_JS, reason="no JavaScript engine (JavaScriptCore jsc or node)")
 
 UP_TO_DATE = "No new flu data since Nov 21: you are up to date"
+OTHER_FILES = ("No new flu data since Nov 21. The hub has other new files, "
+               "such as teams' forecasts; Update data brings them in.")
 NEW_WEEK = "New flu data: the week ending Nov 28 is ready to update"
+OFFLINE = ("Could not reach the FluSight hub: check the internet connection "
+           "and try again")
 
 
 def _behind(n=46, week="2026-11-21", **kw):
@@ -59,8 +68,10 @@ def _behind(n=46, week="2026-11-21", **kw):
 # ----------------------------------------------------------- the words
 
 @pytest.mark.parametrize("f, missing, want", [
-    # commits alone, or none at all: no new week, up to date
-    (_behind(), (), ("ok", False, UP_TO_DATE)),
+    # no new week: up to date when level; commits still bring other
+    # files (teams' forecasts), but nothing that makes the pull the next
+    # step
+    (_behind(), (), ("info", False, OTHER_FILES)),
     (F("2026-11-21", "2026-11-21", 0, True, "up to date with origin",
        local_live="2026-11-21", remote_live="2026-11-21"), (),
      ("ok", False, UP_TO_DATE)),
@@ -104,8 +115,7 @@ def _behind(n=46, week="2026-11-21", **kw):
                     "them")),
     # offline: what to do, never git's words
     (F(None, None, None, False, "fetch failed: fatal: unable to access"), (),
-     ("warn", False, "Could not reach the FluSight hub: check the internet "
-                     "connection and try again")),
+     ("warn", False, OFFLINE)),
 ])
 def test_the_outcome_in_plain_words(f, missing, want):
     o = D._hub_outcome(f, missing)
@@ -114,11 +124,126 @@ def test_the_outcome_in_plain_words(f, missing, want):
         assert word not in o["text"].lower(), word
 
 
-def test_no_outcome_before_a_check_or_without_a_hub_folder():
+def test_up_to_date_only_when_level_with_the_hub():
+    level = _behind(0)
+    assert level.behind == 0
+    for f, want in ((level, ("ok", UP_TO_DATE)),
+                    (_behind(1), ("info", OTHER_FILES)),
+                    (_behind(46), ("info", OTHER_FILES))):
+        o = D._hub_outcome(f)
+        assert (o["state"], o["text"]) == want
+        # neither makes Update data the primary: no new week either way
+        assert o["new"] is False and D._new_data(f) is False
+    # no week to name: the same line without a date
+    assert D._hub_outcome(_behind(0, week=None))["text"] == \
+        "No new flu data: you are up to date"
+
+
+@pytest.mark.parametrize("why", [
+    "fatal: unable to access 'https://github.com/cdcepi/FluSight-forecast-"
+    "hub/': Could not resolve host: github.com",
+    "fatal: unable to access 'https://github.com/cdcepi/FluSight-forecast-"
+    "hub/': Failed to connect to github.com port 443 after 75003 ms: "
+    "Couldn't connect to server",
+    "fatal: unable to access 'https://github.com/cdcepi/FluSight-forecast-"
+    "hub/': SSL certificate problem: unable to get local issuer certificate",
+    "fatal: unable to access 'https://github.com/cdcepi/FluSight-forecast-"
+    "hub/': Recv failure: Connection reset by peer",
+    "ssh: connect to host github.com port 22: Network is unreachable",
+    "ssh: connect to host github.com port 22: Connection refused",
+    "Command '['git', 'fetch', 'origin']' timed out after 60 seconds",
+])
+def test_a_fetch_that_found_no_network_says_check_the_connection(why):
+    f = F(None, None, None, False, f"fetch failed: {why}")
+    assert f.offline is True
+    assert D._hub_outcome(f) == {"state": "warn", "new": False,
+                                 "text": OFFLINE}
+    assert f.pill() == ("bad", "offline")
+
+
+@pytest.mark.parametrize("why, said", [
+    ("fatal: detected dubious ownership in repository at '/Users/ssl/"
+     "timed out/hub'",
+     "detected dubious ownership in repository at '/Users/ssl/timed out/"
+     "hub'"),
+    ("fatal: not a git repository (or any of the parent directories): .git",
+     "not a git repository (or any of the parent directories): .git"),
+    ("fatal: refusing to fetch into branch 'refs/heads/main' checked out at "
+     "'/data/hub'",
+     "refusing to fetch into branch 'refs/heads/main' checked out at "
+     "'/data/hub'"),
+    ("[Errno 20] Not a directory: '/data/hub'",
+     "Not a directory: '/data/hub'"),
+    ("git exited 128", "git exited 128"),
+])
+def test_a_fetch_git_refused_says_why_not_check_the_connection(why, said):
+    # a path's own words (ssl, timed out) are not a network failure
+    f = F(None, None, None, False, f"fetch failed: {why}")
+    assert f.offline is False
+    assert D._hub_outcome(f) == {
+        "state": "warn", "new": False,
+        "text": f"Could not check the FluSight hub: {said}"}
+    assert f.pill() == ("bad", "check failed")
+
+
+def test_a_check_git_refused_keeps_its_reason(hub, monkeypatch):  # noqa: F811
+    from test_pull_hub import _R, _fake
+    monkeypatch.setattr(data_mod, "vintages", lambda: [])
+    monkeypatch.setattr(data_mod, "live_newest_week", lambda: "2026-11-21")
+    _fake(monkeypatch, hub, fetch=_R(128, "", (
+        f"fatal: detected dubious ownership in repository at '{hub}'\n"
+        "To add an exception for this directory, call:\n\n"
+        f"\tgit config --global --add safe.directory {hub}\n")))
+    f = data_mod.check_freshness()
+    assert D._hub_outcome(f)["text"] == (
+        "Could not check the FluSight hub: detected dubious ownership in "
+        f"repository at '{hub}'")
+    # offline still reads as offline
+    _fake(monkeypatch, hub, fetch=_R(128, "", (
+        "fatal: unable to access 'https://github.com/cdcepi/FluSight-"
+        "forecast-hub/': Could not resolve host: github.com\n")))
+    assert D._hub_outcome(data_mod.check_freshness())["text"] == OFFLINE
+
+
+def test_a_file_at_the_hub_path_is_not_called_offline(
+        tmp_path, monkeypatch, hub_check_real):
+    # the folder test passes (something is there), then git cannot run in
+    # it: the system's own reason, never the internet line
+    spot = tmp_path / "hub"
+    spot.write_text("not a folder", encoding="utf-8")
+    monkeypatch.setattr(data_mod, "HUB", spot)
+    monkeypatch.setattr(data_mod, "vintages", lambda: [])
+    monkeypatch.setattr(data_mod, "live_newest_week", lambda: None)
+    f = data_mod.check_freshness()
+    assert f.detail.startswith("fetch failed: ")
+    assert f.offline is False and f.pill() == ("bad", "check failed")
+    o = D._hub_outcome(f)
+    assert o["state"] == "warn" and o["new"] is False
+    assert o["text"].startswith("Could not check the FluSight hub: ")
+    assert "internet" not in o["text"] and "Errno" not in o["text"]
+
+
+def test_before_a_check_no_outcome_and_every_check_ends_in_a_line(
+        monkeypatch):
+    from app.ui import templating
+    monkeypatch.setattr(templating, "_platform", lambda: "linux")
     assert D._hub_outcome(None) is None
-    assert D._hub_outcome(F(None, None, None, False, "")) is None
+    # no hub folder: the card's own no-data sentence (its alert's words,
+    # test_hub_setup), as plain text
     assert D._hub_outcome(F(None, None, None, False,
-                            "no hub clone: there is no hub folder")) is None
+                            "no hub clone: there is no hub folder at /x")) \
+        == {"state": "warn", "new": False,
+            "text": ("No FluSight data: there is no hub folder at /x. To "
+                     "fetch it, run ./setup.sh and relaunch the console.")}
+    # nothing compared: the hub clone could not be read
+    assert D._hub_outcome(F(None, None, None, False, "")) == {
+        "state": "warn", "new": False, "text": "Could not read the hub clone"}
+    # a week that is not a date: said, not dropped
+    assert D._hub_outcome(F(None, None, 0, True, "up to date with origin",
+                            local_live="soon", remote_live="soon")) == {
+        "state": "warn", "new": False,
+        "text": "Could not read the hub clone: a week in the flu data is "
+                "not a date"}
 
 
 def test_commits_alone_are_a_quiet_fact_in_the_fold():
@@ -135,14 +260,47 @@ def test_the_checks_own_words_count_commits_properly(hub, monkeypatch):  # noqa:
     _freshness_git(hub, monkeypatch, behind="46")
     f = data_mod.check_freshness()
     assert f.detail == "46 commits behind origin, no new week of data"
-    assert D._hub_outcome(f)["text"] == ("No new flu data since Jul 4: you "
-                                         "are up to date")
+    assert D._hub_outcome(f)["text"] == (
+        "No new flu data since Jul 4. The hub has other new files, such as "
+        "teams' forecasts; Update data brings them in.")
+    _freshness_git(hub, monkeypatch, behind="0")
+    assert D._hub_outcome(data_mod.check_freshness())["text"] == (
+        "No new flu data since Jul 4: you are up to date")
     _freshness_git(hub, monkeypatch, behind="1")
     assert data_mod.check_freshness().detail == \
         "1 commit behind origin, no new week of data"
     # origin's file unreadable: the count alone, no claim about weeks
     _freshness_git(hub, monkeypatch, behind="2", remote_csv="")
     assert data_mod.check_freshness().detail == "2 commits behind origin"
+
+
+def test_commits_that_cannot_be_counted_say_so_with_gits_reason(
+        hub, monkeypatch):  # noqa: F811
+    from test_pull_hub import _R
+    monkeypatch.setattr(data_mod, "vintages", lambda: [])
+    monkeypatch.setattr(data_mod, "live_newest_week", lambda: "2026-07-04")
+    g = _freshness_git(hub, monkeypatch)
+    g.answers["rev-list"] = _R(128, "", (
+        "fatal: ambiguous argument 'HEAD..origin/main': unknown revision or "
+        "path not in the working tree.\nUse '--' to separate paths from "
+        "revisions, like this:\n'git <command> [<revision>...] -- "
+        "[<file>...]'\n"))
+    f = data_mod.check_freshness()
+    assert f.behind is None and f.is_fresh is False
+    # git's fatal line, not the usage hint after it
+    assert f.detail == ("could not compare with origin: fatal: ambiguous "
+                        "argument 'HEAD..origin/main': unknown revision or "
+                        "path not in the working tree.")
+    assert D._hub_outcome(f) == {
+        "state": "warn", "new": False,
+        "text": ("Could not read the hub clone: ambiguous argument "
+                 "'HEAD..origin/main': unknown revision or path not in the "
+                 "working tree")}
+    # a newer week in origin's file is still news, count or no count
+    monkeypatch.setattr(data_mod, "live_newest_week", lambda: "2026-06-27")
+    f = data_mod.check_freshness()
+    assert D._hub_outcome(f)["text"] == ("New flu data: the week ending "
+                                         "Jul 4 is ready to update")
 
 
 # ------------------------------------------------------- the hub card
@@ -172,14 +330,26 @@ def _visible(html: str) -> str:
     return " ".join(re.sub(r"<[^>]+>", " ", html).split())
 
 
-def test_no_new_week_says_up_to_date_and_keeps_update_data_quiet(
-        hub, monkeypatch):  # noqa: F811
-    card = _card(monkeypatch, _behind())
-    # the outcome in plain words, an ok line (the status line speaks it,
-    # so the line has no role of its own)
-    line = card.split('id="hub-outcome"', 1)[1].split("</div></div>", 1)[0]
+def _line(card: str) -> str:
+    return card.split('id="hub-outcome"', 1)[1].split("</div></div>", 1)[0]
+
+
+def test_level_with_the_hub_says_up_to_date(hub, monkeypatch):  # noqa: F811
+    line = _line(_card(monkeypatch, _behind(0)))
     assert '<div class="uk-alert uk-alert--ok" id="hub-outcome-line">' in line
     assert f'<span class="uk-alert-text">{UP_TO_DATE}</span>' in line
+
+
+def test_no_new_week_names_the_other_files_and_keeps_update_data_quiet(
+        hub, monkeypatch):  # noqa: F811
+    card = _card(monkeypatch, _behind())
+    # the outcome in plain words, an info line, not "up to date" (the
+    # status line speaks it, so the line has no role of its own)
+    line = _line(card)
+    assert '<div class="uk-alert uk-alert--info" id="hub-outcome-line">' in line
+    assert ('<span class="uk-alert-text">'
+            + OTHER_FILES.replace("'", "&#39;") + "</span>") in line
+    assert "up to date" not in line
     assert "role=" not in line
     # Check for new data first and the primary; Update data quiet
     assert card.index('id="hub-check"') < card.index('id="hub-pull"')
@@ -237,7 +407,7 @@ def test_the_json_answer_carries_the_outcome(hub, monkeypatch):  # noqa: F811
         "words": "46 commits behind",
         "detail": "46 commits behind origin, no new week of data",
         "new_data": False,
-        "outcome": {"state": "ok", "new": False, "text": UP_TO_DATE}}
+        "outcome": {"state": "info", "new": False, "text": OTHER_FILES}}
 
 
 # ------------------------------------------------- the kit's fold macro
@@ -416,8 +586,8 @@ var fetch = window.fetch;
 
 _PRESS = r"""
 flush();
-var out = [];
-for (var i = 0; i < 2; i++) {
+var out = [], n = ANSWERS.length;
+for (var i = 0; i < n; i++) {
   var ev = {type: 'submit', bubbles: true, defaultPrevented: false,
             preventDefault: function () { this.defaultPrevented = true; }};
   document.getElementById('hub-check').parentNode.dispatchEvent(ev);
@@ -449,12 +619,13 @@ def test_the_cards_script_shows_each_checks_outcome(hub, monkeypatch, tmp_path):
                  _PRESS, prelude=_prelude() + _CHECK % json.dumps(answers))
     assert got["asked"] == [["/freshness", "POST", "application/json"]] * 2
     same, new = got["out"]
-    # no new week: the ok line, spoken by the status line; the count in
-    # the fold as a quiet fact; Check for new data stays the primary
-    assert 'class="uk-alert uk-alert--ok"' in same["outcome"]
-    assert f'<span class="uk-alert-text">{UP_TO_DATE}</span>' in same["outcome"]
+    # no new week: the info line naming the other files, spoken by the
+    # status line; the count in the fold as a quiet fact; Check for new
+    # data stays the primary
+    assert 'class="uk-alert uk-alert--info"' in same["outcome"]
+    assert f'<span class="uk-alert-text">{OTHER_FILES}</span>' in same["outcome"]
     assert "role=" not in same["outcome"]
-    assert same["status"] == UP_TO_DATE
+    assert same["status"] == OTHER_FILES
     assert same["pill"][0] == "neutral" and "46 commits behind" in same["pill"][1]
     assert same["detail"] == ["46 commits behind origin, no new week of data",
                               False]
@@ -465,6 +636,47 @@ def test_the_cards_script_shows_each_checks_outcome(hub, monkeypatch, tmp_path):
     assert f'<span class="uk-alert-text">{NEW_WEEK}</span>' in new["outcome"]
     assert new["status"] == NEW_WEEK
     assert (new["check"], new["pull"]) == ("quiet", "gold")
+
+
+@needs_js
+def test_a_check_that_cannot_compare_still_shows_and_says_a_line(
+        hub, monkeypatch, tmp_path):  # noqa: F811
+    from app.ui import templating
+    monkeypatch.setattr(templating, "_platform", lambda: "linux")
+    page = _data_page(monkeypatch)
+    answers, want = [], []
+    for f, text in (
+            # no hub folder: the card's no-data sentence
+            (F(None, None, None, False,
+               "no hub clone: there is no hub folder at /x"),
+             "No FluSight data: there is no hub folder at /x. To fetch it, "
+             "run ./setup.sh and relaunch the console."),
+            # the commits could not be counted: git's reason
+            (F(None, None, None, False,
+               "could not compare with origin: fatal: bad revision "
+               "'HEAD..origin/main'", local_live="2026-11-21"),
+             "Could not read the hub clone: bad revision "
+             "'HEAD..origin/main'"),
+            # git refused the clone: its reason, not the internet line
+            (F(None, None, None, False,
+               "fetch failed: fatal: not a git repository (or any of the "
+               "parent directories): .git"),
+             "Could not check the FluSight hub: not a git repository (or "
+             "any of the parent directories): .git")):
+        monkeypatch.setattr(data_mod, "check_freshness", lambda f=f: f)
+        answers.append(client.post(
+            "/freshness", headers={"Accept": "application/json"}).json())
+        want.append(text)
+    assert [a["outcome"]["text"] for a in answers] == want
+    got = SD.run(tmp_path, page, [TIPS_JS, _hub_script(page, tmp_path)],
+                 _PRESS, prelude=_prelude() + _CHECK % json.dumps(answers))
+    for o, text in zip(got["out"], want):
+        # a warn line under the buttons, and the status line speaks it
+        assert 'class="uk-alert uk-alert--warn"' in o["outcome"]
+        assert f'<span class="uk-alert-text">{text}</span>' in o["outcome"]
+        assert o["status"] == text
+        # none makes Update data the primary
+        assert (o["check"], o["pull"], o["busy"]) == ("gold", "quiet", False)
 
 
 def test_the_cards_busy_words_are_plain():

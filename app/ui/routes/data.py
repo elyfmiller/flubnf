@@ -274,22 +274,45 @@ def _new_weeks(local, remote) -> str:
     return f"the weeks ending {_day(first)} {joiner} {_day(r)} are"
 
 
+def _git_reason(words: str) -> str:
+    """git's (or the system's) reason as a reader takes it: without its
+    "fatal:" or "error:" lead, an error number ("[Errno 20]"), or a
+    closing full stop."""
+    import re
+    words = re.sub(r"^(fatal|error):\s*", "", (words or "").strip())
+    words = re.sub(r"^\[(Errno|WinError) \d+\]\s*", "", words)
+    return words.rstrip(". ") or "git gave no reason"
+
+
 def _hub_outcome(f, missing=()) -> dict | None:
     """The FluSight hub card's plain outcome after Check for new data:
     {"state": a tips.alert kind, "text": one line, "new": whether Update
-    data is the next step}; None before a check (or with no hub folder,
-    which the card's own alert covers). Commits and origin stay in the
-    card's "Hub clone details" fold; this line says what they mean.
-    `missing`: the comparator folders the clone lacks (a pull adds them)."""
+    data is the next step}; None only before a check, so every check ends
+    in a line the card shows and its status line speaks. Commits and
+    origin stay in the card's "Hub clone details" fold; this line says
+    what they mean. `missing`: the comparator folders the clone lacks (a
+    pull adds them)."""
     if f is None:
         return None
     detail = f.detail or ""
+    reason = detail.split(": ", 1)[1] if ": " in detail else ""
     if detail.startswith("no hub clone"):
-        return None
-    if detail.startswith("fetch failed"):
+        # the card's own no-data sentence (data.html, id="hub-missing")
+        from app.ui.templating import hub_setup_text
         return {"state": "warn", "new": False,
-                "text": ("Could not reach the FluSight hub: check the "
-                         "internet connection and try again")}
+                "text": ((f"No FluSight data: {reason}." if reason
+                          else "No FluSight data.")
+                         + f" To fetch it, {hub_setup_text()}.")}
+    if detail.startswith("fetch failed"):
+        if f.offline:
+            return {"state": "warn", "new": False,
+                    "text": ("Could not reach the FluSight hub: check the "
+                             "internet connection and try again")}
+        # git refused the clone itself (dubious ownership, not a git
+        # repository, a file at the hub path): no connection cures that,
+        # so the line gives git's reason
+        return {"state": "warn", "new": False,
+                "text": f"Could not check the FluSight hub: {_git_reason(reason)}"}
     try:
         if f.remote_live and (not f.local_live or f.remote_live > f.local_live):
             return {"state": "info", "new": True,
@@ -304,7 +327,9 @@ def _hub_outcome(f, missing=()) -> dict | None:
         since = f.local_live or f.local_latest
         lead = f"No new flu data since {_day(since)}" if since else "No new flu data"
     except (TypeError, ValueError):
-        return None
+        return {"state": "warn", "new": False,
+                "text": ("Could not read the hub clone: a week in the flu "
+                         "data is not a date")}
     if f.tree_stale:
         return {"state": "info", "new": True,
                 "text": ("Your copy of the flu data differs from the "
@@ -316,11 +341,25 @@ def _hub_outcome(f, missing=()) -> dict | None:
                 "text": "The hub has changed since your last update: "
                         "Update data brings the changes in"}
     if f.behind is None and not f.is_fresh:
-        return None                       # nothing was compared
+        # nothing compared: git could not count the commits between the
+        # clone and the hub (check_freshness's "could not compare")
+        why = (_git_reason(reason)
+               if detail.startswith("could not compare") else "")
+        return {"state": "warn", "new": False,
+                "text": "Could not read the hub clone"
+                        + (f": {why}" if why else "")}
     if missing:
         return {"state": "info", "new": True,
                 "text": (f"{lead}, but the hub's {' and '.join(missing)} "
                          "forecasts are missing: Update data adds them")}
+    if f.behind:
+        # commits with no newer week still carry files the console reads
+        # (the round's FluSight-ensemble and -baseline submissions, teams'
+        # forecasts): not up to date, but nothing that makes the pull the
+        # next step
+        return {"state": "info", "new": False,
+                "text": (f"{lead}. The hub has other new files, such as "
+                         "teams' forecasts; Update data brings them in.")}
     return {"state": "ok", "new": False, "text": f"{lead}: you are up to date"}
 
 

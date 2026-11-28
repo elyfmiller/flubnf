@@ -415,16 +415,26 @@ class Freshness:
     remote_live: Optional[str] = None    # origin's target file's newest week
     tree_stale: bool = False             # the file on disk is not HEAD's
 
+    @property
+    def offline(self) -> bool:
+        """Whether the fetch failed for want of a network (no host, no
+        connection, a timeout, TLS), not because git refused the clone
+        itself (dubious ownership, not a git repository, a file at the hub
+        path), which a working connection does not cure."""
+        return (self.detail.startswith("fetch failed")
+                and bool(_OFFLINE_RE.search(
+                    re.sub(r"'[^']*'", "", self.detail))))
+
     def pill(self) -> tuple:
         """(class, words) for the Data tab's hub-clone badge, in the card's
         "Hub clone details" fold: ok "up to date"; warn "N weeks behind",
         "new vintage", "stale files"; neutral "N commits behind" (commits
         that bring no new week ask nothing of the reader); bad
-        "offline"."""
+        "offline", or "check failed" for a fetch git refused."""
         if self.detail.startswith("no hub clone"):
             return "bad", "missing"
         if self.detail.startswith("fetch failed"):
-            return "bad", "offline"
+            return "bad", "offline" if self.offline else "check failed"
         if self.remote_live and (not self.local_live
                                  or self.remote_live > self.local_live):
             if not self.local_live:
@@ -447,9 +457,27 @@ class Freshness:
         return "warn", "not checked"
 
 
+#: a failed fetch's words when the hub could not be reached (git's, curl's
+#: or ssh's), matched outside quoted paths; any other failure is git
+#: refusing the clone itself (Freshness.offline)
+_OFFLINE_RE = re.compile(
+    r"could not resolve host|could not resolve proxy|unable to access|"
+    r"failed to connect|couldn't connect|connection refused|"
+    r"connection reset|timed out|network is unreachable|no route to host|"
+    r"\bssl\b|\bssl_|gnutls|\btls\b", re.I)
+
 #: git's refusal when another command holds one of its locks; its last line
 #: ("remove the file manually to continue") names no file
 _LOCKED_RE = re.compile(r"Unable to create '([^']*\.lock)': File exists")
+
+
+def _git_fatal_line(r) -> str:
+    """Why a git command failed, in one line: its fatal line (the last
+    line can be a fragment, such as a usage hint), else its last stderr
+    line, else the exit code."""
+    err = [l.strip() for l in (r.stderr or "").splitlines() if l.strip()]
+    return next((l for l in err if l.startswith("fatal:")),
+                err[-1] if err else f"git exited {r.returncode}")
 
 
 def _git_last_line(r) -> str:
@@ -512,16 +540,17 @@ def check_freshness(fetch: bool = True) -> Freshness:
             if f.returncode != 0:
                 # a network failure exits nonzero without raising; reading the
                 # stale origin/main would then say "up to date". Offline is never fresh.
-                err = (f.stderr or "").strip().splitlines()
-                # prefer git's fatal line: the last line can be a fragment
-                fatal = next((l for l in err if l.startswith("fatal:")),
-                             err[-1] if err else f"git exited {f.returncode}")
-                detail = f"fetch failed: {fatal}"
+                detail = f"fetch failed: {_git_fatal_line(f)}"
             else:
                 r = subprocess.run(
                     ["git", "rev-list", "--count", "HEAD..origin/main"],
                     cwd=HUB, capture_output=True, text=True, timeout=15)
                 behind = int(r.stdout.strip()) if r.returncode == 0 else None
+                if behind is None:
+                    # no count to compare by: git's reason, unless origin's
+                    # files show newer data anyway (below)
+                    detail = ("could not compare with origin: "
+                              + _git_fatal_line(r))
                 ls = subprocess.run(
                     ["git", "ls-tree", "-r", "--name-only", "origin/main",
                      "auxiliary-data/target-data-archive/"],

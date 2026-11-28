@@ -69,10 +69,11 @@
   <p id="hub-status" role="status" aria-live="polite" class="uk-sr"></p>
   <div id="hub-error"></div>
   {# what the last check found, in plain words (routes/data.py
-     _hub_outcome): "No new flu data since Nov 21: you are up to date" or
-     "New flu data: the week ending Nov 28 is ready to update". Nothing
-     before a check; the script puts a new check's answer here, and the
-     status line above speaks it #}
+     _hub_outcome): "No new flu data since Nov 21: you are up to date",
+     "New flu data: the week ending Nov 28 is ready to update", or why
+     the check could not tell. Nothing before a check; every check's
+     answer lands here (the script puts it here), and the status line
+     above speaks it #}
   <div id="hub-outcome">{% if hub_outcome %}{{ tips.alert(hub_outcome.state, hub_outcome.text, id="hub-outcome-line", live="") }}{% endif %}</div>
   {# the clone against origin (commits, origin, the check's own words),
      under the outcome in a closed fold that remembers this reader's
