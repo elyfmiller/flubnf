@@ -470,10 +470,11 @@ def test_over_fifteen_times_reads_red():
 
 
 def test_a_figure_beside_the_red_line_never_reads_against_it():
-    """Red is decided on the unrounded ratio, so a whole number that would
-    read as 15x (15.18 red, 14.58 not, in one report) or on the wrong side
-    of it gets one decimal, in the token and in its words alike; more only
-    while a red one still reads as 15.0. Every other figure is as it was."""
+    """Red is decided on the ratio to two decimals (_above), so a whole
+    number that would read as 15x (15.18 red, 14.58 not, in one report) or
+    on the wrong side of it gets one decimal, in the token and in its words
+    alike, and a second while a red one still reads 15.0. Every other
+    figure is as it was."""
     import html
     name = G._SHORT["analogue"]
 
