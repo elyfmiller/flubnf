@@ -92,12 +92,12 @@ def _behind(n=46, week="2026-11-21", changed=COMP_DIRS, **kw):
                      "in.")),
     (_behind(changed=("auxiliary-data",)), (),
      ("info", False, "No new flu data since Nov 21. The hub has updated "
-                     "auxiliary data; Update data brings them in.")),
+                     "archive files; Update data brings them in.")),
     (_behind(changed=("auxiliary-data", "target-data",
                       "model-output/FluSight-baseline")), (),
      ("info", False, "No new flu data since Nov 21. The hub has new "
                      "FluSight baseline forecasts, revised flu data and "
-                     "updated auxiliary data; Update data brings them in.")),
+                     "updated archive files; Update data brings them in.")),
     # git could not say what the commits change: no claim either way
     (_behind(changed=None), (),
      ("info", False, "No new flu data since Nov 21. The hub has changed "
@@ -256,7 +256,26 @@ def test_a_check_git_refused_keeps_its_reason(hub, monkeypatch):  # noqa: F811
     ("error: RPC failed; curl 56 Recv failure: Connection reset by peer\n"
      "fatal: expected flush after ref listing\n",
      "error: RPC failed; curl 56 Recv failure: Connection reset by peer"),
-], ids=["ssh-timeout", "ssh-unreachable", "ssh-no-host", "transfer-dropped"])
+    ("ssh: connect to host github.com port 22: Bad file number\n"
+     "fatal: Could not read from remote repository.\n",
+     "ssh: connect to host github.com port 22: Bad file number"),
+    ("ssh: connect to host github.com port 22: Host is down\n"
+     "fatal: Could not read from remote repository.\n",
+     "ssh: connect to host github.com port 22: Host is down"),
+    ("kex_exchange_identification: Connection closed by remote host\n"
+     "fatal: Could not read from remote repository.\n",
+     "kex_exchange_identification: Connection closed by remote host"),
+    ("error: RPC failed; curl 18 transfer closed with outstanding read "
+     "data remaining\nfatal: early EOF\n",
+     "error: RPC failed; curl 18 transfer closed with outstanding read "
+     "data remaining"),
+    ("error: RPC failed; curl 92 HTTP/2 stream 5 was not closed cleanly: "
+     "CANCEL (err 8)\nfatal: expected flush after ref listing\n",
+     "error: RPC failed; curl 92 HTTP/2 stream 5 was not closed cleanly: "
+     "CANCEL (err 8)"),
+], ids=["ssh-timeout", "ssh-unreachable", "ssh-no-host", "transfer-dropped",
+        "ssh-bad-file-number", "ssh-host-down", "ssh-closed",
+        "transfer-closed", "http2-stream"])
 def test_a_network_failure_before_gits_fatal_line_is_offline(
         hub, monkeypatch, err, line):  # noqa: F811
     from test_pull_hub import _R, _fake
@@ -396,6 +415,25 @@ def test_the_check_asks_git_what_the_commits_change_in_the_read_folders(
     g = _freshness_git(hub, monkeypatch, behind="3")
     g.answers["diff"] = _R(0, "".join(p + "\n" for p in data_mod.HUB_SKIPPED))
     assert data_mod.check_freshness().changed == ()
+    # the hub's own files FluBNF never reads (the ED-visit targets, oracle
+    # output, its other auxiliary files) are no news either
+    g = _freshness_git(hub, monkeypatch, behind="3")
+    g.answers["diff"] = _R(0, (
+        "target-data/target-ed-visits-prop.csv\n"
+        "target-data/oracle-output.csv\n"
+        "auxiliary-data/nssp-raw-data/latest.csv\n"))
+    f = data_mod.check_freshness()
+    assert f.changed == ()
+    assert D._hub_outcome(f)["text"] == (
+        "No new flu data since Jul 4: you are up to date")
+    # a revision of the admissions file, or of an archived week, is
+    g = _freshness_git(hub, monkeypatch, behind="3")
+    g.answers["diff"] = _R(0, (
+        "target-data/target-hospital-admissions.csv\n"
+        "auxiliary-data/target-data-archive/"
+        "target-hospital-admissions_2026-06-27.csv\n"))
+    assert data_mod.check_freshness().changed == ("auxiliary-data",
+                                                  "target-data")
     # git could not say: unknown, not "nothing changed"
     g = _freshness_git(hub, monkeypatch, behind="3")
     g.answers["diff"] = _R(128, "", "fatal: bad revision 'origin/main'\n")

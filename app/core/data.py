@@ -153,6 +153,9 @@ def no_data_weeks() -> dict:
 #: the hub's live target file, relative to the clone: `git pull` rewrites it
 #: every week, the dated archive copy (vintage_path) is added by hand later
 LIVE_TARGET = "target-data/target-hospital-admissions.csv"
+#: the vintage archive and the locations file, as paths in the hub
+_ARCHIVE_DIR = ARCHIVE.relative_to(HUB).as_posix()
+_LOCATIONS_FILE = LOCATIONS.relative_to(HUB).as_posix()
 
 _live_cache: dict = {}
 
@@ -469,6 +472,8 @@ _OFFLINE_RE = re.compile(
     r"could not resolve host|could not resolve proxy|unable to access|"
     r"failed to connect|couldn't connect|connection refused|"
     r"connection reset|timed out|network is unreachable|no route to host|"
+    r"host is down|bad file number|connection closed by|"
+    r"kex_exchange_identification|rpc failed|transfer closed|"
     r"\bssl\b|\bssl_|gnutls|\btls\b", re.I)
 
 #: git's refusal when another command holds one of its locks; its last line
@@ -505,10 +510,26 @@ def _fetch_reason(r) -> str:
     return _git_fatal_line(r)
 
 
+def _read_here(path: str) -> bool:
+    """Whether FluBNF reads the hub file `path`: of target-data only the
+    live admissions file (LIVE_TARGET), of auxiliary-data only the
+    vintage archive and locations.csv, and every comparator forecast. The
+    hub's other files in those folders (the ED-visit targets, oracle
+    output, HUB_SKIPPED) change on their own and are no news here."""
+    if path in HUB_SKIPPED:
+        return False
+    if path.startswith("target-data/"):
+        return path == LIVE_TARGET
+    if path.startswith("auxiliary-data/"):
+        return (path.startswith(_ARCHIVE_DIR + "/")
+                or path == _LOCATIONS_FILE)
+    return True
+
+
 def _changed_hub_dirs() -> Optional[tuple]:
     """The folders FluBNF reads (HUB_DIRS, in that order) holding files
-    that differ between the clone's HEAD and origin/main, HUB_SKIPPED
-    left out; () for none. Trees only, without rename detection, so a
+    it reads (_read_here) that differ between the clone's HEAD and
+    origin/main; () for none. Trees only, without rename detection, so a
     partial clone fetches no file for it. None when git could not say."""
     try:
         r = subprocess.run(
@@ -520,7 +541,7 @@ def _changed_hub_dirs() -> Optional[tuple]:
     if r.returncode != 0:
         return None
     files = [p.strip() for p in (r.stdout or "").splitlines()]
-    files = [p for p in files if p and p not in HUB_SKIPPED]
+    files = [p for p in files if p and _read_here(p)]
     return tuple(d for d in HUB_DIRS
                  if any(p.startswith(d + "/") for p in files))
 

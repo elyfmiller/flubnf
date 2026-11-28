@@ -374,13 +374,13 @@ def _hub_outcome(f, missing=()) -> dict | None:
 #: of "The hub has ...", in the order said; the comparators' folders are
 #: named from data.COMPARATORS (_hub_news)
 _HUB_DIR_NEWS = (("target-data", "revised flu data"),
-                 ("auxiliary-data", "updated auxiliary data"))
+                 ("auxiliary-data", "updated archive files"))
 
 
 def _hub_news(changed) -> str:
     """What a check's commits change in the folders FluBNF reads (a
     Freshness's `changed`), in words: "new FluSight baseline and ensemble
-    forecasts", "revised flu data", "updated auxiliary data", joined with
+    forecasts", "revised flu data", "updated archive files", joined with
     "and"; "" for none."""
     comp = state.data_mod.COMPARATORS
     names = [name for name, sub in comp if sub in changed]
