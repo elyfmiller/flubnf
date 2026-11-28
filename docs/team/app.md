@@ -6,9 +6,13 @@ pages (TEAM.md, team/README.md, FLUSIGHT-2026-27.md). Works on `dev`.
 
 ## Now
 
+- 2026-11-27 (later): #16 to #19 are merged into `dev` in order, each
+  with a merge commit (#16 5862d429, #17 9d7537bf, #18 41149bb7, #19
+  445aba63). The merged tree is the one tested below; the model-name
+  ceilings stay at 89 files and 840 lines.
 - 2026-11-27 (evening): the second batch of the review's "Now" items is
-  in four pull requests into `dev`, to merge in this order, each with a
-  merge commit; none is merged yet.
+  in four pull requests into `dev`, merged in this order, each with a
+  merge commit.
   - **#16 (ui/run-label):** one name for a run on every page, "Data
     through Nov 21 · forecasts for weeks ending Nov 28 to Dec 19", with
     its FluSight round (or "Not a FluSight round") on a quieter line
