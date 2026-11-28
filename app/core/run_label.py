@@ -1,6 +1,7 @@
 """PRODUCTION: one name for a run, on every page that names one (app/ui:
-Output, Storage, Forecast, the run page, Home) and in the weekly report
-(report_v2): the data it read and the weeks it forecasts,
+Output, Storage, Forecast, the run page, Home), and in the weekly report
+(report_v2) with the year rule below taken against the run's as-of: the
+data it read and the weeks it forecasts,
 
     "Data through Nov 21 · forecasts for weeks ending Nov 28 to Dec 19"
 
@@ -16,9 +17,12 @@ run on your own data never names a round. The four weeks are the forecasts'
 
 Dates read "Nov 21" while every date of a label falls in this year; when
 one does not, every date carries its year, written once at the end of a
-range whose two ends share it ("Nov 22 to Dec 13, 2025"). The weekly
-report takes "this year" as its as-of's (report_v2.report_dates), so a
-stored report reads the same whatever day it is rebuilt.
+range whose two ends share it ("Nov 22 to Dec 13, 2025"). The pages
+take "this year" as today's; the weekly report takes it as the run's
+as-of's (report_v2.report_dates), so a stored report reads the same
+whatever day it is rebuilt, and the report of an earlier year's run leaves
+out years its pages show ("Nov 22 to Dec 13" where they read "Nov 22 to
+Dec 13, 2025").
 
 "Data through" is the newest week of data the run read: what it recorded
 (its outcome's "data_source" "newest_week"); for a run from before that

@@ -359,8 +359,9 @@ def test_storage_rows_read_by_round_and_status(root):
     html = client.get("/storage").text
     row = html.split(f'data-wid="{failed}"', 1)[1].split("</div>", 1)[0]
     words = run_label.text("2098-01-03")
-    assert (f'">{words}</a><span class="uk-run-sub">Not a FluSight round '
-            '(2098-01-10)</span>') in row
+    assert (f'">{words}<span class="uk-sr"> · run '
+            f'{ui_shared._run_time(failed)}</span></a><span class="uk-run-sub">'
+            'Not a FluSight round (2098-01-10)</span>') in row
     assert '<span class="uk-badge-t">failed</span>' in row
     led = html.split('id="ledgerfold"', 1)[1].split("</details>", 1)[0]
     # the ledger groups runs by round, said once; each run by its name and
@@ -370,8 +371,8 @@ def test_storage_rows_read_by_round_and_status(root):
     when = (f"{failed[4:6]}-{failed[6:8]} "
             f"{failed[9:11]}:{failed[11:13]}:{failed[13:15]}")
     assert (f'<a href="/runs/{failed}">{words}<span class="uk-sr"> · run '
-            f'{when}</span></a><span class="uk-run-sub">run {when}</span>'
-            ) in led
+            f'{when}</span></a><span class="uk-run-sub"><span '
+            f'aria-hidden="true">run {when}</span></span>') in led
     assert 'id="st-filter"' in led and 'data-lf="research"' in led
     assert 'data-st="failed"' in led
     assert 'id="st-cap"' not in led

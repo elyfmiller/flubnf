@@ -416,6 +416,12 @@ def test_fold_and_meta():
                   '("folder", "5 MB"), "plain"]) }}')
     assert '<span class="uk-sr">As of: </span><span>2026-09-20</span>' in meta
     assert meta.count("<li>") == 3 and meta.count('aria-hidden="true"') == 2
+    # a fact the row already says to screen readers is kept from them
+    said = render('{{ t.meta([("clock", "run 11-25 22:12:51", "", True), '
+                  '("folder", "5 MB", "", False)]) }}')
+    assert said.startswith('<ul class="uk-meta"><li aria-hidden="true"><svg ')
+    assert said.count('<li aria-hidden="true">') == 1
+    assert said.count("<li>") == 1
 
 
 def test_tag_and_name_chip():
