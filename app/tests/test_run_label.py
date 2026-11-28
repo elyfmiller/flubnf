@@ -173,11 +173,14 @@ def test_one_run_reads_the_same_on_every_page(root):
     assert f">{words}</h2>" in out
     # Storage's ledger and its workroot row
     st = client.get("/storage").text
-    assert f'<a href="/runs/{rid}">{words}</a>' in st          # workroot row
     # the ledger's link carries the start in hidden words, as every link
     # that shows the start does: one week's runs have names of their own;
     # the start seen under it is kept from screen readers, read once
     hidden = f'<span class="uk-sr"> · run {when}</span>'
+    # the workroot row's link too, its start seen in the meta line
+    assert (f'<a href="/runs/{rid}">{words}{hidden}</a>'
+            f'<span class="uk-run-sub">Not a FluSight round (2098-01-10)'
+            '</span>') in st
     assert (f'<a href="/runs/{rid}">{words}{hidden}</a>'
             f'<span class="uk-run-sub"><span aria-hidden="true">run {when}'
             '</span></span>') in st
@@ -227,6 +230,14 @@ def test_a_run_link_showing_its_start_has_a_name_of_its_own():
         assert "aria-hidden" not in runname(**kw)
     assert runname().endswith('<span class="uk-run-sub">FluSight round '
                               '2026-11-28 · run 11-25 22:12:51</span></span>')
+    # when="hidden": the start in the link's hidden words alone, for a row
+    # that shows it in a line of its own (Storage's workroot rows)
+    assert runname(href="/runs/x", when="hidden") == (
+        '<span class="uk-run"><a href="/runs/x">' + n["text"]
+        + '<span class="uk-sr"> · run 11-25 22:12:51</span></a>'
+        '<span class="uk-run-sub">FluSight round 2026-11-28</span></span>')
+    assert runname(href="/runs/x", when="hidden", round=False).endswith(
+        '</span></a></span>')
     n["when"] = ""                        # a name with no run's start
     assert "uk-sr" not in runname(href="/runs/x")
     assert "aria-hidden" not in runname(href="/runs/x")

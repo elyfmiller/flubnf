@@ -359,8 +359,9 @@ def test_storage_rows_read_by_round_and_status(root):
     html = client.get("/storage").text
     row = html.split(f'data-wid="{failed}"', 1)[1].split("</div>", 1)[0]
     words = run_label.text("2098-01-03")
-    assert (f'">{words}</a><span class="uk-run-sub">Not a FluSight round '
-            '(2098-01-10)</span>') in row
+    assert (f'">{words}<span class="uk-sr"> · run '
+            f'{ui_shared._run_time(failed)}</span></a><span class="uk-run-sub">'
+            'Not a FluSight round (2098-01-10)</span>') in row
     assert '<span class="uk-badge-t">failed</span>' in row
     led = html.split('id="ledgerfold"', 1)[1].split("</details>", 1)[0]
     # the ledger groups runs by round, said once; each run by its name and
