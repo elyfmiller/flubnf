@@ -367,8 +367,11 @@ def test_storage_rows_read_by_round_and_status(root):
     # its time
     assert led.count('<span class="uk-run-sub">Not a FluSight round '
                      '(2098-01-10)</span></th></tr>') == 1
-    assert (f'<a href="/runs/{failed}">{words}</a><span class="uk-run-sub">'
-            f'run {failed[4:6]}-{failed[6:8]} ') in led
+    when = (f"{failed[4:6]}-{failed[6:8]} "
+            f"{failed[9:11]}:{failed[11:13]}:{failed[13:15]}")
+    assert (f'<a href="/runs/{failed}">{words}<span class="uk-sr"> · run '
+            f'{when}</span></a><span class="uk-run-sub">run {when}</span>'
+            ) in led
     assert 'id="st-filter"' in led and 'data-lf="research"' in led
     assert 'data-st="failed"' in led
     assert 'id="st-cap"' not in led

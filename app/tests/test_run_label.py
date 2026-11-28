@@ -173,17 +173,50 @@ def test_one_run_reads_the_same_on_every_page(root):
     assert f">{words}</h2>" in out
     # Storage's ledger and its workroot row
     st = client.get("/storage").text
-    assert f'<a href="/runs/{rid}">{words}</a>' in st
+    assert f'<a href="/runs/{rid}">{words}</a>' in st          # workroot row
+    # the ledger's link carries the start in hidden words, as every link
+    # that shows the start does: one week's runs have names of their own
+    hidden = f'<span class="uk-sr"> · run {when}</span>'
+    assert (f'<a href="/runs/{rid}">{words}{hidden}</a>'
+            f'<span class="uk-run-sub">run {when}</span>') in st
     # the Forecast tab's Latest run card and the fans' run
     fc = client.get("/forecast").text
     card = fc.split('class="card fc-latest"', 1)[1]
-    assert (f'<a href="/runs/{rid}" id="fc-latest-run">{words}</a>'
+    assert (f'<a href="/runs/{rid}" id="fc-latest-run">{words}{hidden}</a>'
             f'<span class="uk-run-sub">Not a FluSight round (2098-01-10) · '
             f'run {when}</span>') in card
+    assert (f'<a href="/runs/{rid}" id="fc-fan-run">{words}{hidden}</a>'
+            in fc)
     # no page names it by a bare date any more
     for html in (page, out, st):
         assert "as of 2098-01-03" not in html
         assert "Reference date" not in html
+
+
+def test_a_run_link_showing_its_start_has_a_name_of_its_own():
+    """Three runs of one week linked with the same words: the start sat
+    outside the link. With the start shown, the link carries it in hidden
+    words (the kit's uk-sr); what is seen is unchanged."""
+    from app.ui.templating import templates
+
+    def runname(**kw):
+        return templates.env.from_string(
+            '{% import "_tips.html" as t %}{{ t.runname(n, **kw) }}'
+        ).render(n=n, kw=kw)
+
+    n = {"text": "Data through Nov 21 · forecasts for weeks ending Nov 28 "
+                 "to Dec 19", "round": "FluSight round 2026-11-28",
+         "when": "11-25 22:12:51"}
+    assert runname(href="/runs/x") == (
+        '<span class="uk-run"><a href="/runs/x">' + n["text"]
+        + '<span class="uk-sr"> · run 11-25 22:12:51</span></a>'
+        '<span class="uk-run-sub">FluSight round 2026-11-28 · run 11-25 '
+        '22:12:51</span></span>')
+    # no start shown, or no link: nothing hidden
+    for kw in ({"href": "/runs/x", "when": False}, {}):
+        assert "uk-sr" not in runname(**kw)
+    n["when"] = ""                        # a name with no run's start
+    assert "uk-sr" not in runname(href="/runs/x")
 
 
 def test_a_recorded_week_and_a_stored_series_name_the_data(root):

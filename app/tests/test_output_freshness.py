@@ -84,8 +84,8 @@ def test_the_report_buttons_name_the_run_beside_as_of(root):
     # time under it, as the file rows name theirs
     when = (f"{latest[4:6]}-{latest[6:8]} "
             f"{latest[9:11]}:{latest[11:13]}:{latest[13:15]}")
-    assert (f'<a href="/runs/{latest}">{run_label.text("2098-01-10")}</a>'
-            in card)
+    assert (f'<a href="/runs/{latest}">{run_label.text("2098-01-10")}'
+            f'<span class="uk-sr"> · run {when}</span></a>' in card)
     assert (f'<span class="uk-run-sub">Not a FluSight round (2098-01-17) · '
             f'run {when}</span>') in card
     # the link serves that run's report, under the dated name and its id

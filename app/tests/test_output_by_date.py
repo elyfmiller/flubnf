@@ -212,7 +212,8 @@ def test_own_data_runs_are_listed_apart_with_their_exports(root):
     # the run by its name, with no round (your own data)
     assert ">Clinic admissions</h3>" in block
     assert (f'<p class="out-set-run"><span class="uk-run"><a href="/runs/'
-            f'{w.name}">{run_label.text("2098-01-10")}</a>') in block
+            f'{w.name}">{run_label.text("2098-01-10")}<span class="uk-sr"> · '
+            f'run {ui_shared._run_time(w.name)}</span></a>') in block
     assert "FluSight round" not in block and "as of" not in block
     assert "2098-01-17-FluBNF-Groundhog.csv" in block
     # with runs to list, no empty state
