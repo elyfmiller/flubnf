@@ -234,6 +234,11 @@ def test_storage_groups_runs_by_round_said_once(root):
     led = client.get("/storage").text.split('id="ledgerfold"', 1)[1] \
         .split("</details>", 1)[0]
     assert led.count(">Not a FluSight round (2098-01-10)</span></th>") == 1
+    # the heading heads its group's rows (the table has no <colgroup>)
+    assert ('<tr class="st-ghead"><th colspan="5" scope="rowgroup"><span '
+            'class="uk-run-sub">Not a FluSight round (2098-01-10)</span></th>'
+            '</tr>') in led
+    assert 'scope="colgroup"' not in led
     assert led.count("Not a FluSight round (2098-01-10)") == 1
     assert '<tbody class="st-group">' in led and "<thead>" in led
     # a run on your own data: grouped under its dataset, never a round

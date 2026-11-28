@@ -74,7 +74,7 @@
 <div class="tablewrap st-ledger"><table><thead><tr><th>run</th><th>status</th><th>elapsed</th><th class="num">on disk</th><th>summary</th></tr></thead>
 {% set rn = namespace(i=0) %}
 {% for g in groups %}<tbody class="st-group">
-{% if g.heading %}<tr class="st-ghead"><th colspan="5" scope="colgroup"><span class="uk-run-sub">{{ g.heading }}</span></th></tr>{% endif %}
+{% if g.heading %}<tr class="st-ghead"><th colspan="5" scope="rowgroup"><span class="uk-run-sub">{{ g.heading }}</span></th></tr>{% endif %}
 {% for r in g.rows %}{% set rn.i = rn.i + 1 %}{% set ri = rn.i %}
 {# the modified-settings fact, read from the outcome: whether the files
    took the hub names by override, said once in the run label's badge #}

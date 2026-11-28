@@ -127,7 +127,9 @@
     gap:.3rem .8rem;padding:.6rem .1rem;border-top:1px solid var(--line)}
   .st-ledger tr[data-st][hidden]{display:none}
   .st-ledger tr[data-st] > td{display:block;padding:0;border:0;text-align:left}
-  .st-ledger td.st-run{grid-column:1}
+  /* the name shares its line with the status: no floor of its own, so a
+     wide status ("interrupted") keeps its room at 320px */
+  .st-ledger td.st-run{grid-column:1;min-width:0}
   .st-ledger td.st-stat{grid-column:2;grid-row:1;justify-self:end}
   .st-ledger td[data-l]::before,.st-ledger td.elapsed::before{
     content:attr(data-l) " ";color:var(--mut);
