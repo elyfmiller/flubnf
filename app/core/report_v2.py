@@ -1033,7 +1033,7 @@ def report_dates(asof: str, data_through=None) -> dict:
     """The report's dates from its as-of: the reference date (as-of + 7,
     submit.hub_reference_date's rule), the four target weeks (horizons 0
     to 3: the reference date and the three Saturdays after it), and the
-    header's words, the run's name as every page says it
+    header's words, the run's name in the pages' words
     (app/core/run_label): "line" ("Data through Nov 21 · forecasts for
     weeks ending Nov 28 to Dec 19", from the week the run recorded reading
     when given), "round" ("FluSight round 2026-11-28") and "title" (the
@@ -1041,7 +1041,9 @@ def report_dates(asof: str, data_through=None) -> dict:
 
     The line's year rule is taken against the as-of, not the day the page
     is built: a stored or shared report reads the same whenever it is
-    rebuilt, its dates carrying their years only when they cross one."""
+    rebuilt, its dates carrying their years only when they cross one. The
+    pages take it against today, so an earlier year's run reads there with
+    years this header leaves out."""
     from datetime import date as _date, timedelta as _td
     from app.core import run_label
     try:

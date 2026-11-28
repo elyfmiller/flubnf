@@ -56,15 +56,22 @@ def _render(tmp_path, **kw):
         .read_text(encoding="utf-8")
 
 
-def test_title_and_page_name_the_run_as_every_page_does(tmp_path):
-    # the header names the run as the console does (app/core/run_label):
-    # the data it read and the weeks it forecasts, its round under that;
-    # the reference date stays in the file names, never as a name of its
-    # own. The title carries the round after the name (its year with it)
+def test_title_and_page_name_the_run_in_the_pages_words_by_its_as_of_year(
+        tmp_path):
+    """The header names the run in the console's words (app/core/run_label:
+    the data it read and the weeks it forecasts, its round under that),
+    with the year rule taken against the run's as-of, not today; the
+    reference date stays in the file names, never as a name of its own.
+    The title carries the round after the name (its year with it). The
+    console names the same run by today's year rule, with its years."""
+    from app.ui import shared as ui_shared
     html = _render(tmp_path)
     words = run_label.text("2098-01-03", today="2098-01-03")
     assert words == ("Data through Jan 3 · forecasts for weeks ending "
                      "Jan 10 to Jan 31")
+    console = ui_shared._run_name("", {"forecast_date": "2098-01-03"})["text"]
+    assert console == run_label.text("2098-01-03")
+    assert console.endswith(", 2098") and console != words
     assert (f"<title>FluBNF weekly report: {words} (Not a FluSight round, "
             "2098-01-10)</title>") in html
     assert '<span class="rp-weekname"><span class="rp-week">' in html
