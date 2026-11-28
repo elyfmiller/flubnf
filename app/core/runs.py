@@ -330,13 +330,13 @@ def is_modified(spec) -> bool:
 
 
 def is_contained(spec) -> bool:
-    """Kept off the shipped-product surfaces (Home, Models, the forecast
-    archive, the public site): a research run, or a modified run whose
-    files carry the non-hub name. An override puts it back. Where a person
-    works with their own runs a modified one shows, badged, so a run made
-    on purpose is never hidden from the person who made it: Output's
-    weekly report card (2026-10-14), its -modified files under their date,
-    and the Forecast tab's fans (2026-10-15)."""
+    """A run whose files are not for the hub: a research run, or a
+    modified run whose files carry the non-hub name (an override puts the
+    hub names back). Research runs stay off Home, Output, the model pages
+    and the forecast archive; a modified run is shown there since
+    2026-11-27 (the newest real-time run, whatever its settings), marked
+    "modified settings", and Output's report card says "modified · non-hub
+    names" for this kind."""
     from app.core import knobs as K
     return is_research(spec) or not K.hub_names(spec)
 

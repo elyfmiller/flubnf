@@ -82,7 +82,11 @@
 <div class="card hm-outlook">
  {# the h2 names the payload; the run it shows sits under it by its name,
     as every page names a run (tips.runname: the data it read, the weeks it
-    forecasts, its FluSight round); how to read the map is its "i" #}
+    forecasts, its FluSight round); how to read the map is its "i". The
+    run is the newest real-time one whatever its settings
+    (shared._latest_results): one made with modified settings carries the
+    badge the model pages and the Forecast tab give it, once, on this line
+    (the map and the Weekly report below are that run's) #}
  {% set _nm = outlook_name if (outlook_name is defined and outlook_name) else (run_name_for(outlook_date) if outlook_date else none) %}
  {% call tips.heading("US categorical forecast",
                       "hm-map", rich=True, tip_label="reading the map") %}
@@ -96,7 +100,7 @@
   pans, and a double-click resets the view.</span>
   {% endif %}
  {% endcall %}
- {% if _nm and _nm.text %}<p class="hm-run" id="hm-run">{{ tips.runname(_nm, href=("/runs/" ~ outlook_rid) if (outlook_rid is defined and outlook_rid) else "", when=False) }}</p>{% endif %}
+ {% if _nm and _nm.text %}<p class="hm-run" id="hm-run">{{ tips.runname(_nm, href=("/runs/" ~ outlook_rid) if (outlook_rid is defined and outlook_rid) else "", when=False) }}{% if outlook_modified is defined and outlook_modified %} {{ tips.badge("warn", "modified settings", id="hm-mod") }}{% endif %}</p>{% endif %}
  {# the map's facts and its model control in one bar. The label span is
     the toggle's data-mapmodel-label target (same computation as the weekly
     report, via the inputs bundle); with a toggle the pressed button names

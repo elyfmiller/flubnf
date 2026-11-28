@@ -101,10 +101,11 @@
    label. While a round is
    open its CSV downloads are the page's primary, so this one is quiet. #}
 {% set rep_when %}{% if has_report and report_name and report_name.text %}{{ tips.runname(report_name, href="/runs/" ~ rid, cls="out-repname") }}{% endif %}
-{#- the newest run with modified settings and no override: shown here,
-    badged (routes/output.output_page report_modified); the same badge
-    tags its -modified files under their date below #}
-{%- if report_modified %}<span class="out-bt">{{ tips.badge("warn", "modified · non-hub names", id="out-rep-mod") }}</span>{% endif %}{% endset %}
+{#- the run Home shows, here with modified settings: badged
+    (routes/output.output_page report_mod), "modified · non-hub names"
+    without the override, as the same badge tags its -modified files
+    under their date below, else "modified settings", as Home says #}
+{%- if report_mod %}<span class="out-bt">{{ tips.badge("warn", report_mod, id="out-rep-mod") }}</span>{% endif %}{% endset %}
 {% set rep_acts %}{% if has_report %}<a class="btn quiet" href="/runs/{{ rid }}/report" target="_blank">{{ tips.icon("external") }} Open report</a>
 <a class="btn {{ 'quiet' if has_due else 'gold' }}" href="/runs/{{ rid }}/report/download" download>{{ tips.icon("download") }} Download report</a>{% endif %}{% endset %}
 <div class="card out-report" id="weekly-report">
@@ -112,9 +113,10 @@
  {% if not has_report %}{{ tips.empty("No report for the latest run" if rid else "No report yet", "clock", compact=True, id="out-noreport") }}{% endif %}
  {% if archive_dates %}
  {# each archived week by its run's name, as the cards are headed (the
-    card's own week too when the card shows a newer run on a few states
-    or a modified one); the value stays the as-of date the archive is
-    filed under #}
+    card's own week too when the card shows another run than the week's
+    archive holds), with "(modified settings)" after a run made with
+    modified settings (an option holds words, never a badge); the value
+    stays the as-of date the archive is filed under #}
  <div class="out-arch">
   <label for="archreport">Archived weeks</label>
   <select id="archreport">

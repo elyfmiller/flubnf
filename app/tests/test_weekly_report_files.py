@@ -165,7 +165,7 @@ def test_the_output_reports_download_takes_its_runs_suffix(root, monkeypatch):
     monkeypatch.setattr(O, "_report_for_serving", lambda d: None)
     shipped = "2026-10-24-NAU_PyBNF-weekly-report.html"
     modified = "2026-10-24-NAU_PyBNF-weekly-report-modified.html"
-    # the shipped rule (no date): the run Home shows
+    # no date: the run Home shows (the newest real-time run)
     rid = _run(root, extra=OVERRIDE)
     _as_recorded(root, rid)
     ui_shared._invalidate_scans()          # as a finished run does

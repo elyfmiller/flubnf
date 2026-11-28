@@ -152,7 +152,16 @@ The 2026-27 season is the Oracle SIHRS model's first prospective test.
    CSVs; the week's archived report (Output, Archived weeks) as
    `<reference_date>-NAU_PyBNF-weekly-report.html`.
    Then check the hub-check badge and the due / soon / closed badge.
-   Files land in `app/state/archive/<forecast_date>/`. For the authoritative
+   Files land in `app/state/archive/<forecast_date>/`. Home, its Weekly
+   report, Output's report card and the model pages show the newest
+   real-time run whatever its settings; a run with modified settings is
+   marked as modified there and in Archived weeks, and is archived
+   like any other, its files and report under their `-modified` names,
+   except that a week's archived hub-named files are never replaced by
+   `-modified` ones. Archived weeks also lists a past week with no
+   archive folder (the weeks run with modified settings before such runs
+   were archived) by the run the archive would hold for it.
+   For the authoritative
    check: `Rscript scripts/validate_submission.R <file.csv> <hub_clone> --window`
    (or `python scripts/validate_submission.py ...`).
 6. Upload: FluBNF only writes files. Copy each into

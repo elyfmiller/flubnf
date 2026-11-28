@@ -1113,13 +1113,13 @@ def _run_all(spec: RunSpec) -> None:
                    if pf2s_samples else {}),
             })}), encoding="utf-8")
         _os.replace(_tmp, workroot / "results.json")   # readers never see a half-write
-        # 7. forecast archive: one folder per date, latest run wins; only the
-        # shipped product's full run archives (audit rr-1)
+        # 7. forecast archive: one folder per date, latest run wins; a full
+        # run of both models archives whatever its model settings (a
+        # modified run's files keep their -modified names, and never
+        # replace a week's hub-named files); a research run never does
+        # (audit rr-1)
         if _research:
             outcome["archived"] = "skipped: research run"
-        elif _suffix:
-            outcome["archived"] = ("skipped: modified model settings (files "
-                                   "carry the non-hub name)")
         elif spec.engine in ("analogue", "pf"):
             outcome["archived"] = (f"skipped: {'analogue' if spec.engine == 'analogue' else 'Oracle SIHRS'}"
                                    "-only run is not the date's forecast")
@@ -1131,7 +1131,7 @@ def _run_all(spec: RunSpec) -> None:
                          and not outcome.get("submission_withheld")
                          and not outcome.get("submission_dropped")
                          and {hub_model_id("pf"), hub_model_id("analogue")}
-                         <= set(subs))
+                         <= _members_written(subs))
             from app.core.archive_record import full_scope as _full_scope
             _full = _full_scope(spec.locations)
             # a backtest of a past week (vintage) never replaces the run
@@ -1204,6 +1204,29 @@ def _run_all(spec: RunSpec) -> None:
 
 
 # === Forecast archive ===
+def _members_written(subs) -> set:
+    """The hub model ids a run wrote a file for, under either name: its
+    hub name or, for a run with modified model settings, the -modified one
+    (knobs.MODIFIED_SUFFIX), so the archive counts both runs' files alike."""
+    suffix = _knobs.MODIFIED_SUFFIX
+    return {str(m)[:-len(suffix)] if str(m).endswith(suffix) else str(m)
+            for m in (subs or {})}
+
+
+def _archived_modified(folder: Path) -> bool:
+    """Whether the run whose files `folder` holds was made with modified
+    model settings: its results.json spec says so, else the knobs.json
+    such a run writes beside its files (archive_record.modified_of)."""
+    from app.core import archive_record as _ar
+    try:
+        spec = (_ar._read(Path(folder) / "results.json") or {}).get("spec")
+        if _knobs.modified(spec or ""):
+            return True
+    except Exception:
+        pass
+    return (Path(folder) / "knobs.json").is_file()
+
+
 def _archive_run(workroot: Path, forecast_date: str,
                  complete: bool = True, full: bool = True,
                  realtime: bool = True) -> str:
@@ -1213,10 +1236,14 @@ def _archive_run(workroot: Path, forecast_date: str,
 
     Never a downgrade (app/core/archive_record.py): an incomplete run
     (`complete` False) does not replace an archive that holds a complete
-    one, nor a backtest (`realtime` False) one that holds a real-time run.
-    Then nothing is copied, the run's files stay in its own folder, and the
-    answer is "kept: <why>". The archive records which run it holds
-    (archive.json)."""
+    one, nor a backtest (`realtime` False) one that holds a real-time run,
+    nor a run whose files carry the -modified names one whose files carry
+    the hub names (read from the run's own folder). Then nothing is
+    copied, the run's files stay in its own folder, and the answer is
+    "kept: <why>". The archive records which run it holds, whether that
+    run was made with modified model settings and whether its files carry
+    the hub names (archive.json); it keeps -modified files under their
+    -modified names."""
     import os
     import shutil
     from app.core import archive_record as _ar
@@ -1233,19 +1260,24 @@ def _archive_run(workroot: Path, forecast_date: str,
             shutil.rmtree(old)
         else:                   # crashed between the two renames below:
             os.replace(old, arch)   # the parked previous archive comes back
-    keep = _ar.keep_reason(arch, complete, full, realtime)
+    # a run that wrote no file is not held to the files' names
+    keep = _ar.keep_reason(arch, complete, full, realtime,
+                           hub_names=_ar.files_hub_named(workroot)
+                           is not False)
     if keep:
         return f"kept: {keep}"
     build.mkdir(parents=True)
     try:
-        # the report travels with its inputs bundle (rebuildable)
-        # knobs.json exists only for a modified run (by override)
+        # the report travels with its inputs bundle (rebuildable);
+        # knobs.json exists only for a run with modified model settings
         for name in ("results.json", "report.html", BUNDLE_NAME, "knobs.json"):
             if (workroot / name).is_file():
                 shutil.copy2(workroot / name, build / name)
         if (workroot / "submission").is_dir():
             shutil.copytree(workroot / "submission", build / "submission")
-        _ar.write_record(build, Path(workroot).name, complete, full)
+        _ar.write_record(build, Path(workroot).name, complete, full,
+                         modified=_archived_modified(build),
+                         hub_names=bool(_ar.files_hub_named(build)))
     except BaseException:
         shutil.rmtree(build, ignore_errors=True)
         raise

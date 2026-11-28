@@ -227,9 +227,9 @@ def forecast_page(request: Request, source: str = "", tab: str = ""):
     # a refusal over the model settings opens the panel on this page only;
     # a later visit shows it as the user left it
     _last_form.pop("ms_refused", None)
-    # the fans draw the newest run that wrote forecasts, its settings
-    # modified or not (badged); Home and Output keep to the shipped ones
-    rid, res = shared._latest_results(include_modified=True, newest=True)
+    # the fans draw the newest run, its settings modified or not (badged)
+    # and whatever its week; Home and Output keep to the newest real-time one
+    rid, res = shared._latest_results(newest=True)
     # data panel: latest-vintage series for the selected locations (visible
     # before any run); seeded with US national, the panel's default
     import json as _json
