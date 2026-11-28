@@ -140,8 +140,11 @@ The 2026-27 season is the Oracle SIHRS model's first prospective test.
    cap moved it (21x -> 10x). On a run with a cap the level is the one
    that model's cap multiplies (Upper-tail level: the three-week mean,
    the last week or the larger) and red is above the run's own cap (10x),
-   so red marks what the cap moved; on a run with no cap it is the mean
-   of the last three weeks and red is above 15x. One line under the
+   where the cap acts; the arrow and a "cap applied" link show where it
+   changed the file (rounding to whole admissions, or a median already
+   above the cap, can leave a red figure's file as it was). On a run with
+   no cap the level is the mean of the last three weeks and red is above
+   15x. One line under the
    legend says which. The report opens on what was submitted. The
    "Charts: Submitted / Before cap" switch at the top shows every
    location's own forecast instead, to review how much the output stage

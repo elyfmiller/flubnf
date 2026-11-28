@@ -275,7 +275,7 @@ def test_the_legend_says_which_line_in_three_forms(tmp_path):
 
 # --------------------------------------------- a capped run, rendered
 
-def _report(folder: Path, cap_values=None, raw=None) -> str:
+def _report(folder: Path, cap_values=None, raw=None, bundle_cap=...) -> str:
     """The shared bundle rendered into `folder` with Ohio's, Alabama's and
     the United States' Oracle SIHRS files lowered by a cap and, beside the
     report, a
@@ -284,6 +284,8 @@ def _report(folder: Path, cap_values=None, raw=None) -> str:
     own h3 97.5% 900; Alabama's 21, 22, 23 (mean 22, larger 23) and 276;
     the United States' 21, 22, 23 and 276."""
     b = _bundle()
+    if bundle_cap is not ...:
+        b["tail_cap"] = bundle_cap
     b["details"]["US"] = dict(b["details"]["OH"], name="United States")
     panels = {p["key"]: p for p in b["grid"]["panels"]}
     panels["OH"]["observed"][-3:] = [[d, v] for (d, _), v in zip(
@@ -394,3 +396,90 @@ def test_an_uncapped_run_reads_as_before(tmp_path):
         "week (h3, ending Jan 31), as a multiple of the average of the last "
         "three weeks of data, before the cap; red above 15×. → marks the "
         "same figure in the submitted file, after the cap.")
+
+
+# ------------------------------------------- the cap as the run recorded it
+
+def _raw_record(folder: Path, values: dict, effective: dict) -> Path:
+    """knobs.json with `values` and an "effective" table of `effective`
+    ({key: value}), as a run whose knobs were fewer than today's wrote it."""
+    folder.mkdir(parents=True, exist_ok=True)
+    rows = [{"key": k, "value": v, "default": v} for k, v in effective.items()]
+    (folder / "knobs.json").write_text(json.dumps(
+        {"values": values, "effective": rows}), encoding="utf-8")
+    return folder
+
+
+def test_a_cap_reads_as_the_run_recorded_it_never_by_todays_defaults(
+        tmp_path, monkeypatch):
+    """A knob the run did not record is never filled from today's default:
+    the runs of 2026-10-24 to 11-04 recorded a cap of 10 and shrink before
+    the level knob existed, and capped on the mean; a run that recorded no
+    cap had none. Changing today's defaults changes neither."""
+    monkeypatch.setattr(tailcap, "LEVEL_PRODUCTION", "larger")
+    monkeypatch.setattr(tailcap, "CAP_PRODUCTION", 10.0)
+    monkeypatch.setattr(tailcap, "MODE_PRODUCTION", "shrink")
+    old = _raw_record(tmp_path / "old", {"output.tail_cap": 10.0,
+                                         "output.tail_mode": "shrink"},
+                      {"output.tail_cap": 10.0, "output.tail_mode": "shrink"})
+    cap = G.cap_settings(old)
+    assert cap["n"] == 10.0 and cap["level"] == "mean"
+    assert cap["levels"] == tailcap.member_levels("mean")
+    older = _raw_record(tmp_path / "older", {"output.tail_cap": 15.0}, {})
+    assert G.cap_settings(older)["mode"] == "clip"
+    # no cap recorded: none, whatever today's registered cap
+    none = _raw_record(tmp_path / "none", {"pf.particles": 5000},
+                       {"pf.particles": 5000})
+    assert G.cap_settings(none) is None
+    # a value the run used at its default sits in the effective table only
+    deflt = _raw_record(tmp_path / "default", {"output.tail_cap": 10.0},
+                        {"output.tail_cap": 10.0,
+                         "output.tail_level": "last"})
+    assert G.cap_settings(deflt)["level"] == "last"
+    assert K.read_record(deflt)["output.tail_level"] == "last"
+
+
+def test_a_bundle_that_records_its_cap_is_read_before_the_knobs(tmp_path):
+    """A report bundle written since the cap was recorded in it says the
+    cap itself: its own n, level and form, read before the knobs.json
+    beside it; null there is no cap, whatever the file says."""
+    page = _report(tmp_path / "rec", {"output.tail_cap": 15.0},
+                   bundle_cap={"n": 10.0, "level": "larger",
+                               "mode": "shrink"})
+    assert "red</span> above 10×, the run's cap" in page
+    page = _report(tmp_path / "null", {"output.tail_cap": 10.0},
+                   bundle_cap=None)
+    assert "red</span> above 15×." in page
+    assert "the run's cap" not in page
+
+
+def test_the_run_writes_its_cap_into_the_report_bundle(tmp_path, monkeypatch):
+    """The pipeline records the cap it applied (outcome["tail_cap"]: n,
+    level, mode) in the report bundle, so the report's red line stays the
+    run's own whatever later defaults or files say."""
+    from app.tests.test_outlook_toggle import _synth_run_all_models
+    from app.ui import pipeline as ui_pipeline
+    real = ui_pipeline._write_weekly_report
+
+    def capped(*a, **k):
+        outcome = a[8]
+        outcome["tail_cap"] = {"n": 10.0, "mode": "shrink",
+                               "level": "larger",
+                               "levels": tailcap.member_levels("larger"),
+                               "recent_weeks": 3, "cells": {}}
+        return real(*a, **k)
+    monkeypatch.setattr(ui_pipeline, "_write_weekly_report", capped)
+    wr = tmp_path / "wr"
+    _synth_run_all_models(wr)
+    bundle = json.loads((wr / report_v2.BUNDLE_NAME).read_text(
+        encoding="utf-8"))
+    assert bundle["tail_cap"] == {"n": 10.0, "level": "larger",
+                                  "mode": "shrink"}
+    assert "red</span> above 10×, the run's cap" in (
+        wr / "report.html").read_text(encoding="utf-8")
+    # a run with no cap records null
+    monkeypatch.setattr(ui_pipeline, "_write_weekly_report", real)
+    wr2 = tmp_path / "wr2"
+    _synth_run_all_models(wr2)
+    assert json.loads((wr2 / report_v2.BUNDLE_NAME).read_text(
+        encoding="utf-8"))["tail_cap"] is None

@@ -1712,9 +1712,13 @@ def render_bundle(bundle: dict, out_path: Path) -> Path:
     # a location opens on the file and switches to the model's own
     submitted = report_grid.submitted_fans(Path(out_path).parent)
     grid = report_grid.attach_submitted(bundle.get("grid"), submitted)
-    # the run's own upper-tail cap, from its knobs.json there too (None for
-    # a shipped run): the tail figures go red above it
-    tail_cap = report_grid.cap_settings(Path(out_path).parent)
+    # the run's own upper-tail cap (None for none): the tail figures go red
+    # above it. A bundle written since the cap was recorded in it says so
+    # itself ("tail_cap", null for none); an older one reads the run's
+    # knobs.json beside the report
+    tail_cap = (report_grid.cap_of_record(bundle.get("tail_cap"))
+                if "tail_cap" in bundle
+                else report_grid.cap_settings(Path(out_path).parent))
     by_key = {p.get("key"): p for p in (grid or {}).get("panels") or []}
     details = {}
     for key, d in (bundle.get("details") or {}).items():

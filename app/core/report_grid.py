@@ -301,28 +301,51 @@ _LEVEL_SHORT = {"mean": "the last three weeks' average",
                           "average"}
 
 
-def cap_settings(folder) -> dict | None:
-    """The run's own upper-tail cap, as the knobs.json beside its report
-    records it (app.core.knobs.read_record: written for a modified run,
-    carried into an archived week): {"n": the multiple, "level": the
-    knob's choice, "levels": {member: level} (flubnf.tailcap.member_levels),
-    "mode": the cap's form}. None for a run with no cap: no file (a shipped
-    run, whose registered cap is tailcap.CAP_PRODUCTION, none), a cap of 0,
-    or a file or value that does not read. Never raises."""
+#: the cap's level and form before their knobs existed (output.tail_level
+#: came on 2026-11-11, output.tail_mode before it): a run that records a cap
+#: but not these capped on the mean of the last three weeks, by clipping
+_LEVEL_BEFORE_KNOB, _MODE_BEFORE_KNOB = "mean", "clip"
+
+
+def cap_of_record(rec) -> dict | None:
+    """A run's upper-tail cap from what the run recorded ({"n", "level",
+    "mode"}, as the pipeline's outcome["tail_cap"] or a knobs.json's
+    values): {"n", "level", "levels": {member: level}
+    (flubnf.tailcap.member_levels), "mode"}. A cap the run did not record
+    is none, and a level or form it did not record is the one in force
+    before their knobs, never today's default. None for no cap (0, absent,
+    or a value that does not read). Never raises."""
     import math
     try:
         from flubnf import tailcap
-        from app.core.knobs import read_record
-        rec = read_record(folder)
-        n = float(rec.get("output.tail_cap", tailcap.CAP_PRODUCTION) or 0)
+        if not rec:
+            return None
+        n = float(rec.get("n", rec.get("output.tail_cap")) or 0)
         if not (math.isfinite(n) and n > 0):
             return None
-        level = str(rec.get("output.tail_level") or tailcap.LEVEL_PRODUCTION)
+        level = str(rec.get("level", rec.get("output.tail_level"))
+                    or _LEVEL_BEFORE_KNOB)
         levels = tailcap.member_levels(level)
-        mode = str(rec.get("output.tail_mode") or tailcap.MODE_PRODUCTION)
+        mode = str(rec.get("mode", rec.get("output.tail_mode"))
+                   or _MODE_BEFORE_KNOB)
     except Exception:
         return None
     return {"n": n, "level": level, "levels": levels, "mode": mode}
+
+
+def cap_settings(folder) -> dict | None:
+    """The run's own upper-tail cap, as the knobs.json beside its report
+    records it (app.core.knobs.read_record: the values the run used, written
+    for a modified run and carried into an archived week), through
+    cap_of_record. None for a run with no cap: no file (a shipped run), no
+    cap recorded, a cap of 0, or a file or value that does not read. Never
+    raises. A report bundle that records its run's cap (report_v2's
+    "tail_cap") is read from there first."""
+    try:
+        from app.core.knobs import read_record
+        return cap_of_record(read_record(folder))
+    except Exception:
+        return None
 
 
 def _line(cap: dict | None) -> float:

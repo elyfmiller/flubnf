@@ -433,6 +433,11 @@ def _write_weekly_report(spec, workroot: Path, pf_samples: dict, obs: dict,
               "national_map_card": nat_card,
               # v8: the "All locations" pages (report_grid)
               "grid": grid,
+              # the upper-tail cap the run applied (n, level, mode; null
+              # for none), so the report's red line stays the run's own
+              "tail_cap": ({k: (outcome.get("tail_cap") or {}).get(k)
+                            for k in ("n", "level", "mode")}
+                           if outcome.get("tail_cap") else None),
               "elapsed_s": elapsed_s,
               # run settings, app build and engine versions: the run's
               # recorded ones (the run page's, and an override's reason),
