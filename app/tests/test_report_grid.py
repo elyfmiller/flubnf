@@ -505,6 +505,35 @@ def test_a_figure_beside_the_red_line_never_reads_against_it():
     assert shown(1200.0)[:2] == (True, "24×")
 
 
+def test_a_figure_on_the_red_line_is_not_above_it_and_prints_no_float_noise():
+    """245 over the level of 16, 16, 17 is 15.000000000000002 in floating
+    point (and 245 > 15 x 16.333 holds): a figure on the line is not above
+    it, so it is muted with no "above 15x", and no figure prints more than
+    two decimals. One that still reads 15.00 at two decimals is on the
+    line too; 15.01 is above it."""
+    p = _wide(q975=245.0)
+    p["observed"] = [["2097-12-20", 16.0], ["2097-12-27", 16.0], [ASOF, 17.0]]
+    x, over, filed = G.tail_ratios(p)["analogue"]
+    assert x != 15.0 and 245.0 > 15 * (49.0 / 3)    # the noise itself
+    assert not over and filed is None
+    tail = G._tail(p, COLORS)
+    assert '<span class="g-tail-own" aria-hidden="true">15.0×</span>' in tail
+    assert "g-tail-over" not in tail and "above" not in tail
+    assert "15.00" not in tail
+    assert "above" not in G.panel_label(p)
+    # within the last decimal of the line (level 50: 750.15 is 15.003x)
+    x, over, _ = G.tail_ratios(_wide(q975=750.15, obs=50.0))["analogue"]
+    assert x > 15.0 and not over and G._tail_times(x, over) == "15.0×"
+    # 750.3 is 15.006x: above, and it reads so
+    x, over, _ = G.tail_ratios(_wide(q975=750.3, obs=50.0))["analogue"]
+    assert over and G._tail_times(x, over) == "15.01×"
+    # never more than two decimals, whatever `over` says
+    for x in (15.000000000000002, 15.0001, 15.004, 14.9999):
+        for over in (True, False):
+            s = G._tail_times(x, over)
+            assert len(s[:-1].partition(".")[2]) <= 2, s
+
+
 # ---------------------- before and after the cap, per location (2026-10-28)
 
 def _filed(tmp_path, panel, model="pf", hub="NAU_PyBNF-OracleSIHRS-modified",

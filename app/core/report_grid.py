@@ -292,10 +292,10 @@ def tail_ratios(panel: dict) -> dict:
     of the last three reported weeks), as {model: (ratio, over, filed)}:
     `ratio` the model's own, before the output stage's upper-tail cap
     (ui/pipeline.py hands the grid those; Ely, 2026-10-28, "I would still
-    like to see the growth itself"), `over` that above TAIL_X, so on a
-    capped run red is where the cap moved the file; `filed` the submitted
-    file's ratio where it differs, else None. {} when the level is 0 or
-    unknown."""
+    like to see the growth itself"), `over` that above TAIL_X (_above), so
+    on a capped run red is where the cap moved the file; `filed` the
+    submitted file's ratio where it differs, else None. {} when the level
+    is 0 or unknown."""
     from flubnf.tailcap import recent_level
     o = panel.get("observed") or []
     r = recent_level([v for _, v in o])
@@ -310,8 +310,16 @@ def tail_ratios(panel: dict) -> dict:
             q = float(f["q"][3][4])
             s = filed.get(m)
             qs = float(s["q"][3][4]) if s else q
-            out[m] = (q / r, q > TAIL_X * r, qs / r if qs != q else None)
+            out[m] = (q / r, _above(q / r), qs / r if qs != q else None)
     return out
+
+
+def _above(x: float) -> bool:
+    """Whether a tail ratio is above TAIL_X, within the figure's last
+    decimal (_tail_times prints two at most): a ratio on the line is not
+    above it, float noise included (245 over the level of 16, 16, 17 is
+    15.000000000000002), nor one that still reads 15.00 (15.003)."""
+    return round(x, 2) > TAIL_X
 
 
 def _times(x: float) -> str:
@@ -322,16 +330,16 @@ def _times(x: float) -> str:
 
 def _tail_times(x: float, over: bool) -> str:
     """A model's own tail figure (_times), never reading against the red
-    line: `over` is decided on the unrounded ratio (tail_ratios), so where
+    line: `over` is decided on the ratio to two decimals (_above), so where
     the whole number would read as TAIL_X itself or on its wrong side
     (15.18 and 14.58 both "15x", one red) the figure gets one decimal
-    (15.2x, 14.6x), more only while a red one still reads as no more than
-    TAIL_X (15.04x). Every other figure prints as _times does."""
+    (15.2x, 14.6x), a second only while a red one still reads 15.0
+    (15.04x), never more. Every other figure prints as _times does."""
     s = _times(x)
     v = float(s[:-1])
     if v != TAIL_X and (v > TAIL_X) == over:
         return s
-    for d in range(1, 16):
+    for d in (1, 2):
         s = f"{x:.{d}f}\u00d7"
         if not over or float(s[:-1]) > TAIL_X:
             break
