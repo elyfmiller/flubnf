@@ -950,9 +950,10 @@
 <template id="fc-fan-tpl"><div class="card" id="fancard">
  {# the run drawn, by name and link; badged when it used modified
     settings, and when it is not the newest run the Latest run card shows
-    (the badge says why: forecast_aids.fan_run) #}
+    (the badge says why: forecast_aids.fan_run); by its start when no date
+    names it #}
  {% set fr = aids.fan_run if (aids is defined and aids) else none %}
- {% set fan_meta %}{% if fr %}<ul class="uk-meta" aria-label="The run drawn"><li>{{ tips.icon("clock") }}<span class="uk-sr">Run: </span>{{ tips.runname(fr.name, href="/runs/" ~ fr.run_id, id="fc-fan-run") }}</li></ul>{% if fr.modified %}{{ tips.badge("warn", "modified settings", id="fc-fan-mod") }}{% endif %}{% if fr.earlier %}{{ tips.badge("warn", fr.earlier, id="fc-fan-earlier") }}{% endif %}{% elif fc_name is defined and fc_name and fc_name.text %}<ul class="uk-meta" aria-label="The run drawn"><li>{{ tips.icon("clock") }}<span class="uk-sr">Run: </span>{{ tips.runname(fc_name, href=("/runs/" ~ fc_run) if fc_run else "", id="fc-fan-run") }}</li></ul>{% else %}{{ tips.meta([("calendar", fc_date, "Forecast date"), ("clock", "latest stored run")]) }}{% endif %}{% endset %}
+ {% set fan_meta %}{% if fr %}<ul class="uk-meta" aria-label="The run drawn"><li>{{ tips.icon("clock") }}<span class="uk-sr">Run: </span>{% if fr.name and fr.name.text %}{{ tips.runname(fr.name, href="/runs/" ~ fr.run_id, id="fc-fan-run") }}{% else %}<a href="/runs/{{ fr.run_id }}" id="fc-fan-run">{{ fr.label }}</a>{% endif %}</li></ul>{% if fr.modified %}{{ tips.badge("warn", "modified settings", id="fc-fan-mod") }}{% endif %}{% if fr.earlier %}{{ tips.badge("warn", fr.earlier, id="fc-fan-earlier") }}{% endif %}{% elif fc_name is defined and fc_name and fc_name.text %}<ul class="uk-meta" aria-label="The run drawn"><li>{{ tips.icon("clock") }}<span class="uk-sr">Run: </span>{{ tips.runname(fc_name, href=("/runs/" ~ fc_run) if fc_run else "", id="fc-fan-run") }}</li></ul>{% else %}{{ tips.meta([("calendar", fc_date, "Forecast date"), ("clock", "latest stored run")]) }}{% endif %}{% endset %}
  {{ tips.heading("Forecasts", "fc-fans", after=fan_meta) }}
  {# the models shown, the kit's segmented switch (filled by the script
     when the run has more than one model): all of them together, each its

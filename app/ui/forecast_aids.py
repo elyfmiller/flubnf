@@ -182,10 +182,34 @@ _NOT_DRAWN = {"running": "still running", "error": "failed",
               "interrupted": "interrupted"}
 
 
+def _stored_spec(rid) -> str:
+    """The spec a run kept in its own results.json (JSON text, its
+    forecast date taken from the file's when the spec has none); '' when
+    there is none to read. Storage's "Clear N rows not running (files
+    kept)" drops a run's ledger row and keeps its workroot, whose fans the
+    card still draws."""
+    from app.core import runs as _runs
+    from app.ui.shared import _spec_dict
+    if not _runs.is_run_id(rid):
+        return ""
+    try:
+        res = json.loads((Path(_runs.APP_STATE) / "workroots" / rid
+                          / "results.json").read_text(encoding="utf-8"))
+    except (OSError, ValueError):
+        return ""
+    if not isinstance(res, dict):
+        return ""
+    spec = dict(_spec_dict(res.get("spec")))
+    if not spec.get("forecast_date") and res.get("forecast_date"):
+        spec["forecast_date"] = str(res["forecast_date"])
+    return json.dumps(spec) if spec else ""
+
+
 def fan_run(ledger_rows: list, rid) -> dict | None:
     """The run the Forecasts card draws: {"run_id", "label", "name",
     "modified", "earlier"}. label: its one-line name (shared._run_label);
-    name: its parts (shared._run_name, the card's tips.runname).
+    name: its parts (shared._run_name, the card's tips.runname), read
+    from the run's own results.json when the ledger has no row for it.
     modified: it ran with modified model settings (the card
     badges it). earlier: "" when it is the newest hub row of the ledger,
     else the badge's words, saying why the newest is not drawn (it failed,
@@ -203,10 +227,12 @@ def fan_run(ledger_rows: list, rid) -> dict | None:
     else:
         try:
             row = _runs.Ledger().row(rid)
-            spec = (row or {}).get("spec") or ""
-            outcome = (row or {}).get("outcome")
         except Exception:
-            spec = ""
+            row = None
+        spec = (row or {}).get("spec") or ""
+        outcome = (row or {}).get("outcome")
+    if not spec:
+        spec = _stored_spec(rid)
     top = (ledger_rows or [None])[0] if ledger_rows else None
     earlier = ""
     if top and top.get("run_id") != rid:
