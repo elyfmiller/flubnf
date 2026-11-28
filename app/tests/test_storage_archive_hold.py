@@ -51,6 +51,7 @@ def _go_live(state, engine, extra):
     # every console run claims as "all:<id>"; the ledger spec tells kinds
     ui_state._status["running"] = f"all:{rid}"
     ui_state._status["workroot"] = str(wr)
+    return wr
 
 
 def _delete(day):
@@ -89,11 +90,18 @@ HELD = {"hub-named files": ("NAU_PyBNF-GroundHogCGR", False),
         "no file": (None, True)}
 
 
+@pytest.mark.parametrize("wrote", [True, False],
+                         ids=["files written", "no file yet"])
 @pytest.mark.parametrize("held", list(HELD))
 @pytest.mark.parametrize("kind", ["modified, non-hub names",
                                   "modified, hub names by override"])
 def test_a_modified_named_run_holds_no_archive_of_hub_named_files(state,
-                                                                 held, kind):
+                                                                 held, kind,
+                                                                 wrote):
+    """The archive step reads the run's names from its files
+    (archive_record.files_hub_named), so Storage does: a run whose files
+    are -modified holds no archive of hub-named files, and one that has
+    written none yet holds it, as the step would not keep it out."""
     folder, replaceable = HELD[held]
     arch = state["root"] / "archive"
     (arch / DATE / "submission").mkdir(parents=True)
@@ -103,10 +111,16 @@ def test_a_modified_named_run_holds_no_archive_of_hub_named_files(state,
         (arch / DATE / "submission" / folder / "f.csv").write_text("x")
     ui_shared._invalidate_scans()
     engine, extra, _writes = KINDS[kind]
-    _go_live(state, engine, extra)
+    wr = _go_live(state, engine, extra)
+    if wrote:
+        own = ("NAU_PyBNF-GroundHogCGR" if kind.endswith("by override")
+               else "NAU_PyBNF-GroundHogCGR-modified")
+        (wr / "submission" / own).mkdir(parents=True)
+        (wr / "submission" / own / "f.csv").write_text("x")
     # under the hub names it may replace any; under the -modified names
-    # only an archive of -modified files or none (keep_reason's rule)
-    holds = replaceable or kind.endswith("by override")
+    # only an archive of -modified files or none (keep_reason's rule); a
+    # run with no file yet is not held to names it has not written
+    holds = replaceable or kind.endswith("by override") or not wrote
     assert ui_storage._archiving_date() == (DATE if holds else None)
     busy = {a["id"]: a["busy"]
             for a in ui_storage._storage_inventory()["report_archives"]}

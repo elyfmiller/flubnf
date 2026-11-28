@@ -128,15 +128,16 @@ def _may_archive() -> bool:
 
 def _archiving_date() -> str | None:
     """The forecast date whose report archive the run in progress may be
-    writing: None when it can write none (_may_archive, or its files carry
-    the -modified names and that date's archive holds hub-named files,
-    which the archive step keeps: archive_record.keep_reason), "" when it
-    may but its date is unknown (every archive is then held)."""
+    writing: None when it can write none (_may_archive, or the files it has
+    written carry the -modified names and that date's archive holds
+    hub-named files, which the archive step keeps: archive_record.
+    keep_reason, read from the run's files as the step reads them; a run
+    that has written none yet holds it), "" when it may but its date is
+    unknown (every archive is then held)."""
     if not _may_archive():
         return None
     import json
-    from app.core.archive_record import hub_named_of
-    from app.core.knobs import hub_names
+    from app.core.archive_record import files_hub_named, hub_named_of
     from app.core.runs import APP_STATE
     for w in _live_workroot_ids():
         try:
@@ -145,7 +146,7 @@ def _archiving_date() -> str | None:
             date = str(spec.get("forecast_date") or "")
         except Exception:                # no row yet, or an odd one
             continue
-        if date and not hub_names(raw) \
+        if date and files_hub_named(APP_STATE / "workroots" / w) is False \
                 and hub_named_of(APP_STATE / "archive" / date):
             return None
         return date

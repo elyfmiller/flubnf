@@ -240,6 +240,13 @@ def test_the_picker_reaches_a_past_week_with_no_archive_folder(root):
     # a week whose only run is a backtest has no run to stand for it, and
     # a week whose run wrote no report has nothing to open
     _run(root, "backtest only", mode="vintage", asof=vintage_week)
+    # a week whose only run is research has none either, complete or not
+    research_week = "2097-12-06"
+    res = _run(root, "research only", asof=research_week,
+               extra={"oracle": "none"})
+    pf = root / "workroots" / res / "submission" / "NAU_PyBNF-OracleSIHRS"
+    pf.mkdir()
+    (pf / "f.csv").write_text("x")
     noreport = _run(root, "no report", knobs=MOD, asof=DATE)
     (root / "workroots" / noreport / "report.html").unlink()
     card = _run(root, "on the card", knobs=MOD, asof=card_week)
@@ -266,7 +273,8 @@ def test_the_picker_reaches_a_past_week_with_no_archive_folder(root):
     assert (f'filename="{ref}-NAU_PyBNF-weekly-report-modified.html"'
             in r.headers["content-disposition"])
     # the weeks with nothing to open answer as before
-    for d in (vintage_week, DATE, "2098-02-07"):
+    assert f'value="{research_week}"' not in picker
+    for d in (vintage_week, research_week, DATE, "2098-02-07"):
         assert client.get(f"/output/report?date={d}").status_code == 404
         assert client.get(
             f"/output/report/download?date={d}").status_code == 404
@@ -320,3 +328,11 @@ def test_held_after_applies_the_keep_rule_run_by_run():
     later = c(2, hub_names=False, complete=False)
     assert AR.held_after([empty, later]) is later
     assert AR.held_after([]) is None
+
+
+def test_a_week_listed_but_gone_since_has_no_report(root):
+    """A week the cached scan still lists whose archive folder is gone (and
+    no run stands for it) reads as having no report: the picker leaves it
+    out rather than failing the page."""
+    assert O._week_report_dir("2099-01-02", {}) is None
+    assert O._week_has_report("2099-01-02", {}) is False

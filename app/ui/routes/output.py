@@ -724,6 +724,14 @@ def _week_runs() -> dict:
             for asof, cs in by.items() for c in [_ar.held_after(cs)]}
 
 
+def _week_has_report(date: str, weeks: dict) -> bool:
+    """Whether the folder that stands for a week (_week_report_dir) holds a
+    report; False when none does, as for an archive folder removed since
+    the cached scan listed it."""
+    d = _week_report_dir(date, weeks)
+    return d is not None and (d / "report.html").is_file()
+
+
 def _week_report_dir(date: str, weeks: dict | None = None):
     """The folder whose weekly report stands for a week: its archive
     folder when there is one, else the run _week_runs picks (`weeks`, its
@@ -929,8 +937,7 @@ def output_page(request: Request):
                           for d in sorted(set(_archive_dates()) | set(weeks),
                                           reverse=True)
                           if (d != report_asof or not card_holds(d))
-                          and (_week_report_dir(d, weeks)
-                               / "report.html").is_file()],
+                          and _week_has_report(d, weeks)],
         "has_report": has_report,
         # a round open now: its files' Download is the page's primary
         "has_due": any((d.get("status") or {}).get("state") == "due"
