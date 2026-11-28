@@ -73,8 +73,9 @@
      "New flu data: the week ending Nov 28 is ready to update", or why
      the check could not tell. Nothing before a check; every check's
      answer lands here (the script puts it here), and the status line
-     above speaks it #}
-  <div id="hub-outcome">{% if hub_outcome %}{{ tips.alert(hub_outcome.state, hub_outcome.text, id="hub-outcome-line", live="") }}{% endif %}</div>
+     above speaks it. A line the card already shows (no hub folder: the
+     hub-missing alert above, its "same_as") is not drawn twice #}
+  <div id="hub-outcome">{% if hub_outcome and not (hub_outcome.same_as and hub_missing) %}{{ tips.alert(hub_outcome.state, hub_outcome.text, id="hub-outcome-line", live="") }}{% endif %}</div>
   {# the clone against origin (commits, origin, the check's own words),
      under the outcome in a closed fold that remembers this reader's
      choice: a badge for the state and the check's line (the script
@@ -378,10 +379,13 @@
            pill=document.getElementById('hub-pill'),
            det=document.getElementById('hub-detail'),
            out=document.getElementById('hub-outcome'),
-           said=d.outcome&&d.outcome.text?d.outcome.text:'';
+           said=d.outcome&&d.outcome.text?d.outcome.text:'',
+           // a line the card already shows (no hub folder: its alert
+           // above) is not drawn twice; the status line still speaks it
+           shown=said&&d.outcome.same_as&&document.getElementById(d.outcome.same_as);
        // the plain outcome first ("No new flu data since Nov 21: you are
        // up to date"); its role is the status line's, so no role here
-       if(out)out.innerHTML=said&&ui?ui.alert(d.outcome.state,said,'',null,''):'';
+       if(out)out.innerHTML=said&&ui&&!shown?ui.alert(d.outcome.state,said,'',null,''):'';
        if(pill&&ui)ui.setBadge(pill,STATES[d.pill]||'neutral',d.words||'');
        if(det){det.textContent=d.detail||'';det.hidden=!d.detail;}
        // the next step is the primary: Update data only when there is new

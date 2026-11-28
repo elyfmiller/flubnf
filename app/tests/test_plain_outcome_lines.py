@@ -43,6 +43,7 @@ from app.ui import server as srv                         # noqa: E402
 from app.ui.routes import data as D                      # noqa: E402
 
 import served_dom as SD                                  # noqa: E402
+from test_hub_setup import nohub                         # noqa: E402,F401
 from test_pull_hub import _freshness_git, hub            # noqa: E402,F401
 from test_ui_kit import render                           # noqa: E402
 
@@ -314,10 +315,11 @@ def test_before_a_check_no_outcome_and_every_check_ends_in_a_line(
     monkeypatch.setattr(templating, "_platform", lambda: "linux")
     assert D._hub_outcome(None) is None
     # no hub folder: the card's own no-data sentence (its alert's words,
-    # test_hub_setup), as plain text
+    # test_hub_setup), as plain text, naming that alert so the card draws
+    # it once
     assert D._hub_outcome(F(None, None, None, False,
                             "no hub clone: there is no hub folder at /x")) \
-        == {"state": "warn", "new": False,
+        == {"state": "warn", "new": False, "same_as": "hub-missing",
             "text": ("No FluSight data: there is no hub folder at /x. To "
                      "fetch it, run ./setup.sh and relaunch the console.")}
     # nothing compared: the hub clone could not be read
@@ -838,7 +840,8 @@ def test_a_check_that_cannot_compare_still_shows_and_says_a_line(
     page = _data_page(monkeypatch)
     answers, want = [], []
     for f, text in (
-            # no hub folder: the card's no-data sentence
+            # no hub folder: the card's no-data sentence (this card, drawn
+            # with a hub, has no alert of its own that says it)
             (F(None, None, None, False,
                "no hub clone: there is no hub folder at /x"),
              "No FluSight data: there is no hub folder at /x. To fetch it, "
@@ -869,6 +872,50 @@ def test_a_check_that_cannot_compare_still_shows_and_says_a_line(
         assert o["status"] == text
         # none makes Update data the primary
         assert (o["check"], o["pull"], o["busy"]) == ("gold", "quiet", False)
+
+
+_SHOWN = r"""
+flush();
+var ev = {type: 'submit', bubbles: true, defaultPrevented: false,
+          preventDefault: function () { this.defaultPrevented = true; }};
+document.getElementById('hub-check').parentNode.dispatchEvent(ev);
+// the card's text a reader sees: no hidden or screen-reader-only part,
+// and what the script drew (innerHTML) where it drew it
+function seen(el) {
+  if (el.nodeType === 3) return el.data;
+  if (el.nodeType !== 1 || el.hidden
+      || (' ' + el.className + ' ').indexOf(' uk-sr ') >= 0) return '';
+  if (typeof el.innerHTML === 'string') return ' ' + el.innerHTML + ' ';
+  var s = '';
+  for (var i = 0; i < el.childNodes.length; i++) s += ' ' + seen(el.childNodes[i]);
+  return s;
+}
+return {seen: seen(document.querySelector('.hubcard')),
+        status: document.getElementById('hub-status').textContent};
+"""
+
+
+@needs_js
+def test_with_no_hub_folder_the_card_says_so_once(nohub, monkeypatch, tmp_path):  # noqa: F811
+    said = (f"No FluSight data: there is no hub folder at {nohub}. To fetch "
+            "it, run ./setup.sh and relaunch the console.")
+    monkeypatch.setattr(data_mod, "vintages", lambda: [])
+    monkeypatch.setattr(data_mod, "live_newest_week", lambda: None)
+    # without script: the check's answer is the page, its alert once
+    card = client.post("/freshness").text.split('class="card hubcard"', 1)[1] \
+        .split('<div class="card dt-archive">', 1)[0]
+    assert 'id="hub-missing"' in card
+    assert _visible(card).count(said) == 1
+    assert '<div id="hub-outcome"></div>' in card
+    # with script: the check's line is spoken, not drawn a second time
+    answer = client.post("/freshness",
+                         headers={"Accept": "application/json"}).json()
+    assert answer["outcome"]["text"] == said
+    page = client.get("/data").text
+    got = SD.run(tmp_path, page, [TIPS_JS, _hub_script(page, tmp_path)],
+                 _SHOWN, prelude=_prelude() + _CHECK % json.dumps([answer]))
+    assert _visible(got["seen"]).count(said) == 1
+    assert got["status"] == said
 
 
 def test_the_cards_busy_words_are_plain():

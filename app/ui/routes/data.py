@@ -288,11 +288,12 @@ def _hub_outcome(f, missing=()) -> dict | None:
     """The FluSight hub card's plain outcome after Check for new data:
     {"state": a tips.alert kind, "text": one line, "new": whether Update
     data is the next step}; None only before a check, so every check ends
-    in a line the card shows and its status line speaks. Commits and
-    origin stay in the card's "Hub clone details" fold; this line says
-    what they mean, from what the commits change in the folders FluBNF
-    reads (f.changed). `missing`: the comparator folders the clone lacks
-    (a pull adds them)."""
+    in a line the card shows and its status line speaks ("same_as": the
+    id of the card's alert that already shows the line, where the card
+    draws it once). Commits and origin stay in the card's "Hub clone
+    details" fold; this line says what they mean, from what the commits
+    change in the folders FluBNF reads (f.changed). `missing`: the
+    comparator folders the clone lacks (a pull adds them)."""
     if f is None:
         return None
     detail = f.detail or ""
@@ -300,7 +301,7 @@ def _hub_outcome(f, missing=()) -> dict | None:
     if detail.startswith("no hub clone"):
         # the card's own no-data sentence (data.html, id="hub-missing")
         from app.ui.templating import hub_setup_text
-        return {"state": "warn", "new": False,
+        return {"state": "warn", "new": False, "same_as": "hub-missing",
                 "text": ((f"No FluSight data: {reason}." if reason
                           else "No FluSight data.")
                          + f" To fetch it, {hub_setup_text()}.")}
