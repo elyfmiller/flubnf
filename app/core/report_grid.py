@@ -339,8 +339,9 @@ def cap_settings(folder) -> dict | None:
     for a modified run and carried into an archived week), through
     cap_of_record. None for a run with no cap: no file (a shipped run), no
     cap recorded, a cap of 0, or a file or value that does not read. Never
-    raises. A report bundle that records its run's cap (report_v2's
-    "tail_cap") is read from there first."""
+    raises. It reads the file only: report_v2.render_bundle reads a
+    bundle's own recorded cap ("tail_cap") first and comes here only for an
+    older bundle."""
     try:
         from app.core.knobs import read_record
         return cap_of_record(read_record(folder))
@@ -379,8 +380,10 @@ def tail_ratios(panel: dict, cap: dict | None = None) -> dict:
     of the last three reported weeks) and the line TAIL_X; with the run's
     cap (`cap`, cap_settings) the level is the one that member's cap
     multiplies (tailcap.cap_level: the mean, the last week or the larger)
-    and the line the cap's n, so red is where the cap moved the file. A
-    member whose level is 0 or unknown has no figure."""
+    and the line the cap's n, so red is where the cap acts (rounding to
+    whole admissions, or a median already above the line, can leave the
+    file as it was; `filed` says where it changed). A member whose level is
+    0 or unknown has no figure."""
     from flubnf.tailcap import cap_level, recent_level
     vals = [v for _, v in panel.get("observed") or []]
     line = _line(cap)
