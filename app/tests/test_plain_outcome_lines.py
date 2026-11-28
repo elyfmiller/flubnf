@@ -234,6 +234,62 @@ def test_a_check_git_refused_keeps_its_reason(hub, monkeypatch):  # noqa: F811
     assert D._hub_outcome(data_mod.check_freshness())["text"] == OFFLINE
 
 
+@pytest.mark.parametrize("err, line", [
+    # ssh's words come first; git's fatal line names no network
+    ("ssh: connect to host github.com port 22: Operation timed out\r\n"
+     "fatal: Could not read from remote repository.\n\n"
+     "Please make sure you have the correct access rights\n"
+     "and the repository exists.\n",
+     "ssh: connect to host github.com port 22: Operation timed out"),
+    ("ssh: connect to host github.com port 22: Network is unreachable\n"
+     "fatal: Could not read from remote repository.\n\n"
+     "Please make sure you have the correct access rights\n"
+     "and the repository exists.\n",
+     "ssh: connect to host github.com port 22: Network is unreachable"),
+    ("ssh: Could not resolve hostname github.com: nodename nor servname "
+     "provided, or not known\n"
+     "fatal: Could not read from remote repository.\n",
+     "ssh: Could not resolve hostname github.com: nodename nor servname "
+     "provided, or not known"),
+    # the connection dropped mid-transfer: curl's words, then git's
+    ("error: RPC failed; curl 56 Recv failure: Connection reset by peer\n"
+     "fatal: expected flush after ref listing\n",
+     "error: RPC failed; curl 56 Recv failure: Connection reset by peer"),
+], ids=["ssh-timeout", "ssh-unreachable", "ssh-no-host", "transfer-dropped"])
+def test_a_network_failure_before_gits_fatal_line_is_offline(
+        hub, monkeypatch, err, line):  # noqa: F811
+    from test_pull_hub import _R, _fake
+    monkeypatch.setattr(data_mod, "vintages", lambda: [])
+    monkeypatch.setattr(data_mod, "live_newest_week", lambda: "2026-11-21")
+    _fake(monkeypatch, hub, fetch=_R(128, "", err))
+    f = data_mod.check_freshness()
+    # the fold keeps the line that says why
+    assert f.detail == f"fetch failed: {line}"
+    assert f.offline is True and f.pill() == ("bad", "offline")
+    assert D._hub_outcome(f) == {"state": "warn", "new": False,
+                                 "text": OFFLINE}
+
+
+def test_a_refusal_whose_advice_names_network_words_keeps_its_reason(
+        hub, monkeypatch):  # noqa: F811
+    # git's advice repeats the path unquoted and indented: not a reason
+    from test_pull_hub import _R, _fake
+    monkeypatch.setattr(data_mod, "vintages", lambda: [])
+    monkeypatch.setattr(data_mod, "live_newest_week", lambda: "2026-11-21")
+    where = "/Users/ssl/timed out/hub"
+    _fake(monkeypatch, hub, fetch=_R(128, "", (
+        f"fatal: detected dubious ownership in repository at '{where}'\n"
+        "To add an exception for this directory, call:\n\n"
+        f"\tgit config --global --add safe.directory {where}\n")))
+    f = data_mod.check_freshness()
+    assert f.detail == ("fetch failed: fatal: detected dubious ownership in "
+                        f"repository at '{where}'")
+    assert f.offline is False and f.pill() == ("bad", "check failed")
+    assert D._hub_outcome(f)["text"] == (
+        "Could not check the FluSight hub: detected dubious ownership in "
+        f"repository at '{where}'")
+
+
 def test_a_file_at_the_hub_path_is_not_called_offline(
         tmp_path, monkeypatch, hub_check_real):
     # the folder test passes (something is there), then git cannot run in

@@ -424,10 +424,11 @@ class Freshness:
         """Whether the fetch failed for want of a network (no host, no
         connection, a timeout, TLS), not because git refused the clone
         itself (dubious ownership, not a git repository, a file at the hub
-        path), which a working connection does not cure."""
+        path), which a working connection does not cure. check_freshness
+        keeps the fetch's network line when its stderr has one, whatever
+        git's fatal line says (_fetch_reason)."""
         return (self.detail.startswith("fetch failed")
-                and bool(_OFFLINE_RE.search(
-                    re.sub(r"'[^']*'", "", self.detail))))
+                and bool(_OFFLINE_RE.search(_unquoted(self.detail))))
 
     def pill(self) -> tuple:
         """(class, words) for the Data tab's hub-clone badge, in the card's
@@ -482,6 +483,26 @@ def _git_fatal_line(r) -> str:
     err = [l.strip() for l in (r.stderr or "").splitlines() if l.strip()]
     return next((l for l in err if l.startswith("fatal:")),
                 err[-1] if err else f"git exited {r.returncode}")
+
+
+def _unquoted(text: str) -> str:
+    """`text` without its quoted parts (paths, URLs), whose own words
+    (ssl, timed out) say nothing about the network."""
+    return re.sub(r"'[^']*'", "", text)
+
+
+def _fetch_reason(r) -> str:
+    """Why a fetch failed, in one line: the line saying the hub could not
+    be reached when its stderr has one (ssh's and curl's words come on a
+    line before git's fatal one, which then says only "Could not read
+    from remote repository" or "expected flush after ref listing"), else
+    git's fatal line (_git_fatal_line). Indented lines are git's advice
+    (a command to run, with an unquoted path), never its reason."""
+    for raw in (r.stderr or "").splitlines():
+        if (raw.strip() and not raw[:1].isspace()
+                and _OFFLINE_RE.search(_unquoted(raw))):
+            return raw.strip()
+    return _git_fatal_line(r)
 
 
 def _changed_hub_dirs() -> Optional[tuple]:
@@ -565,7 +586,7 @@ def check_freshness(fetch: bool = True) -> Freshness:
             if f.returncode != 0:
                 # a network failure exits nonzero without raising; reading the
                 # stale origin/main would then say "up to date". Offline is never fresh.
-                detail = f"fetch failed: {_git_fatal_line(f)}"
+                detail = f"fetch failed: {_fetch_reason(f)}"
             else:
                 r = subprocess.run(
                     ["git", "rev-list", "--count", "HEAD..origin/main"],
