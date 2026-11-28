@@ -370,8 +370,8 @@ def test_storage_rows_read_by_round_and_status(root):
     when = (f"{failed[4:6]}-{failed[6:8]} "
             f"{failed[9:11]}:{failed[11:13]}:{failed[13:15]}")
     assert (f'<a href="/runs/{failed}">{words}<span class="uk-sr"> · run '
-            f'{when}</span></a><span class="uk-run-sub">run {when}</span>'
-            ) in led
+            f'{when}</span></a><span class="uk-run-sub"><span '
+            f'aria-hidden="true">run {when}</span></span>') in led
     assert 'id="st-filter"' in led and 'data-lf="research"' in led
     assert 'data-st="failed"' in led
     assert 'id="st-cap"' not in led

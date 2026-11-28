@@ -289,12 +289,17 @@
    of one week read apart by it). A run on your own data has no round.
    `id` names the words (the link). With its start shown, the link also
    carries it in hidden words, so the links of one week's runs have names
-   of their own when read out or listed. #}
+   of their own when read out or listed, and the start seen under it is
+   kept from screen readers (aria-hidden), so it is read once; the round
+   is read as it stands. #}
 {% macro runname(n, href="", when=True, round=True, id="", cls="") -%}
 {%- set start = ("run " ~ n.when) if when and n.when else "" -%}
-{%- set sub = ([n.round] if round and n.round else []) + ([start] if start else []) -%}
+{%- set said = start if href else "" -%}
+{%- set rnd = n.round if round and n.round else "" -%}
 <span class="uk-run{% if cls %} {{ cls }}{% endif %}">
-{%- if href %}<a href="{{ href }}"{% if id %} id="{{ id }}"{% endif %}>{{ n.text }}{% if start %}<span class="uk-sr"> · {{ start }}</span>{% endif %}</a>{% else %}<span{% if id %} id="{{ id }}"{% endif %}>{{ n.text }}</span>{% endif %}
-{%- if sub %}<span class="uk-run-sub">{{ sub | join(" · ") }}</span>{% endif -%}
+{%- if href %}<a href="{{ href }}"{% if id %} id="{{ id }}"{% endif %}>{{ n.text }}{% if said %}<span class="uk-sr"> · {{ said }}</span>{% endif %}</a>{% else %}<span{% if id %} id="{{ id }}"{% endif %}>{{ n.text }}</span>{% endif %}
+{%- if rnd or start %}<span class="uk-run-sub">{{ rnd }}
+{%- if start %}{% set part = (" · " if rnd else "") ~ start %}{% if said %}<span aria-hidden="true">{{ part }}</span>{% else %}{{ part }}{% endif %}{% endif -%}
+</span>{% endif -%}
 </span>
 {%- endmacro %}
