@@ -6,6 +6,48 @@ pages (TEAM.md, team/README.md, FLUSIGHT-2026-27.md). Works on `dev`.
 
 ## Now
 
+- 2026-11-27 (evening): the second batch of the review's "Now" items is
+  in four pull requests into `dev`, to merge in this order, each with a
+  merge commit; none is merged yet.
+  - **#16 (ui/run-label):** one name for a run on every page, "Data
+    through Nov 21 · forecasts for weeks ending Nov 28 to Dec 19", with
+    its FluSight round (or "Not a FluSight round") on a quieter line
+    (app/core/run_label.py, kit macro tips.runname). Storage's ledger is
+    grouped by round; the weekly report's header and title use the label,
+    with the year rule taken against the run's as-of.
+  - **#17 (ui/glossary-and-help):** the Glossary as its own open card on
+    Methods (app/core/glossary.py keys, anchors g-<key>), linked from
+    each "?" or "i" about a glossary word (the kit's gloss= key,
+    tips.term). Help popups are opaque, close on Escape and a click
+    outside, and are placed off the field they explain
+    (FluBNFUI.place). #16 is merged into it (Forecast's Settings "i" and
+    Output's "i" resolved by hand).
+  - **#18 (ui/plain-outcome-lines):** Check for new data ends in one
+    plain line ("No new flu data since Nov 21: you are up to date" unless
+    a file FluBNF reads changed); the clone's commits, Home's component
+    versions and the run page's software versions sit in closed folds
+    that remember each reader's choice (tips.fold remember=True).
+  - **#19 (ui/report-tail-legend):** the weekly report has one legend
+    line for the h3 97.5% figures, one Submitted / Before cap switch, and
+    a "cap applied" link only on cards the cap changed; rounding alone no
+    longer reads as a cap.
+  - All four merged pass the full suite on macOS under JavaScriptCore
+    and under node (6,307 passed) apart from the 23 tests that fail on
+    `dev` on this Mac too. The model-name count is unchanged (89 files,
+    840 lines).
+  - Each branch had a review of the merged tree, and its findings were
+    fixed and checked twice before the pull requests opened.
+  - Left of the review's "Now" items: named presets and the form's
+    opening state, the "Mark as submitted" record, the submitted rounds
+    scored, the influenza filter's label and assumptions line, the
+    Sandbox loader and Check, and the newcomers' guide; the first three
+    and the filter's wording still wait on Ely's answers (2026-11-27).
+  - Not yet under the one run name: Run settings' "forecast date" and
+    "live target-data through", the Data card's "Data through", the
+    chart's "observed (as of ...)" and saved figure's "Data as of ...",
+    the running card, Models' Quick run date, the Retrospective pages
+    and the "Next round ... needs data through" alert.
+
 - 2026-11-27 (later): #11 to #15 are merged into `dev` in order, each
   with a merge commit (#11 f053ce6d, #12 00e9ccca, #13 ffeb9bc4, #14
   f0a64a87, #15 a3404ead), and the model-name ceilings are at 89 files
@@ -1590,6 +1632,27 @@ pages (TEAM.md, team/README.md, FLUSIGHT-2026-27.md). Works on `dev`.
   engine.md and submission.md too; the en dash is out under the text rule.
 
 ## Open
+
+- For Ely (2026-11-27), from #16 to #19; each shipped as described:
+  - **Red tail figures in the weekly report** are above a fixed 15x
+    (report_grid.TAIL_X), while recent rounds were capped at 10x, so a
+    figure between 10x and 15x was capped but is not red. Should red
+    follow the run's own cap?
+  - **A tooltip holds a link** (the glossary's), an exception to the
+    kit's rule; the alternative is to make every glossary-linked "?" a
+    toggletip.
+  - **The Glossary's place:** the last card on Methods; it could follow
+    Purpose instead.
+  - **Above can cover too:** a popup moved above its "?" to keep off a
+    field may cover other controls (the Data upload "?" covers the
+    FluSight hub card's buttons while it shows).
+  - **Replicates and the Upper-tail cap** have glossary entries but no
+    "?" leads to them (Model settings shows them as field hints).
+  - **The report's Charts switch** sits in its top controls; it could sit
+    by the All locations legend instead.
+  - The report's "FluSight round" vs "Not a FluSight round" comes from
+    the vendored tasks.json, which is not one of the report's builder
+    sources, so a change to it does not rebuild stored reports.
 
 - For Ely (2026-11-11), not built yet, a nice-to-have: a "Check forecast
   plausibility" button on the download tab, shown when a model's output
