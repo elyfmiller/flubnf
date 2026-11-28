@@ -50,14 +50,16 @@
     });
   }
   // the element whose hover shows a tip: the tip, or a reason button's
-  // wrapper (its disabled button passes the pointer through, ui-kit.css)
-  // while it has a reason (an enabled button's "?" is hidden: none)
+  // wrapper (its disabled button passes the pointer through, ui-kit.css).
+  // An enabled button's "?" is hidden, so shown() leaves it out; it is
+  // still the pointer's, so a script disabling the button under a
+  // resting pointer shows its reason (ui-kit.css) and Escape hides it
   function hoverTip(el) {
     var t = tipOf(el);
     if (t) return {tip: t, host: t};
     var r = el && el.closest ? el.closest('.uk-reason') : null,
         w = r ? r.querySelector('.uk-reason-tip') : null,
-        rt = w && !w.hidden ? w.querySelector('.tip') : null;
+        rt = w ? w.querySelector('.tip') : null;
     return rt ? {tip: rt, host: r} : null;
   }
   document.addEventListener('mouseover', function (e) {
@@ -308,14 +310,18 @@
     el.innerHTML = badgeInner(state, text);
   }
   // a reason button (tips.reason_button): a reason disables it and shows
-  // the "?" with that reason; null enables it and hides the "?", clearing
-  // a click's or an Escape's mark on it, so the next reason starts closed
+  // the "?" with that reason, placed by its button (the pointer may rest
+  // there already: its hover shows the reason at once); null enables it
+  // and hides the "?", clearing a click's or an Escape's mark on it, so
+  // the next reason starts closed
   function setReason(btn, reason) {
     if (!btn) return;
     var id = btn.getAttribute('data-uk-reason'),
         wrap = btn.parentNode ? btn.parentNode.querySelector('.uk-reason-tip') : null,
         t = wrap ? wrap.querySelector('.tip') : null,
-        box = id ? document.getElementById('tip-' + id) : null;
+        tb = t ? t.querySelector('.tipbtn') : null,
+        box = id ? document.getElementById('tip-' + id) : null,
+        shows = !!reason && !!wrap && wrap.hidden;
     btn.disabled = !!reason;
     if (reason) {
       if (id) btn.setAttribute('aria-describedby', 'tip-' + id);
@@ -325,6 +331,7 @@
       if (t) { t.classList.remove('open'); t.classList.remove('dismissed'); }
     }
     if (wrap) wrap.hidden = !reason;
+    if (shows && tb && box) placeBy(tb, box);
   }
   // tips.tip's markup: the "?" and its tooltip (the text is escaped)
   function tip(id, label, text) {

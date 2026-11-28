@@ -15,7 +15,8 @@ a "?" stayed open after Escape and covered the select it explained.
     while the pointer rests there, never holds an Escape back. A reason
     open when its button is enabled comes back closed when it goes off
     again; any open tip a script hides loses its open mark at the next
-    click or Escape.
+    click or Escape. A button disabled under a resting pointer shows its
+    reason, placed by its "?", and Escape hides it.
   * placement (FluBNFUI.place, one rule for both): under the button,
     above it when under it would cover a form control (the field a
     label's "?" explains, a drop zone) and above fits, inside the window
@@ -359,6 +360,36 @@ def test_a_reason_open_when_its_button_is_enabled_comes_back_closed(
     assert out["fresh"] == closed
     assert out["afterClick"] == closed
     assert out["escHidden"] is False and out["afterEscape"] == closed
+
+
+def test_a_button_disabled_under_the_pointer_shows_its_reason(tmp_path,
+                                                              two_datasets):
+    """The pointer rests on an enabled reason button (its "?" hidden) and
+    a script disables it (sandbox.js on an edit, retro.html on a preset):
+    its wrapper is already under the pointer, so the reason shows at once
+    (ui-kit.css), placed by its "?" when setReason shows it (the hidden
+    "?" had no box to place by), and Escape hides it and goes no
+    further."""
+    out = _run(tmp_path, "/data", _DELETES + """
+      var main = document.querySelector('main'), r = {},
+          tb = onWrap.querySelector('.tipbtn'),
+          box = document.getElementById('tip-' + onId);
+      HOVER(on, main);
+      r.enabledEsc = KEY('Escape').stopped;
+      // shown, the "?" and its box are drawn (x: 500 + 10 - 100; y: 120 + 6)
+      BOX(tb, 500, 100, 20, 20); BOX(box, 0, 0, 200, 60);
+      window.FluBNFUI.setReason(on, 'A replay on it is in progress.');
+      r.shown = [STATE(onId), on.disabled, box.style.left, box.style.top];
+      var e = KEY('Escape');
+      r.escape = [STATE(onId), e.stopped];
+      r.next = KEY('Escape').stopped;
+      return r;
+    """)
+    assert out == {"enabledEsc": False,
+                   "shown": [{"open": False, "hidden": False}, True,
+                             "410px", "126px"],
+                   "escape": [{"open": False, "hidden": True}, True],
+                   "next": False}
 
 
 def test_a_toggletip_closes_on_escape_and_on_a_click_outside(tmp_path):
