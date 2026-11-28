@@ -51,11 +51,20 @@ def test_pull_changes_counts_weeks_and_revisions():
     assert D._pull_changes(None, "2026-10-03", None, a) == []
 
 
-def test_hub_badge_and_the_checks_words_sit_in_the_clone_fold():
-    src = (TEMPLATES / "data.html").read_text(encoding="utf-8")
-    fold = src.split('{% call tips.fold("Hub clone details"', 1)[1] \
-        .split("{% endcall %}\n  {% endcall %}", 1)[0]
-    assert 'id="hub-pill"' in fold and 'id="hub-detail"' in fold
+def test_hub_badge_and_the_checks_words_sit_in_the_clone_fold(monkeypatch):
+    # the served page cut to the fold's own <details> element: the badge
+    # and the check's line inside it, and neither anywhere else
+    from fastapi.testclient import TestClient
+    from app.ui import server as srv
+    monkeypatch.setattr(data_mod, "vintages", lambda: [])
+    html = TestClient(srv.app).get("/data").text
+    assert html.count('id="hub-clone-fold"') == 1
+    head, rest = html.split('<details class="uk-fold" id="hub-clone-fold"', 1)
+    fold, tail = rest.split("</details>", 1)
+    assert "<details" not in fold
+    for part in ('id="hub-pill"', 'id="hub-detail"'):
+        assert part in fold, part
+        assert part not in head and part not in tail, part
 
 
 def test_newest_weeks_table_has_a_change_column():
