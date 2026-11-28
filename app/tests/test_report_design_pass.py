@@ -11,7 +11,7 @@ import pandas as pd
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[2]))
 
-from app.core import report_v2, scoring, usmap               # noqa: E402
+from app.core import report_v2, run_label, scoring, usmap    # noqa: E402
 from app.tests.test_report_grid import ASOF, _grid           # noqa: E402
 
 OH_Q = {t: {str(lv): 20.0 + 10 * lv for lv in report_v2.FAN_LEVELS}
@@ -56,14 +56,27 @@ def _render(tmp_path, **kw):
         .read_text(encoding="utf-8")
 
 
-def test_title_and_page_name_the_reference_date(tmp_path):
+def test_title_and_page_name_the_run_as_every_page_does(tmp_path):
+    # the header names the run as the console does (app/core/run_label):
+    # the data it read and the weeks it forecasts, its round under that;
+    # the reference date stays in the file names, never as a name of its own
     html = _render(tmp_path)
-    assert "<title>FluBNF weekly report, reference date 2098-01-10</title>" \
-        in html
-    assert "Reference date 2098-01-10 · data through Jan 3" in html
-    d = report_v2.report_dates("2026-10-03")
+    words = run_label.text("2098-01-03")
+    assert f"<title>FluBNF weekly report: {words}</title>" in html
+    assert '<span class="rp-weekname"><span class="rp-week">' in html
+    assert (f'{words}</span><span class="uk-run-sub">Not a FluSight round '
+            '(2098-01-10)</span></span>') in html
+    assert "Reference date" not in html
+    d = report_v2.report_dates("2026-10-03", today="2026-11-27")
     assert d["ref"] == "2026-10-10"
-    assert d["line"] == "Reference date 2026-10-10 · data through Oct 3"
+    assert d["line"] == ("Data through Oct 3 · forecasts for weeks ending "
+                         "Oct 10 to Oct 31")
+    assert d["round"] == "FluSight round 2026-10-10"
+    # a week the run recorded reading names it
+    d = report_v2.report_dates("2026-10-03", "2026-09-26", today="2026-11-27")
+    assert d["line"].startswith("Data through Sep 26 · ")
+    html = _render(tmp_path, data_through="2097-12-27")
+    assert "Data through Dec 27, 2097 · forecasts for weeks ending" in html
 
 
 def test_member_tokens_bands_and_no_data_per_card(tmp_path):

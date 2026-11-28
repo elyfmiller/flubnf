@@ -14,7 +14,7 @@ import pandas as pd
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[2]))
 
-from app.core import report_v2, runs as runs_mod                  # noqa: E402
+from app.core import report_v2, run_label, runs as runs_mod       # noqa: E402
 
 # the console run on the synthetic vintage (PF faked, the rest real)
 from test_oracle_step import hubfiles                         # noqa: E402,F401
@@ -205,8 +205,11 @@ def test_bundle_stores_the_asof_and_the_true_reference_date(tmp_path):
     assert report_v2.bundle_asof(b) == "2098-01-03"
     report_v2.render_bundle(b, tmp_path / "again.html")
     again = (tmp_path / "again.html").read_text()
-    assert "Reference date 2098-01-10 · data through Jan 3" in again
-    assert "<title>FluBNF weekly report, reference date 2098-01-10</title>" in again
+    # the header names the run by its data and weeks, its round under them
+    words = run_label.text("2098-01-03")
+    assert f"{words}</span><span class=\"uk-run-sub\">" in again
+    assert "Not a FluSight round (2098-01-10)" in again
+    assert f"<title>FluBNF weekly report: {words}</title>" in again
 
 
 def test_report_names_the_runs_recorded_build_like_the_run_page(tmp_path,
@@ -254,4 +257,5 @@ def test_an_older_bundles_reference_date_still_reads_as_its_asof(tmp_path):
            "details": {}, "national": {"summary_html": ""}}
     assert report_v2.bundle_asof(old) == "2098-01-03"
     html = report_v2.render_bundle(old, tmp_path / "r.html").read_text()
-    assert "Reference date 2098-01-10 · data through Jan 3" in html
+    assert run_label.text("2098-01-03") in html
+    assert "Not a FluSight round (2098-01-10)" in html
