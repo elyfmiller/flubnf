@@ -89,6 +89,13 @@ def _page_i(html):
         .split('<span class="uk-badge', 1)[0]
 
 
+#: the season page's "i" ends with relWIS's glossary link on the console
+#: only (the exported report cannot reach Methods): the facts compared
+#: are the rest
+_GLOSS_LINE = re.compile(r' <span class="uk-gloss uk-tt-line"><a class="uk-term" '
+                         r'href="/methods#g-relwis">More in the glossary</a></span>')
+
+
 def _words(markup):
     return len(re.sub(r"<[^>]+>", " ", markup).split())
 
@@ -291,8 +298,11 @@ def test_the_season_page_and_its_report_keep_one_mark(built):
     # the console's page: the "i" and the Rescore button's "?"
     assert marks(app_html) == ["tt-rs-page", "tip-rs-rescore"]
     assert marks(report_html) == ["tt-rs-page"]
-    # the report's "i" is the page's: the reader of the file keeps the facts
-    assert _page_i(app_html) == _page_i(report_html)
+    # the report's "i" is the page's: the reader of the file keeps the
+    # facts; the page alone links the glossary
+    assert _GLOSS_LINE.search(_page_i(app_html))
+    assert not _GLOSS_LINE.search(_page_i(report_html))
+    assert _GLOSS_LINE.sub("", _page_i(app_html)) == _page_i(report_html)
 
 
 def test_a_modified_replay_names_its_settings_and_digest(tmp_path,

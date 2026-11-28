@@ -1188,8 +1188,11 @@ footer.buildline{text-align:center;padding:.6rem 0 1rem}
 .ms-override{margin-top:.8rem;padding:.5rem .8rem;border-left:3px solid var(--warn)}
 .ms-override .ck{font-weight:600}
 /* the "?" explainer (templates/_tips.html, static/tips.js): a small round
-   button; its tooltip shows on hover, keyboard focus, or click/tap. Inverted
-   surface (ink on card) so it reads in every theme and a11y mode. */
+   button; its tooltip shows on hover, keyboard focus, or click/tap. The
+   box is the card's own surface, opaque in every theme (a literal token,
+   no opacity, no fade), so it reads over the controls under it; a border
+   and the pop shadow set it apart from the card it sits on. tips.js
+   places it where it covers no form control when it can. */
 .lblrow{display:flex;align-items:center;gap:.1rem;margin:.5rem 0 .2rem}
 .lblrow label{margin:0}
 .tip{position:relative;display:inline-block;vertical-align:middle;
@@ -1202,18 +1205,24 @@ button.tipbtn{
   cursor:help}
 button.tipbtn:hover{background:var(--accent-ink);color:var(--card)}
 .tipbox{position:fixed;left:0;top:0;
-  z-index:60;width:max-content;max-width:min(20rem,85vw);padding:.45rem .6rem;
-  border-radius:8px;border:1px solid var(--line);background:var(--ink);
-  color:var(--card);font-size:var(--fs-label);font-weight:500;line-height:1.4;
+  z-index:60;width:max-content;max-width:min(20rem,calc(100vw - 1rem));
+  padding:.45rem .6rem;
+  border-radius:8px;border:1px solid var(--field-line);background:var(--card);
+  color:var(--ink);font-size:var(--fs-label);font-weight:500;line-height:1.4;
   text-align:left;text-transform:none;letter-spacing:normal;white-space:normal;
-  box-shadow:0 4px 14px rgba(0,0,0,.22);visibility:hidden;opacity:0;
-  transition:opacity .12s;pointer-events:none}
-.tipbox a{color:inherit;text-decoration:underline}
-.tip:hover .tipbox,.tip:focus-within .tipbox,.tip.open .tipbox{visibility:visible;opacity:1}
-.tip.dismissed .tipbox{visibility:hidden;opacity:0}
+  overflow-wrap:break-word;box-shadow:var(--shadow-pop);visibility:hidden;
+  pointer-events:none}
+.tipbox a{color:var(--accent-ink);text-decoration:underline}
+.tip:hover .tipbox,.tip:focus-within .tipbox,.tip.open .tipbox{visibility:visible}
+.tip.dismissed .tipbox{visibility:hidden}
+/* a box that ends with its glossary link (the kit's `gloss` key) takes
+   the pointer, so the link can be clicked; a bridge over the gap to its
+   button (above or below it) keeps it shown while the pointer crosses */
+.tipbox:has(> .uk-gloss){pointer-events:auto}
+.tipbox:has(> .uk-gloss)::before{content:"";position:absolute;left:0;right:0;
+  top:-.5rem;bottom:-.5rem;z-index:-1}
 /* a notice's detail keeps its lines (BNG2.pl's log, one line a step) */
 #tip-flash{white-space:pre-line}
-@media (prefers-reduced-motion:reduce){.tipbox{transition:none}}
 
 /* the latest-run card: settings left, results right. Tracks auto-fit at a
    20rem floor (so they stack in a 700px window) and children may shrink

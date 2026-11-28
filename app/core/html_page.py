@@ -126,8 +126,7 @@ def theme_boot_script() -> str:
 # ------------------------------------------------------ 4. the kit, inlined
 #: the first and last of nau.css's "?" explainer rules (the kit's tip,
 #: which ui-kit.css builds on)
-_TIP_RULES = (".lblrow{", ("@media (prefers-reduced-motion:reduce)"
-              "{.tipbox{transition:none}}"))
+_TIP_RULES = (".lblrow{", "#tip-flash{white-space:pre-line}")
 
 
 def kit_css() -> str:

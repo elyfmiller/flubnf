@@ -81,7 +81,7 @@
     Its "?" holds the page's one rule (a past week's run reads that
     week's vintage) and what "shipped" means #}
  <div><div class="card dt-archive">
-  {% call tips.heading("Archive", "archive") %}A run on a past week reads that week's archived vintage, never later revisions.{% if n_shipped %} Shipped: weeks the hub archive skipped, taken from the hub's own published target-data and committed with FluBNF (data/vintages/); replays read them like archived vintages.{% endif %}{% endcall %}
+  {% call tips.heading("Archive", "archive", gloss="vintage") %}A run on a past week reads that week's archived vintage, never later revisions.{% if n_shipped %} Shipped: weeks the hub archive skipped, taken from the hub's own published target-data and committed with FluBNF (data/vintages/); replays read them like archived vintages.{% endif %}{% endcall %}
   {% if n_vintages %}
   {% call tips.stats("dt-archstats", label="Archive") %}
    {% set shp %}{% if n_shipped %}{{ tips.badge("info", n_shipped ~ " shipped", id="n-shipped") }}{% endif %}{% endset %}
@@ -133,7 +133,7 @@
     carry the final-data mark), the pages that use it at the right #}
  {% set dsb %}{% if ds.vintage_true %}{{ tips.badge("ok", "vintage-true", id="ds-kind") }}{% else %}{{ tips.badge("neutral", "final data", id="ds-kind") }}{% endif %}{% endset %}
  {% set dsa %}<a class="btn quiet dt-act" href="/forecast?source={{ ds.id }}">Forecast it</a><a class="btn quiet dt-act" href="/retro?dataset={{ ds.id }}">Replay it</a><a class="dt-back" href="/data">Back to the FluSight hub</a>{% endset %}
- {{ tips.heading(ds.name, "ds-browse", "Each group's series as stored. " ~ ("Pick a snapshot to see the data as it stood on that as_of." if ds.vintage_true else "The upload had no as_of column, so this is the final data; forecasts and replays on it are not vintage-true."), after=dsb, aside=dsa, tip_label="this view") }}
+ {{ tips.heading(ds.name, "ds-browse", "Each group's series as stored. " ~ ("Pick a snapshot to see the data as it stood on that as_of." if ds.vintage_true else "The upload had no as_of column, so this is the final data; forecasts and replays on it are not vintage-true."), after=dsb, aside=dsa, tip_label="this view", gloss=("snapshot" if ds.vintage_true else "final-data")) }}
  {% else %}
  {{ tips.heading("Vintage browser", "vb", after=tips.badge("neutral", "read-only")) }}
  {% endif %}

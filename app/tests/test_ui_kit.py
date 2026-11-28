@@ -42,10 +42,10 @@ SHEETS = {p.relative_to(UI / "static").as_posix(): p.read_text()
 DOC = (REPO / "docs" / "UI-KIT.md").read_text()
 DOCS_INDEX = (REPO / "docs" / "README.md").read_text()
 
-MACROS = ("tip", "label", "icon", "icon_tip", "toggletip", "heading",
-          "badge", "alert", "empty", "stats", "stat", "reason_button",
-          "stepper", "progress", "legend", "fold", "meta", "tag",
-          "namechip", "runname")
+MACROS = ("tip", "term", "gloss_end", "label", "icon", "icon_tip",
+          "toggletip", "heading", "badge", "alert", "empty", "stats", "stat",
+          "reason_button", "stepper", "progress", "legend", "fold", "meta",
+          "tag", "namechip", "runname")
 ICON_NAMES = ("info", "warning", "error", "check", "clock", "download",
               "upload", "folder", "external", "lock", "calendar", "refresh", "dot",
               "close")
@@ -1000,6 +1000,65 @@ def test_a_mark_on_a_filled_surface_takes_that_surface_s_text_color():
     # on the old open Model settings button's accent fill fell under 3:1 in
     # some theme, and the dim theme's red on an alert's tint under 4.5:1). Not pinned: a
     # theme that improves those pairs must not fail this test
+
+
+#: the kit's popups: a tip's box (nau.css) and a toggletip's panel
+POPUPS = (".tipbox", ".uk-tt-pop")
+
+
+def test_a_popup_is_opaque_in_every_theme_and_mode():
+    """The 2026-11-27 user review (B14): a help popup read as translucent
+    grey over the controls under it. Each popup's ground is a token that
+    resolves, in every theme with and without high contrast and the
+    color-vision mode, to an opaque color (six hex digits, no alpha), the
+    card's own; its text holds 4.5:1 on it; and nothing makes it see-through
+    (no opacity, no fade, no rgba ground). Forced colors give it the
+    system's opaque Canvas and draw its edge; high contrast thickens it."""
+    nau, kit = _rules(NAU), _rules(KIT_CSS)
+    rules = {".tipbox": _rule(nau, ".tipbox"), ".uk-tt-pop": _rule(kit, ".uk-tt-pop")}
+    for sel, d in rules.items():
+        assert _token(d["background"]) == "card", sel
+        assert _token(d["color"]) == "ink", sel
+        assert d["border"].endswith("solid var(--field-line)"), sel
+    seen = 0
+    for name, _hc, T in _grid():
+        for sel, d in rules.items():
+            ground = T[_token(d["background"])]
+            # _rgb reads #rgb and #rrggbb only: a color with alpha, a
+            # keyword or a function fails here
+            assert re.fullmatch(r"#[0-9a-fA-F]{6}", ground.strip()), (name, sel, ground)
+            assert _ratio(_rgb(T[_token(d["color"])]), _rgb(ground)) >= 4.5, (name, sel)
+            assert _ratio(_rgb(T["accent-ink"]), _rgb(ground)) >= 4.5, (name, sel, "link")
+        seen += 1
+    assert seen >= 16
+    # nothing anywhere fades a popup or makes its ground see-through: no
+    # opacity or transition on any rule that styles one (the hover, focus,
+    # open and dismissed states, the reason button's hover included)
+    for sheet, css in SHEETS.items():
+        for sel, d in _rules(css):
+            if not any(p in sel for p in POPUPS):
+                continue
+            last = _split(sel, " >+~")[-1]
+            if not any(last.startswith(p) for p in POPUPS):
+                continue                   # an element inside a popup
+            for k, v in d.items():
+                assert k not in ("opacity", "transition", "filter",
+                                 "backdrop-filter"), (sheet, sel, k)
+                if k.startswith("background"):
+                    assert not re.search(r"rgba|hsla|transparent|color-mix",
+                                         v), (sheet, sel, v)
+    # high contrast: a heavier edge; forced colors: the system's ground,
+    # text and edge
+    assert _rule(kit, '[data-contrast="high"] .tipbox') == {"border-width": "2px"}
+    assert _rule(kit, '[data-contrast="high"] .uk-tt-pop') == {"border-width": "2px"}
+    forced = _rules(_at_blocks(KIT_CSS, "@media (forced-colors:active)"))
+    for sel in POPUPS:
+        d = {}
+        for s, decls in forced:
+            if s == sel:
+                d.update(decls)
+        assert d["background"] == "Canvas" and d["color"] == "CanvasText", sel
+        assert d["border-color"] == "CanvasText", sel
 
 
 #: a segmented switch's segments as the pages write them (the kit's own

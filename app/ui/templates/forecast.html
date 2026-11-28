@@ -32,16 +32,16 @@
   {# the card's one explainer: the few terms its fields use #}
   {% call tips.heading("Settings", "fc-settings", rich=True) %}
   {%- if dataset %}
-  <span class="uk-tt-line"><b>Real-time</b> forecasts from the dataset's newest week; <b>Vintage</b> from an earlier one.</span>
+  <span class="uk-tt-line"><b>Real-time</b> forecasts from the dataset's newest week; <b>{{ tips.term("vintage", "Vintage") }}</b> from an earlier one.</span>
   <span class="uk-tt-line"><b>Forecast date:</b> any day anchors on the latest week of the dataset on or before it.</span>
-  <span class="uk-tt-line"><b>Vintage-true:</b> each week is forecast from the snapshot that held it. <b>Final data:</b> later revisions leak into past weeks.</span>
+  <span class="uk-tt-line"><b>{{ tips.term("vintage-true", "Vintage-true") }}:</b> each week is forecast from the snapshot that held it. <b>{{ tips.term("final-data", "Final data") }}:</b> later revisions leak into past weeks.</span>
   <span class="uk-tt-line"><b>Groups</b> are forecast one by one{% if dataset.national %}; {{ dataset.national }} is scored beside them, never pooled{% endif %}. Scores are against an in-house persistence baseline.</span>
   <span class="uk-tt-line">Forecasts export under non-hub names; never submitted.</span>
   {%- else %}
-  <span class="uk-tt-line"><b>Real-time</b> forecasts from the hub's newest week; <b>Vintage</b> from an archived week, as it stood.</span>
+  <span class="uk-tt-line"><b>Real-time</b> forecasts from the hub's newest week; <b>{{ tips.term("vintage", "Vintage") }}</b> from an archived week, as it stood.</span>
   <span class="uk-tt-line"><b>Forecast date:</b> a Saturday must be an archived week; any other day anchors on the latest archived week before it.</span>
   <span class="uk-tt-line"><b>Not archived:</b> the newest week, read from target-data until archived.</span>
-  <span class="uk-tt-line"><b>FluSight round:</b> the anchor week plus 7 days, the date its files carry.</span>
+  <span class="uk-tt-line"><b>{{ tips.term("round", "FluSight round") }}:</b> the anchor week plus 7 days, its {{ tips.term("reference-date", "reference date") }}; {{ tips.term("horizon", "horizons") }} count from it.</span>
   <span class="uk-tt-line"><b>All 53:</b> the 50 states, DC, Puerto Rico and US; US is fitted and scored apart.</span>
   {%- if data_issues %}
   <span class="uk-tt-line"><b>Data issues:</b> each state is preset to the recommended choice, for this run only. <a href="/methods#mt-newest">What each choice does</a></span>

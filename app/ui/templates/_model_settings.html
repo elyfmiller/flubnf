@@ -77,7 +77,7 @@
  <summary><span class="uk-fold-sum">Model settings</span><span class="fc-ms-state" id="{{ px }}ms-state" aria-live="polite">{{ word }}</span></summary>
  <div class="ms-head">
   <button type="button" class="quiet" id="{{ px }}ms-reset">Reset to defaults</button>
-  {% call tips.toggletip(px ~ "ms-about", "model settings") %}{{ kp.about or ("Each field starts at its default; focus one to see what it does. Any change marks the run modified" ~ (", and its files are named <hub id>" ~ kp.suffix ~ " unless you export them under the hub names with a reason." if kp.override else ", and the season's results are not published.")) }} <a href="/methods#settings">Every setting on Methods</a>{% endcall %}
+  {% call tips.toggletip(px ~ "ms-about", "model settings", gloss="modified") %}{{ kp.about or ("Each field starts at its default; focus one to see what it does. Any change marks the run modified" ~ (", and its files are named <hub id>" ~ kp.suffix ~ " unless you export them under the hub names with a reason." if kp.override else ", and the season's results are not published.")) }} <a href="/methods#settings">Every setting on Methods</a>{% endcall %}
  </div>
  {% if kp.refused %}<div class="fc-ms-refused">{{ tips.alert("warn", kp.refused, title=kp.refused_lead, id=px ~ "ms-refused", live="") }}</div>{% endif %}
  {% for g in kp.groups %}{% set rows = g.rows | rejectattr("later") | list %}{% if rows %}

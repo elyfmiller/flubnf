@@ -294,8 +294,9 @@ def run_methods(tmp_path, steps=(), hash_="", layout=None, html=None):
     return json.loads(out.stdout.strip().splitlines()[-1])
 
 
-#: the last two sections short enough to share the final screen
-SHORT_END = {"heights": {"stack": 300, "policies": 250}}
+#: the last two sections (Policies, then the Glossary) short enough to
+#: share the final screen
+SHORT_END = {"heights": {"policies": 300, "glossary": 250}}
 
 
 # ------------------------------------------------- ME-04: jumps land in view
@@ -344,7 +345,7 @@ def test_the_current_chip_is_the_last_section_passed_and_the_last_at_the_end(tmp
     assert at["in oracle"] == ["#oracle"]
     assert at["under the band"] == ["#oracle"]
     assert at["at the band"] == ["#two-strain"]
-    assert got[-1]["atEnd"] and at["end"] == ["#policies"]
+    assert got[-1]["atEnd"] and at["end"] == ["#glossary"]
 
 
 # --------------------------------------------- ME-13: the prior range's rule

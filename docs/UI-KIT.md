@@ -85,15 +85,27 @@ this file or recorded an error for it.{% endcall %}
 
 A plain string argument is escaped; markup built in the template (`{% set t %}...{% endset %}`) or passed from Python as `Markup` is not. Ids belong to the caller and must be unique on the page: a tip's box is `tip-<id>`, a toggletip's panel `tt-<id>`.
 
-### Tip: `tips.tip(id, label, text="")`
+### Tip: `tips.tip(id, label, text="", gloss="")`
 
-The "?" button beside a setting, a heading or a value. The tooltip shows on hover, on keyboard focus and on click or tap; Escape hides it. The button is named "About <label>" and described by the tooltip, so a screen reader reads the explanation on focus. Use it for a sentence or two of plain explanation. A tooltip is never interactive: a link inside one cannot be reached by keyboard, so an explanation with links is a toggletip.
+The "?" button beside a setting, a heading or a value. The tooltip shows on hover, on keyboard focus and on click or tap; Escape and a click outside it hide it, whichever of the three showed it, and it stays hidden until the pointer or focus comes back. The button is named "About <label>" and described by the tooltip, so a screen reader reads the explanation on focus. Use it for a sentence or two of plain explanation. A tooltip holds no controls, so an explanation with links is a toggletip; its one exception is the glossary link below.
+
+The box is the card's own surface with a border and a shadow, opaque in every theme, in high contrast and under forced colors, with no fade. `FluBNFUI.place` sets it under its button, or above when the space under it would cover a form control (the field a label's "?" explains, a drop zone) and above fits, always inside the window.
+
+`gloss` is the key of a Methods Glossary entry (`id="g-<key>"` on the Glossary card; `app/core/glossary.py` KEYS, which refuses an unknown key) when the explainer's subject is that word. The explainer then ends with "More in the glossary", a link to the entry, on a line of its own; Tab moves from the "?" into it while the tip shows, and a pointer crosses to it over a bridge that keeps the box shown. Every macro below that draws a "?" or an "i" takes `gloss` too. The link is the console's alone: the weekly report renders the kit without the `glossary_href` global and gets none, and the season page passes no key when exported, so a saved copy holds no link it cannot follow.
 
 ```jinja
-{{ tips.tip("archive", "the archive", "Each dot is one week's snapshot as the runs fit it.") }}
+{{ tips.tip("archive", "the archive", "Each dot is one week's snapshot as the runs fit it.", gloss="vintage") }}
 ```
 
-### Field hint: `tips.label(text, id, tiptext, for_="")`
+### Glossary links: `tips.term(key, text)` and `tips.gloss_end(gloss, cls="")`
+
+`term` is one glossary word inside a rich explainer, linked to its entry: a toggletip that defines several words links each where it defines it, instead of one "More in the glossary" line. Outside the console (no `glossary_href`) it is the word alone. `gloss_end` is the "More in the glossary" line the macros' `gloss` key adds; a template calls it only for an explainer it builds itself.
+
+```jinja
+<span class="uk-tt-line"><b>{{ tips.term("reference-date", "Reference date") }}:</b> the anchor week plus 7 days.</span>
+```
+
+### Field hint: `tips.label(text, id, tiptext, for_="", gloss="")`
 
 A form label with its "?" on the same line. A hint under a field (`<p class="hint">` after an input) becomes the label's tip. Short format hints that help while typing ("YYYY-MM-DD", "model name") belong in the field's `placeholder`; a unit belongs beside the field:
 
@@ -102,7 +114,7 @@ A form label with its "?" on the same line. A hint under a field (`<p class="hin
 <span class="uk-affix"><input type="number" id="rt-width-in" name="width"><span>runners</span></span>
 ```
 
-### Heading: `tips.heading(text, id="", tiptext="", level=2, after="", aside="", cls="", rich=False, tip_label="")`
+### Heading: `tips.heading(text, id="", tiptext="", level=2, after="", aside="", cls="", rich=False, tip_label="", gloss="")`
 
 A section title with its explainer beside it. It replaces the subtext line under a card's `h2`. The "?" sits after the heading element, not inside it, so the heading's accessible name is the title alone. `after` is markup after the tip (a badge, a count); `aside` is markup pushed to the right edge (an action). `rich=True` makes the explainer a toggletip. The heading gets `id="h-<id>"`. At `level=3` it is a sub-heading inside a card, drawn at one size on every tab; a tab's `cls` sets its spacing only.
 
@@ -112,9 +124,9 @@ A section title with its explainer beside it. It replaces the subtext line under
 
 Inside a `<summary>` (whose content may not hold a `<div>`), keep the plain `<h2>` and put `tips.tip` after it.
 
-### Toggletip: `tips.toggletip(id, label, text="", title="")`
+### Toggletip: `tips.toggletip(id, label, text="", title="", gloss="")`
 
-An "i" button that opens a panel on click (Enter or Space from the keyboard) and keeps it open: for explanations too long or too rich for a tooltip, with links, lists or several lines. The button carries `aria-expanded` and `aria-controls`; the panel is ordinary content (never `role="tooltip"`), so Tab moves from the button into its links. Escape, a click outside or focus leaving it closes it, and Escape returns focus to the button; an Escape that closes a panel or hides a tip goes no further, so the menu around it stays open until a second Escape. A panel taller than the window scrolls inside itself, kept in view. Without script the panel shows, in the flow under its button (so a card never clips it), while focus is inside the toggletip. Put one line per `<span class="uk-tt-line">`; a list needs the toggletip outside any `<p>` (a `<ul>` closes an open `<p>`).
+An "i" button that opens a panel on click (Enter or Space from the keyboard) and keeps it open: for explanations too long or too rich for a tooltip, with links, lists or several lines. The button carries `aria-expanded` and `aria-controls`; the panel is ordinary content (never `role="tooltip"`), so Tab moves from the button into its links. Escape, a click outside or focus leaving it closes it, and Escape returns focus to the button; an Escape that closes a panel or hides a tip goes no further, so the menu around it stays open until a second Escape. The panel is placed as a tooltip is (`FluBNFUI.place`); one taller than the window scrolls inside itself, kept in view. Without script the panel shows, in the flow under its button (so a card never clips it), while focus is inside the toggletip. Put one line per `<span class="uk-tt-line">`; a list needs the toggletip outside any `<p>` (a `<ul>` closes an open `<p>`).
 
 ```jinja
 {% call tips.toggletip("out-files", "these files", title="Submission files") %}
@@ -123,7 +135,7 @@ An "i" button that opens a panel on click (Enter or Space from the keyboard) and
 {% endcall %}
 ```
 
-### Badge: `tips.badge(state, text, tiptext="", id="", icon_name="")`
+### Badge: `tips.badge(state, text, tiptext="", id="", icon_name="", gloss="")`
 
 A status, set in the line like text with no outline, fill or pill. `state` is `ok`, `warn`, `error`, `info`, `neutral` or `pending`. A state that asks something of the reader (`warn`, `error`) or is under way (`pending`) is its icon and its word in the state's color, never color alone: each has its own icon shape (triangle, octagon, clock), so the three differ in the color-vision mode and in grayscale too. A state that asks nothing (`ok`, `info`, `neutral`) is the word alone, muted, with no icon: a confirmation, a count, a kind. The markup is the same for every state (the icon is in it and `ui-kit.css` hides it for the quiet three), so a script can turn one state into another; `icon_name` picks another icon for a state that shows one. With a tip, the "?" follows the badge, the two held together in one `uk-badge-pair` so a wrapping line never leaves the "?" on its own. Two marks side by side stand apart as the facts of a row do. A badge inside a link has its word underlined, since no outline says it can be pressed. A badge brings no ground of its own: on a filled surface (an alert, a tooltip, the chosen side of a switch) it takes that surface's text color, and a new filled surface that holds one states the same beside its own rule. It replaces status sentences ("the hub clone is up to date") and `.pill` spans that carry a state. A page script updates one in place with `FluBNFUI.setBadge(el, state, text)`.
 
@@ -132,7 +144,7 @@ A status, set in the line like text with no outline, fill or pill. `state` is `o
 {{ tips.badge("warn", "modified settings", id="rs-knobs") }}
 ```
 
-### Alert: `tips.alert(kind, text, title="", tiptext="", id="", action="", live=none, hidden=False, tip_label="", cls="")`
+### Alert: `tips.alert(kind, text, title="", tiptext="", id="", action="", live=none, hidden=False, tip_label="", cls="", gloss="")`
 
 A line the user must act on now: a failure, a blocking problem, a deadline. `kind` is `error`, `warn`, `info` or `ok`. One short line; the explanation goes in its tip; an `action` (a link or a button, as markup) sits at the right. An error is announced as an alert, the other kinds politely (`role="status"`); `live=""` silences a line that is present from the first paint and is not news. It replaces multi-sentence `.banner` paragraphs and `p.warn` lines. `base.html` shows the update notice and the server's notices (the flash) this way. `hidden=True` renders it hidden for a page script to show (`el.hidden = false`); the kit keeps `[hidden]` hidden. The "?" is named from the title (or the line) in lower case; `tip_label` names it where that would read wrong (a long warning). `cls="uk-alert--two-line"` keeps the icon by the title when a second line follows it (a muted reason under the title). The flash takes its kind from the server (`shared._flash(msg, kind, detail="")`): a refusal warns, a failure is an error, a completed action is ok. Its line is one short sentence with the essential fact first ("Not deleted: a run is using this dataset."); the reason's fine print or the next step goes in `detail`, shown as its tip.
 
@@ -149,9 +161,9 @@ What a card shows before it has content: an icon, one short title, and at most o
 {{ tips.empty("No forecasts yet", "clock", action='<a class="btn gold" href="/forecast">Run a forecast</a>' | safe) }}
 ```
 
-### Stats: `tips.stats(cls="", label="")` and `tips.stat(label, value, unit="", tiptext="", id="", state="", after="", tip_label="")`
+### Stats: `tips.stats(cls="", label="")` and `tips.stat(label, value, unit="", tiptext="", id="", state="", after="", tip_label="", gloss="", anchor="")`
 
-Labelled values. A sentence that strings facts together ("212 vintages, newest week 2026-09-20, 1,234 rows") becomes one stat per fact, each with its label, its unit and, where needed, its tip. `stats` is the definition list and takes the stats in a call block. `cls` picks the layout: tiles that wrap (default), `uk-stats--kv` (labels left, values right, one row per fact) or `uk-stats--row` (one compact line). `state` colors the value (`ok`, `warn`, `error`); say the state in a word too, with a badge in `after`. A value that is itself a badge reads as a value: in the ink when its state is quiet, behind its icon in the state's color when it is not. `id` lands on the value, for a script that updates it. The "?" is named from the label in lower case; `tip_label` names it where that would read wrong ("relWIS").
+Labelled values. A sentence that strings facts together ("212 vintages, newest week 2026-09-20, 1,234 rows") becomes one stat per fact, each with its label, its unit and, where needed, its tip. `stats` is the definition list and takes the stats in a call block. `cls` picks the layout: tiles that wrap (default), `uk-stats--kv` (labels left, values right, one row per fact) or `uk-stats--row` (one compact line). `state` colors the value (`ok`, `warn`, `error`); say the state in a word too, with a badge in `after`. A value that is itself a badge reads as a value: in the ink when its state is quiet, behind its icon in the state's color when it is not. `id` lands on the value, for a script that updates it; `anchor` lands on the label, for a link to scroll to (the Methods Glossary's entries, `g-<key>`: a `uk-stats--kv` row draws no box of its own). The "?" is named from the label in lower case; `tip_label` names it where that would read wrong ("relWIS").
 
 ```jinja
 {% call tips.stats("uk-stats--kv") %}
@@ -162,7 +174,7 @@ Labelled values. A sentence that strings facts together ("212 vintages, newest w
 
 ### Reason button: `tips.reason_button(text, id, reason, off=True, cls="", type="", name="", value="", data={}, attrs="", label="")`
 
-A control that is off for a reason. The button is disabled and described by a "?" that states why, instead of a sentence beside it; the "?" takes focus where the disabled button cannot. Hovering the disabled button shows the reason too. `off=False` renders it enabled with the "?" hidden, for a script that switches it: `FluBNFUI.setReason(button, reason)` disables it with that reason, `FluBNFUI.setReason(button, null)` enables it. `data` becomes `data-*` attributes (`{"guard": "console-run"}`); `attrs` is raw markup for anything else.
+A control that is off for a reason. The button is disabled and described by a "?" that states why, instead of a sentence beside it; the "?" takes focus where the disabled button cannot. Hovering the disabled button shows the reason too, and a click or tap on it leaves the reason up. `off=False` renders it enabled with the "?" hidden, for a script that switches it: `FluBNFUI.setReason(button, reason)` disables it with that reason, `FluBNFUI.setReason(button, null)` enables it. `data` becomes `data-*` attributes (`{"guard": "console-run"}`); `attrs` is raw markup for anything else.
 
 ```jinja
 {{ tips.reason_button("Apply the Oracle step", "sb-oracle-why", oracle_gate.reason,
@@ -224,7 +236,7 @@ A kind or a unit in a word ("Mechanistic", "relWIS", "population"): plain muted 
 {{ tips.heading("Export files", "run-ds-exports", after=tips.tag("hubverse CSV, not submitted")) }}
 ```
 
-### Name chip: `tips.namechip(text, id, tiptext="", tip_label="")`
+### Name chip: `tips.namechip(text, id, tiptext="", tip_label="", gloss="")`
 
 The short name of the formula or figure beside it: an equation's caption, as plain muted words with no outline (the macro keeps the name "chip"). Put the formula and its chip in a `<p class="uk-figline">`, a centered line under a figure (it also centers a badge about the figure, such as the caption badge that carries a figure's illustrative values). The equation's note sits in plain sight on the line under it, a `<p class="eqnote md-eqnote">`, not behind a "?" (`diagrams.html`'s `_eq`). A chip with no `tiptext` has no "?"; give it one only for a reading that has no line of its own.
 
@@ -259,7 +271,7 @@ A choice is never drawn as a rounded pill: a switch is this one, a choice that l
 
 A control that removes something for good, in a row or a heading: the danger tier's quiet form, its word and outline in `--bad` on no fill (`nau.css`). It stands apart from the row's links ("Results", "Open"), never beside one in the same style, and it opens the shared confirmation (`window.FluBNFConfirm`), whose own button is the filled `danger`. Disabled, it is drawn as any disabled control.
 
-### Icons: `tips.icon(name, label="", cls="")` and `tips.icon_tip(id, label, name, text="", state="")`
+### Icons: `tips.icon(name, label="", cls="")` and `tips.icon_tip(id, label, name, text="", state="", gloss="")`
 
 Inline SVG icons in the text's color, 1em square: `info`, `warning`, `error`, `check`, `clock`, `download`, `upload`, `folder`, `external`, `lock`, `calendar`, `refresh`, `dot`, `close`. An icon is decorative (`aria-hidden`) unless given a `label`, which makes it an image with that name. Its drawing attributes are on the SVG itself, so it renders without `ui-kit.css` too. `icon_tip` is a tip whose button is an icon instead of "?": a warning mark whose tooltip names what to check, a lock whose tooltip says why something is protected; `state` colors it (`ok`, `warn`, `error`, `info`, `muted`). For an icon beside text, `<span class="uk-c-warn">` (or `-ok`, `-error`, `-info`, `-muted`) colors it with the state token.
 
@@ -283,6 +295,7 @@ Inline SVG icons in the text's color, 1em square: `info`, `warning`, `error`, `c
 | `FluBNFUI.progress(label, value, max, text, id)` | a progress bar's markup (`tips.progress`); `value` null slides |
 | `FluBNFUI.setProgress(el, value, max, text)` | moves an existing bar: a number fills it, `null` slides it, `undefined` leaves the fill; `text` is the readout |
 | `FluBNFUI.esc(text)` | HTML-escapes a string |
+| `FluBNFUI.place(button, popup)` | places a popup by its button, as tips and toggletips are: under it, or above when under it would cover a form control; returns `'below'` or `'above'` |
 
 A script that fills a box with kit components builds them with these, never by copying the markup, so a change to a component reaches every page.
 
@@ -302,7 +315,7 @@ Colors come only from the `nau.css` tokens (`var(--ink)`, `var(--ok)`, a `color-
 
 ## Accessibility contract
 
-- Every tip, toggletip and reason is reachable by keyboard and named for a screen reader; Escape closes what is open.
+- Every tip, toggletip and reason is reachable by keyboard and named for a screen reader; Escape and a click outside close what is open. A popup is opaque in every theme and mode, and covers no form control when it has room not to.
 - Status is never color alone: a mark that wears a state's color (a warning, a failure, work under way) is an icon shape and a word in that color, a quiet word uses no state color, a stepper speaks each step's state, a legend names each swatch.
 - A mark has no outline: a badge, a tag and a name chip are words set in the line, and a status that is a link is underlined. Among words in a line, only what can be pressed has an outline (a button, a switch, a "?" or an "i"). A key is not a mark and keeps its box: `code`, `kbd`, a model's parameter symbols ("Fitted per state"), a tile.
 - Hit targets: the "?" and "i" buttons are drawn at 1.1rem, and their clickable ring reaches 24px at the standard text size.

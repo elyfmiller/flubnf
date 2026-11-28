@@ -497,11 +497,17 @@ HUB_RESULTS_NOTE = ("relWIS vs the FluSight baseline, pooled over fitted "
                     "states (US excluded); below 1.000 beats it.")
 
 
-def _tip(tid: str, label: str, text: str) -> str:
+def _tip(tid: str, label: str, text: str, gloss: str = "") -> str:
     """The "?" explainer markup of templates/_tips.html (tip macro), for
-    HTML built here; text is a fixed phrase, escaped anyway."""
+    HTML built here; text is a fixed phrase, escaped anyway. `gloss`, a
+    glossary key (app/core/glossary.py), ends it with the link to that
+    entry, as the macro's `gloss` does; for the console's pages only."""
     import html as _html
     t = _html.escape(text)
+    if gloss:
+        from app.core import glossary
+        t += (f' <span class="uk-gloss"><a class="uk-term" '
+              f'href="{glossary.href(gloss)}">More in the glossary</a></span>')
     return (f'<span class="tip"><button type="button" class="tipbtn" '
             f'aria-label="About {label}" aria-describedby="tip-{tid}">?</button'
             f'><span class="tipbox" role="tooltip" id="tip-{tid}">{t}</span></span>')
@@ -791,10 +797,12 @@ def results_tip(spec, outcome=None) -> str:
     """The "?" tip holding the relWIS convention, for a page that heads the
     results table itself (the run page's Results card); '' when `outcome`
     is given and holds no relWIS (nothing scored yet: no convention to
-    explain)."""
+    explain). It ends with the link to relWIS in the glossary: the
+    console's pages are its only readers."""
     if outcome is not None and not has_relwis(outcome):
         return ""
-    return _tip("res-note", "the results", _results_note(_spec_dict(spec)))
+    return _tip("res-note", "the results", _results_note(_spec_dict(spec)),
+                gloss="relwis")
 
 
 def has_relwis(outcome) -> bool:

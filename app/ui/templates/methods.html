@@ -218,6 +218,7 @@
  <a href="#performance">Performance</a>{% endif %}
  <a href="#stack">Under the hood</a>
  <a href="#policies">Policies</a>
+ <a href="#glossary">Glossary</a>
 </nav></div>
 
 <div class="mt-doc">
@@ -252,35 +253,6 @@
    </ul>
    <p class="mt-links"><a href="#analogue">How it forecasts</a>{% if active is defined %} <a href="/model/analogue">Model tab</a>{% endif %}</p>
   </section>
- </div>
- {# the working words other tabs use, one line each, in recorded wording.
-    Scored cell and relWIS are the Scoring card's. The last three are the
-    console's only (`active` is set): the site has no runs or settings.
-    A run's folder is named as Storage names it (Run workroots) #}
- <div class="mt-folds">
- {% call tips.fold("Words used here", id="mt-words", cls="mt-fold") %}
- {% call tips.stats("uk-stats--kv") %}
-  {{ tips.stat("Liu-West filter", "The particle filter, in PyBNF, that fits the Oracle SIHRS each week.") }}
-  {{ tips.stat("Forecasting sample", "The filter's particles after the newest week. Each is a candidate epidemic whose free parameters drift by the Liu-West kernel. Their spread is the forecast's uncertainty.") }}
-  {{ tips.stat("Oracle step", "The filter's forecast growth blended with past seasons' at the same calendar week.") }}
-  {{ tips.stat("Groundhog", "The empirical model. It applies donor growth ratios to the last observed count, with no mechanism.") }}
-  {{ tips.stat("Donor", "A week from an earlier season within two epiweeks of the forecast week. The Groundhog and the Oracle step use its growth.") }}
-  {{ tips.stat("Abstain", "A model gives no forecast for a state and week. The Groundhog abstains with fewer than 30 donors, or when the newest week reads 0 and No forecast is chosen.") }}
-  {{ tips.stat("Vintage", "The data as archived on one day: exactly as the forecaster saw it then.") }}
-  {{ tips.stat("Reference date", "The data's newest week plus 7 days. It names the round; horizons count from it.") }}
-  {{ tips.stat("Horizon", "Weeks from the reference date to the week forecast. Horizons 0 to 3 are scored.") }}
-  {{ tips.stat("Jurisdiction", "One of the 50 states, DC and Puerto Rico: 52 in all. With the US national total they make 53 locations.") }}
-  {% if active is defined %}
-  {# what knobs.modified counts: the settings that change a model; an
-     optional output (tagged "optional" in Model settings) adds rows only #}
-  {{ tips.stat("Modified settings", "A run made with a Model setting changed from its default, other than one tagged optional: those only add rows. A hub run's files are then named <hub id>-modified, a record not for the hub, unless exported under the hub names with a reason.") }}
-  {{ tips.stat("Workroot", "A run's own folder on this computer, new for each run. Storage lists them under On disk, in Run workroots.") }}
-  {# Storage's table holds the newest rows (storage.LEDGER_ROWS) and its
-     clear removes rows, never a workroot (storage.runs_clear) #}
-  {{ tips.stat("Run ledger", "The record of the runs made on this computer, one row per run, and the run can be reproduced from its row. The Storage tab's table shows the newest rows only. Clearing the ledger removes its rows and leaves the runs' workroots on disk.") }}
-  {% endif %}
- {% endcall %}
- {% endcall %}
  </div>
 </div>
 
@@ -745,6 +717,53 @@
  difference); docs/archive/RELEASE-1.0.md has both.</p>
  {% endcall %}
  </div>
+</div>
+
+{# the Glossary: the words the console's pages use, one labelled line
+   each, for a reader new to forecasting, alphabetical by the word. Each
+   entry has its own id ("g-<key>", app/core/glossary.py KEYS), where a
+   "?" whose subject is the word links (the kit's `gloss` key), so the
+   card is never folded. Scored cell and coverage stay the Scoring card's
+   labels; relWIS is in both, since the other tabs' "?" lead here. The
+   Modified settings, Workroot and Run ledger lines are the console's
+   only (`active` is set): the site has no runs or settings. A run's
+   folder is named as Storage names it (Run workroots) #}
+<div class="card" id="glossary"><h2>Glossary</h2>
+ {% call tips.stats("uk-stats--kv mt-glossary", label="Glossary") %}
+  {{ tips.stat("Abstain", "A model gives no forecast for a state and week. The Groundhog abstains with fewer than 30 donors, or when the newest week reads 0 and No forecast is chosen.", anchor="g-abstain") }}
+  {{ tips.stat("Donor weeks", "Weeks from earlier seasons within two epiweeks of the forecast week, whose growth the Groundhog and the Oracle step borrow. The Groundhog needs at least 30 at every horizon; with fewer it abstains.", anchor="g-donor") }}
+  {{ tips.stat("Final data", "The counts as they read today, after every later correction. A forecast or replay on final data sees revisions no forecaster had at the time, so its scores flatter the model.", anchor="g-final-data") }}
+  {{ tips.stat("FluSight round", "One week of the CDC FluSight forecast hub, named by its reference date. The hub takes a round's files from the Sunday to the Wednesday before that date, until 11 PM Eastern: the FluSight window.", anchor="g-round") }}
+  {{ tips.stat("Forecasting sample", "The filter's particles after the newest week, each a candidate epidemic whose free parameters drift by the Liu-West kernel. Their spread is the forecast's uncertainty.", anchor="g-forecasting-sample") }}
+  {{ tips.stat("Groundhog", "The empirical model. It applies donor growth ratios to the last observed count, with no mechanism.", anchor="g-groundhog") }}
+  {{ tips.stat("Horizon", "Weeks from the reference date to the week forecast. Horizons 0 to 3 are scored; h3 is horizon 3, four weeks past the data's newest week.", anchor="g-horizon") }}
+  {{ tips.stat("Jurisdiction", "One of the 50 states, DC and Puerto Rico: 52 in all. With the US national total they make 53 locations.", anchor="g-jurisdiction") }}
+  {{ tips.stat("Liu-West filter", "The particle filter, in PyBNF, that fits the Oracle SIHRS each week.", anchor="g-liu-west") }}
+  {% if active is defined %}
+  {# what knobs.modified counts: the settings that change a model; an
+     optional output (tagged "optional" in Model settings) adds rows only #}
+  {{ tips.stat("Modified settings", "A run made with a Model setting changed from its default, other than one tagged optional: those only add rows. A hub run's files are then named <hub id>-modified, a record not for the hub, unless exported under the hub names with a reason.", anchor="g-modified") }}
+  {% endif %}
+  {{ tips.stat("Oracle step", "The filter's forecast growth blended with past seasons' at the same calendar week.", anchor="g-oracle-step") }}
+  {{ tips.stat("Quantile", "A forecast is sent as 23 quantiles of each week's admissions. The 50% quantile is the median, and the 97.5% quantile a count the week should stay under 39 times in 40; the 2.5% and 97.5% quantiles bound the central 95% interval.", anchor="g-quantile") }}
+  {{ tips.stat("Reference date", "The data's newest week plus 7 days, a Saturday. It names the FluSight round; horizons count from it.", anchor="g-reference-date") }}
+  {{ tips.stat("relWIS", "A model's weighted interval score (WIS), which charges for a wide interval and for a miss, summed over the scored cells and divided by a baseline's on the same cells: below 1 beats the baseline, and 0.80 is 20% less error. The baseline is the FluSight baseline on hub data, and on your own data a forecast of the last count, spread by recent week-to-week changes.", anchor="g-relwis") }}
+  {{ tips.stat("Replicates", "Independent runs of the Liu-West filter for each location, each from its own random seed, pooled into one forecasting sample. Per-state numbers ship with 3 or more.", anchor="g-replicates") }}
+  {% if active is defined %}
+  {# Storage's table holds the newest rows (storage.LEDGER_ROWS) and its
+     clear removes rows, never a workroot (storage.runs_clear) #}
+  {{ tips.stat("Run ledger", "The record of the runs made on this computer, one row per run, and the run can be reproduced from its row. The Storage tab's table shows the newest rows only. Clearing the ledger removes its rows and leaves the runs' workroots on disk.", anchor="g-ledger") }}
+  {% endif %}
+  {{ tips.stat("Snapshot", "One dated copy of a data file: the data as it stood on its as_of date. The Archive's vintages are the hub's snapshots, a shipped snapshot fills a week the hub's own archive skipped, and snapshots of your own data let each past week be forecast as it was.", anchor="g-snapshot") }}
+  {# flubnf/tailcap.py: clip, shrink and the three levels (knobs
+     output.tail_cap, output.tail_mode, output.tail_level) #}
+  {{ tips.stat("Upper-tail cap", "A ceiling on a forecast's upper tail at n times the location's recent level (the mean of the last three reported weeks, the last week, or the larger), and 0 is no cap; Before cap shows the model's own forecast. With clip each quantile above the median is held to that limit, never below the median; with shrink the location's whole upper tail is pulled in together until its worst horizon's 97.5% quantile meets the limit, so the 99% quantile can stay above it.", anchor="g-cap") }}
+  {{ tips.stat("Vintage", "The data as archived on one day: exactly as the forecaster saw it then.", anchor="g-vintage") }}
+  {{ tips.stat("Vintage-true", "A forecast or replay that reads each past week only from the snapshot that held it, with no later corrections, as a forecaster then would have.", anchor="g-vintage-true") }}
+  {% if active is defined %}
+  {{ tips.stat("Workroot", "A run's own folder on this computer, new for each run. Storage lists them under On disk, in Run workroots.", anchor="g-workroot") }}
+  {% endif %}
+ {% endcall %}
 </div>
 </div>
 {% endblock %}

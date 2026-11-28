@@ -1,6 +1,6 @@
-"""Two of the console's words on Methods, held to what the code does
-(review 3 of the usability work, P2-7 and P2-8), read from the page the
-server renders (served_dom.tree).
+"""Three of the console's words on Methods, held to what the code does
+(review 3 of the usability work, P2-7 and P2-8; the cap), read from the
+page the server renders (served_dom.tree).
 
   * P2-7, "Modified settings": a run is modified by a Model setting that
     changes a model (knobs.modified reads the model record alone). The
@@ -11,6 +11,14 @@ server renders (served_dom.tree).
     shows the newest rows only, and clearing the ledger removes rows and
     leaves the runs' workroots on disk; the line says both, and never
     calls the table a list of every run.
+  * "Upper-tail cap": only clip holds every quantile above the median to
+    n times the level (flubnf/tailcap.py cap_block); shrink takes the
+    power that brings the location's worst horizon's 97.5% quantile to
+    the limit and applies it to the whole upper tail (exponent_needed,
+    shrink_block), so the 99% quantile can stay above. The line says
+    which form does what, and no longer holds every quantile to the limit
+    whatever the form. The setting's own hint and note (Model settings,
+    Methods' table of settings) hold for either form and every level.
 """
 from __future__ import annotations
 
@@ -53,16 +61,16 @@ def _methods():
 
 
 def _said(term: str) -> str:
-    """The Words used here line for `term`: its dd's words."""
+    """The Glossary card's line for `term`: its dd's words."""
     fold = [el for el in _flat(_methods())
-            if el["attrs"].get("id") == "mt-words"]
+            if el["attrs"].get("id") == "glossary"]
     assert len(fold) == 1
     els = _flat(fold[0])
     for i, el in enumerate(els):
         if el["tag"] == "dt" and _words(el) == term:
             dd = next(e for e in els[i + 1:] if e["tag"] == "dd")
             return _words(dd)
-    raise AssertionError(f"no {term!r} in the fold")
+    raise AssertionError(f"no {term!r} in the glossary")
 
 
 def _spec(rec: dict) -> str:
@@ -151,3 +159,88 @@ def test_the_ledger_line_matches_storage(tmp_path, monkeypatch):
             assert (tmp_path / "workroots" / rid).is_dir(), rid
     finally:
         shared._invalidate_scans()
+
+
+# ------------------------------------------------------ Upper-tail cap
+
+def test_the_cap_line_says_what_each_form_holds():
+    said = _said("Upper-tail cap")
+    assert ("With clip each quantile above the median is held to that "
+            "limit, never below the median") in said
+    assert ("with shrink the location's whole upper tail is pulled in "
+            "together until its worst horizon's 97.5% quantile meets the "
+            "limit, so the 99% quantile can stay above it.") in said
+    # no blanket ceiling on every quantile, whatever the form
+    assert "each quantile above the median is held to at most" not in said
+    assert "0 is no cap" in said and "Before cap" in said
+    for dash in ("–", "—"):
+        assert dash not in said
+
+
+def _by_id(root, el_id: str) -> str:
+    return _words(next(el for el in _flat(root)
+                       if el["attrs"].get("id") == el_id))
+
+
+def test_the_cap_setting_holds_for_either_form_and_every_level():
+    """The setting's own words, its hint under the field in Model settings
+    and its row in Methods' table of settings, hold whatever the
+    Upper-tail form and level: the limit is n times the location's recent
+    level, as the Glossary's line has it, the level setting picks that
+    level and the form how the tail meets the limit. Neither says the
+    levels above the median are clipped (shrink pulls the whole tail in
+    and can leave the 99% above), nor that the level is the three-week
+    mean (it can be the last week or the larger)."""
+    phrase = "times the location's recent level"
+    assert phrase in _said("Upper-tail cap")
+    r = client.get("/forecast")
+    assert r.status_code == 200, r.text[:300]
+    hint = _by_id(SD.tree(r.text), "ks-output-tail_cap-hint")
+    row = _by_id(_methods(), "set-output-tail_cap")
+    for text in (hint, row):
+        assert phrase in text and "0 is no cap" in text, text
+        assert "clip" not in text and "mean" not in text, text
+    assert knobs.BY_KEY["output.tail_level"].label in row
+    assert knobs.BY_KEY["output.tail_mode"].label in row
+    assert "never below the median" in row
+    # a field hint no longer than it was
+    assert len(knobs.BY_KEY["output.tail_cap"].help.split()) <= 16
+
+
+def _rows(sd_by_horizon: dict, median: float = 100.0) -> list:
+    """Hub quantile rows for one location: a lognormal spread per horizon
+    about one median, in whole admissions as the hub rows come."""
+    from statistics import NormalDist
+
+    from flubnf import tailcap as TC
+    levels = [0.01, 0.025, *[round(0.05 * i, 2) for i in range(1, 20)],
+              0.975, 0.99]
+    z = NormalDist().inv_cdf
+    return [{"target": TC.TARGET, "output_type": "quantile",
+             "location": "10", "horizon": h, "output_type_id": q,
+             "value": float(round(median * 2.718281828459045 ** (sd * z(q))))}
+            for h, sd in sd_by_horizon.items() for q in levels]
+
+
+def _block(rows: list, h: int) -> dict:
+    return {r["output_type_id"]: r["value"] for r in rows if r["horizon"] == h}
+
+
+def test_the_cap_line_matches_tailcap():
+    """What the line leans on, in flubnf/tailcap.py: the limit 300 (n = 10
+    on a level of 30) under a wide horizon 3 and a narrow horizon 0. Clip
+    holds every level above the median at or under it; shrink brings
+    horizon 3's 97.5% quantile to it, leaves its 99% above it, and pulls
+    horizon 0 in by the same power though it was under the limit."""
+    from flubnf import tailcap as TC
+    rows = _rows({0: 0.3, 3: 0.8})
+    lim = TC.limit_for(10, [30, 30, 30])
+    assert lim == 300.0 and _block(rows, 3)[0.975] > lim
+    clip, _ = TC.cap_rows(rows, {"10": lim}, mode="clip")
+    for h in (0, 3):
+        assert all(v <= lim for q, v in _block(clip, h).items() if q > 0.5), h
+    shrink, _ = TC.cap_rows(rows, {"10": lim}, mode="shrink")
+    s3, s0, r0 = _block(shrink, 3), _block(shrink, 0), _block(rows, 0)
+    assert s3[0.975] == lim and s3[0.99] > lim
+    assert s3[0.5] == _block(rows, 3)[0.5]
+    assert r0[0.975] < lim and s0[0.975] < r0[0.975]

@@ -4,13 +4,17 @@
     cards come right under the model's header card, before the drawings
     and the model source, which still work where they now sit; the
     research view (/model/pf2s) has neither card and keeps its order;
-  * Methods' Purpose card ends with one closed fold, "Words used here":
-    the working words other tabs use, one labelled line each. Each word is
-    one a console page shows outside the fold, none is a label the page
-    already defines, and the wording rules hold (a forecasting sample,
-    never a posterior; the filter never adapts, tracks or follows). The
-    public site gets the fold without the console's own words, and says
-    nothing of a ledger, shard or workroot.
+  * Methods ends with the Glossary, a card of its own (the 2026-11-27
+    user review, B7: the words were a closed fold in Purpose that no "?"
+    linked to): the working words other tabs use, one labelled line
+    each, open, in the contents row, each entry with its own id for a
+    "?" to link to (app/tests/test_glossary.py holds the links). Each
+    word is one a console page shows outside the card, none but relWIS
+    is a label the page already defines, and the wording rules hold (a
+    forecasting sample, never a posterior; the filter never adapts,
+    tracks or follows). The public site gets the card without the
+    console's own words, and says nothing of a ledger, shard or
+    workroot.
 
 Every check reads the page the server renders. Run's place in the window
 at 390x844 was checked by hand in a scratch console: no browser driver is
@@ -28,12 +32,15 @@ from fastapi.testclient import TestClient
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[2]))
 
+from app.core import datasets as D                       # noqa: E402
 from app.core import runs as runs_mod                    # noqa: E402
 from app.core import sandbox as sb                       # noqa: E402
 from app.core import site_build                          # noqa: E402
+from app.core import site_page                           # noqa: E402
 from app.ui import shared as ui_shared                   # noqa: E402
 from app.ui.server import app as srv                     # noqa: E402
 
+import css_cascade as C                                  # noqa: E402
 import served_dom as SD                                  # noqa: E402
 from test_sandbox_guide import _finish, box              # noqa: E402,F401
 
@@ -41,7 +48,7 @@ client = TestClient(srv)
 needs_js = pytest.mark.skipif(
     not SD.HAVE_JS, reason="no JavaScript engine (JavaScriptCore jsc or node)")
 
-#: the fold's rows that only the console shows (the site has no runs,
+#: the glossary's rows that only the console shows (the site has no runs,
 #: no Storage tab and no Model settings)
 CONSOLE_ONLY = {"modified settings", "workroot", "run ledger"}
 
@@ -85,7 +92,8 @@ def _classed(root, tag, cls):
 
 
 def _words_fold(root):
-    hits = [el for el in _flat(root) if el["attrs"].get("id") == "mt-words"]
+    """Methods' Glossary card."""
+    hits = [el for el in _flat(root) if el["attrs"].get("id") == "glossary"]
     assert len(hits) == 1, len(hits)
     return hits[0]
 
@@ -95,7 +103,7 @@ def _terms(fold) -> list:
             for el in _flat(fold) if el["tag"] == "dt"]
 
 
-def _shown(node, skip_id="mt-words") -> str:
+def _shown(node, skip_id="glossary") -> str:
     """What a reader meets on a page: its text and the names its
     aria-label and title attributes give, with scripts, styles and the
     `skip_id` subtree left out."""
@@ -197,27 +205,45 @@ def test_the_model_source_buttons_work_where_they_now_sit(tmp_path):
 
 # -------------------------------------------------- Methods' words (F67)
 
-def test_the_words_are_one_closed_fold_at_the_end_of_purpose():
+def test_the_glossary_is_an_open_card_of_its_own_in_the_contents():
     root = SD.tree(_page("/methods"))
+    card = _words_fold(root)
+    assert card["tag"] == "div" and card["attrs"]["class"].split() == ["card"]
+    # never folded: no details around it or inside it, so a link to an
+    # entry lands on words in view
+    assert not [el for el in _flat(card) if el["tag"] == "details"]
+    title = [el for el in card["kids"] if not isinstance(el, str)][0]
+    assert title["tag"] == "h2" and _text(title) == "Glossary"
+    # the last card of the page, after Policies, and the contents row's
+    # last link
+    cards = [el for el in _flat(root) if el["tag"] == "div"
+             and el["attrs"].get("class", "").split() == ["card"]]
+    assert cards[-1] is card
+    assert [el["attrs"].get("id") for el in cards].index("policies") \
+        == len(cards) - 2
+    toc = [el for el in _flat(root) if el["tag"] == "nav"
+           and el["attrs"].get("class") == "mt-toc"]
+    assert len(toc) == 1
+    links = [el for el in _flat(toc[0]) if el["tag"] == "a"]
+    assert links[-1]["attrs"]["href"] == "#glossary"
+    assert _text(links[-1]) == "Glossary"
+    # Purpose keeps its facts and tiles, and no fold of words
     purpose = [el for el in _flat(root) if el["attrs"].get("id") == "purpose"]
     assert len(purpose) == 1
-    fold = _words_fold(purpose[0])
-    assert fold["tag"] == "details" and "open" not in fold["attrs"]
-    assert fold["attrs"]["class"].split() == ["uk-fold", "mt-fold"]
-    summary = [el for el in fold["kids"] if not isinstance(el, str)][0]
-    assert " ".join(_text(summary).split()) == "Words used here"
-    # in the card's folds row, as the other Methods folds, and the card's
-    # last element
-    holder = [el for el in purpose[0]["kids"] if not isinstance(el, str)][-1]
-    assert holder["attrs"].get("class") == "mt-folds"
-    assert fold in holder["kids"]
-    # one labelled line per word, with no mark and no id of its own
-    lists = [el for el in _flat(fold) if el["tag"] == "dl"]
+    assert "Words used here" not in _text(purpose[0])
+    # one labelled line per word, each label the entry's anchor
+    lists = [el for el in _flat(card) if el["tag"] == "dl"]
     assert len(lists) == 1
-    assert lists[0]["attrs"]["class"].split() == ["uk-stats", "uk-stats--kv"]
-    for el in _flat(fold):
-        assert "id" not in el["attrs"], el["attrs"]
+    assert lists[0]["attrs"]["class"].split() == ["uk-stats", "uk-stats--kv",
+                                                   "mt-glossary"]
+    dts = [el for el in _flat(card) if el["tag"] == "dt"]
+    assert dts and all(el["attrs"].get("id", "").startswith("g-")
+                       for el in dts)
+    for el in _flat(card):
         assert el["tag"] != "button", el["attrs"]
+    # alphabetical by the word, so a reader can scan for one
+    terms = _terms(card)
+    assert terms == sorted(terms, key=str.lower), terms
 
 
 def test_each_word_is_defined_once_in_the_set_wording():
@@ -229,17 +255,59 @@ def test_each_word_is_defined_once_in_the_set_wording():
     assert len(set(low)) == len(low), terms
     assert CONSOLE_ONLY <= set(low)
     # no word the page already gives as a labelled value (Scored cell and
-    # relWIS are the Scoring card's)
+    # coverage are the Scoring card's), but relWIS: the other tabs' "?"
+    # link its glossary entry, and the Scoring card keeps its convention
     inside = {id(el) for el in _flat(fold)}
     page_labels = {" ".join(_text(el).split()).lower()
                    for el in _flat(root)
                    if el["tag"] == "dt" and id(el) not in inside}
     assert "scored cell" in page_labels and "relwis" in page_labels
-    assert not set(low) & page_labels, set(low) & page_labels
+    assert set(low) & page_labels == {"relwis"}, set(low) & page_labels
     said = " ".join(_text(fold).split())
     assert "Liu-West filter" in said and "forecasting sample" in said.lower()
     for word in ("posterior", "adapt", "track", "follow", "–", "—"):
         assert word not in said.lower(), word
+
+
+#: a glossary entry's definition and its word, as Methods nests them
+_ENTRY = ("dl.uk-stats.uk-stats--kv.mt-glossary", "div.uk-stat")
+
+
+def _weight(cas, chain) -> str:
+    """The font-weight `chain`'s last element draws with: its own, else
+    the nearest ancestor's (font-weight inherits), else normal."""
+    path = C.path(*chain)
+    for i in range(len(path), 0, -1):
+        w = cas.value(path[:i], "font-weight")
+        if w is not None and w != "inherit":
+            return w
+    return "400"
+
+
+def test_the_definitions_read_at_the_texts_weight():
+    """A definition is a sentence or two, not a labelled figure: the
+    kit's labelled value is bold (650), and on the glossary its words
+    take the text's own weight; the words defined stay the labels, at
+    the label's weight. Another labelled value keeps its bold. The
+    public site, which loads neither sheet, draws them the same."""
+    cas = C.Cascade.page("tabs/methods.css", "tabs/models.css")
+    card = ("html", "body", "main", "div.mt-doc", "div.card#glossary")
+    value = card + _ENTRY + ("dd", "span.uk-stat-v")
+    word = card + _ENTRY + ("dt#g-cap",)
+    assert _weight(cas, value) == "400"
+    assert _weight(cas, word) == "600"
+    other = ("html", "body", "main", "div.mt-doc", "div.card",
+             "dl.uk-stats.uk-stats--kv", "div.uk-stat", "dd",
+             "span.uk-stat-v")
+    assert _weight(cas, other) == "650"
+    site = C.Cascade()
+    site.rules = C.parse(site_page.CSS, "site_page.CSS")
+    for i, r in enumerate(site.rules):
+        r.order = i
+    at = ("html", "body", "div.page#p-methods", "section", "div.methods",
+          "div.mt-doc", "div.card#glossary")
+    assert _weight(site, at + _ENTRY + ("dd", "span.uk-stat-v")) == "400"
+    assert _weight(site, at + _ENTRY + ("dt#g-cap",)) == "600"
 
 
 @pytest.fixture
@@ -256,17 +324,22 @@ def modified_run(monkeypatch):
 
 def test_each_word_is_one_a_console_page_shows(box, modified_run, tmp_path,
                                                monkeypatch):
-    """Every word in the fold is one a reader meets on a console page
-    outside it, so the fold never defines a word the console does not
+    """Every word in the glossary is one a reader meets on a console page
+    outside it, so the glossary never defines a word the console does not
     use. Some show only in a state: a sandbox fit's results (the
-    forecasting sample), a run with modified settings, and a run's folder
-    on disk (Storage's Run workroots)."""
+    forecasting sample), a run with modified settings, a run's folder
+    on disk (Storage's Run workroots), and a dataset of the user's own
+    (vintage-true and final data, on its Forecast form)."""
     sb.add_example("kinetics_example")
     w = sb.prepare("kinetics_example", particles=200, jitter=0.2, seed=3)
     _finish(w)
+    # a dataset of the user's own, stored in a folder of the test's
+    monkeypatch.setattr(D, "ROOT", tmp_path / "datasets")
+    ds = _dataset_id()
     urls = ["/data", "/forecast", "/output", "/retro", "/storage",
             "/sandbox", f"/sandbox?model=kinetics_example&run={w.name}",
-            "/models", "/model/analogue", "/methods"]
+            "/models", "/model/analogue", "/methods",
+            f"/forecast?source={ds}"]
     seen = {u: _shown(SD.tree(_page(u))).lower() for u in urls}
     # Storage lists the runs' folders under On disk once one is there: a
     # state of its own holding one run's, the listing recounted before
@@ -288,7 +361,19 @@ def test_each_word_is_one_a_console_page_shows(box, modified_run, tmp_path,
     assert missing == [], missing
 
 
-def test_the_public_methods_has_the_fold_without_the_console_words():
+def _dataset_id() -> str:
+    """Store the test suite's grouped dataset through the Data tab's own
+    upload; its id."""
+    from test_dataset_engines import grouped_bytes
+    r = client.post("/data/datasets",
+                    files={"file": ("kids.csv", grouped_bytes(), "text/csv")},
+                    data={"name": "Kids", "kind": "count"},
+                    follow_redirects=False)
+    assert r.status_code == 303, r.text[:300]
+    return r.headers["location"].split("source=")[1].split("#")[0]
+
+
+def test_the_public_methods_has_the_glossary_without_the_console_words():
     site = site_build.harvest_methods({})
     root = SD.tree(site)
     fold = _words_fold(root)

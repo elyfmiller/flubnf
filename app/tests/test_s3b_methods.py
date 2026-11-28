@@ -238,7 +238,7 @@ def test_a_link_to_a_fold_opens_it_on_arrival_and_when_the_address_changes(tmp_p
 def test_a_chip_clicked_for_a_last_section_stays_marked_at_the_end(tmp_path):
     got = run_methods(tmp_path, [
         # the one before last: its jump ends at the page's end
-        {"do": "click", "href": "#stack", "label": "clicked"},
+        {"do": "click", "href": "#policies", "label": "clicked"},
         # the reader's own scroll (a scroll key, then up) forgets the click
         {"do": "key", "key": "ArrowUp"},
         {"do": "up", "by": 30, "label": "up a little"},
@@ -249,26 +249,26 @@ def test_a_chip_clicked_for_a_last_section_stays_marked_at_the_end(tmp_path):
         {"do": "end", "label": "dragged to the end"},
         # a click at the end already: the jump scrolls nothing, and the
         # chip clicked is marked all the same; the wheel forgets it too
-        {"do": "click", "href": "#stack", "label": "clicked again"},
+        {"do": "click", "href": "#policies", "label": "clicked again"},
         {"do": "wheel"},
         {"do": "up", "by": 30, "label": "wheeled up"},
         {"do": "end", "label": "wheeled to the end"},
         # the last chip itself
-        {"do": "click", "href": "#policies", "label": "last"}],
+        {"do": "click", "href": "#glossary", "label": "last"}],
         layout=SHORT_END)
     at = {s["label"]: s for s in got}
-    assert at["clicked"]["atEnd"] and at["clicked"]["current"] == ["#stack"]
-    assert at["up a little"]["current"] == ["#performance"]
-    assert at["end again"]["current"] == ["#policies"]
+    assert at["clicked"]["atEnd"] and at["clicked"]["current"] == ["#policies"]
+    assert at["up a little"]["current"] == ["#stack"]
+    assert at["end again"]["current"] == ["#glossary"]
     assert at["top"]["current"] == ["#purpose"]
-    assert at["dragged to the end"]["current"] == ["#policies"]
-    assert at["clicked again"]["current"] == ["#stack"]
-    assert at["wheeled up"]["current"] == ["#performance"]
-    assert at["wheeled to the end"]["current"] == ["#policies"]
-    assert at["last"]["current"] == ["#policies"]
+    assert at["dragged to the end"]["current"] == ["#glossary"]
+    assert at["clicked again"]["current"] == ["#policies"]
+    assert at["wheeled up"]["current"] == ["#stack"]
+    assert at["wheeled to the end"]["current"] == ["#glossary"]
+    assert at["last"]["current"] == ["#glossary"]
     # with no click, the end marks the last section
     plain = run_methods(tmp_path, [{"do": "end"}], layout=SHORT_END)
-    assert plain[-1]["current"] == ["#policies"]
+    assert plain[-1]["current"] == ["#glossary"]
 
 
 # ------------------------------- FC-31: the model page's toolbar on a phone
