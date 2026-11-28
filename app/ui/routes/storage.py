@@ -102,8 +102,9 @@ def _may_archive() -> bool:
     the pipeline's own archive step (pipeline.py, step 7): it skips a
     one-model run and a research run; every other run reaches
     _archive_run, a vintage run and a run with modified model settings
-    included, whatever its files are named. A dataset run or replay never
-    reaches it. A run still starting may."""
+    included, whatever its files are named (a run whose files carry the
+    -modified names holds no archive of hub-named files: _archiving_date).
+    A dataset run or replay never reaches it. A run still starting may."""
     from app.core.runs import is_research
     running = _status.get("running") or ""
     if not running:
@@ -127,18 +128,27 @@ def _may_archive() -> bool:
 
 def _archiving_date() -> str | None:
     """The forecast date whose report archive the run in progress may be
-    writing: None when it can write none (_may_archive), "" when it may
-    but its date is unknown (every archive is then held)."""
+    writing: None when it can write none (_may_archive, or its files carry
+    the -modified names and that date's archive holds hub-named files,
+    which the archive step keeps: archive_record.keep_reason), "" when it
+    may but its date is unknown (every archive is then held)."""
     if not _may_archive():
         return None
     import json
+    from app.core.archive_record import hub_named_of
+    from app.core.knobs import hub_names
+    from app.core.runs import APP_STATE
     for w in _live_workroot_ids():
         try:
-            spec = Ledger().row(w)["spec"]
-            spec = json.loads(spec) if isinstance(spec, str) else spec
-            return str(spec.get("forecast_date") or "")
+            raw = Ledger().row(w)["spec"]
+            spec = json.loads(raw) if isinstance(raw, str) else raw
+            date = str(spec.get("forecast_date") or "")
         except Exception:                # no row yet, or an odd one
             continue
+        if date and not hub_names(raw) \
+                and hub_named_of(APP_STATE / "archive" / date):
+            return None
+        return date
     return ""
 
 

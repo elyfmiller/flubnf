@@ -5,14 +5,16 @@ One folder per as-of date, app/state/archive/<date>/, holds the run that
 is that date's forecast. Beside its files:
 
   archive.json    {"run_id", "complete", "full", "modified",
-                  "archived_utc"}: which run the folder holds, whether that
-                  run finished ok with every requested submission file
-                  written and no submission errors, whether it covered the
-                  whole hub set, and whether it was made with modified
-                  model settings (written by _archive_run; absent in
+                  "hub_names", "archived_utc"}: which run the folder
+                  holds, whether that run finished ok with every requested
+                  submission file written and no submission errors,
+                  whether it covered the whole hub set, whether it was
+                  made with modified model settings, and whether its files
+                  carry the hub names (written by _archive_run; absent in
                   folders from before this record existed, which count as
-                  complete; "modified" absent in records from before
-                  modified runs were archived: modified_of reads the folder)
+                  complete; "modified" and "hub_names" absent in records
+                  from before modified runs were archived: modified_of and
+                  hub_named_of read the folder)
 
 The rule (never a downgrade): a newer run's files replace an earlier
 run's for the same date only when the newer run is complete, or when the
@@ -23,7 +25,9 @@ that wrote a file for a date (the Output page shows the chosen run's file
 per model); keep_reason() applies it to the archive folder. A run's model
 settings play no part: a run made with modified settings is archived by
 the same rule, its files under their own -modified names, and its record
-says so (modified_of).
+says so (modified_of). Its files' names do: an archive whose files carry
+the hub names (the files that went to the hub) is never replaced by a
+run whose files carry the -modified names (hub_named_of).
 """
 from __future__ import annotations
 
@@ -55,12 +59,36 @@ def _write_json(p: Path, data: dict) -> None:
 
 
 def write_record(d: Path, run_id: str, complete: bool,
-                 full: bool = True, modified: bool = False) -> None:
+                 full: bool = True, modified: bool = False,
+                 hub_names: bool = True) -> None:
     _write_json(Path(d) / RECORD, {"run_id": str(run_id),
                                    "complete": bool(complete),
                                    "full": bool(full),
                                    "modified": bool(modified),
+                                   "hub_names": bool(hub_names),
                                    "archived_utc": time.time()})
+
+
+def files_hub_named(d: Path):
+    """Whether the submission files in a run's or an archive's folder carry
+    the hub names: True when any CSV sits under a hub model's name (a
+    retired one included), False when every one carries the -modified name
+    (knobs.MODIFIED_SUFFIX), None when the folder holds none."""
+    from app.core.knobs import MODIFIED_SUFFIX
+    dirs = {p.parent.name for p in Path(d).glob("submission/*/*.csv")}
+    if not dirs:
+        return None
+    return any(not n.endswith(MODIFIED_SUFFIX) for n in dirs)
+
+
+def hub_named_of(d: Path) -> bool:
+    """Whether the run an archive folder holds wrote its files under the
+    hub names: its record says so, and a record from before it did is read
+    from the folder's own files (files_hub_named)."""
+    rec = read_record(d) or {}
+    if "hub_names" in rec:
+        return bool(rec["hub_names"])
+    return bool(files_hub_named(d))
 
 
 def modified_of(d: Path) -> bool:
@@ -129,12 +157,14 @@ def choose(candidates):
 
 
 def keep_reason(d: Path, complete: bool, full: bool = True,
-                realtime: bool = True) -> str:
+                realtime: bool = True, hub_names: bool = True) -> str:
     """Why a new run must NOT replace the archive in `d` ("" when it may):
     the new run is a backtest (vintage) and the archive holds a real-time
     run, or the new run is incomplete and the archive holds a complete
     one, or it covers part of the hub set and the archive holds a
-    whole-set complete run (the rule of choose())."""
+    whole-set complete run (the rule of choose()), or its files carry the
+    -modified names (`hub_names` False) and the archive's carry the hub
+    names (hub_named_of): the files that went to the hub stay."""
     d = Path(d)
     if not d.is_dir():
         return ""
@@ -153,4 +183,8 @@ def keep_reason(d: Path, complete: bool, full: bool = True,
         return ("this run covers part of the 53 locations, so the "
                 "archive kept the earlier run on all 53"
                 + (f" {held}" if held else ""))
+    if not hub_names and hub_named_of(d):
+        return ("this run's files carry the -modified names, so the "
+                "archive kept the earlier run whose files carry the hub "
+                "names" + (f" {held}" if held else ""))
     return ""

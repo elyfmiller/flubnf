@@ -1115,8 +1115,9 @@ def _run_all(spec: RunSpec) -> None:
         _os.replace(_tmp, workroot / "results.json")   # readers never see a half-write
         # 7. forecast archive: one folder per date, latest run wins; a full
         # run of both models archives whatever its model settings (a
-        # modified run's files keep their -modified names); a research run
-        # never does (audit rr-1)
+        # modified run's files keep their -modified names, and never
+        # replace a week's hub-named files); a research run never does
+        # (audit rr-1)
         if _research:
             outcome["archived"] = "skipped: research run"
         elif spec.engine in ("analogue", "pf"):
@@ -1235,11 +1236,14 @@ def _archive_run(workroot: Path, forecast_date: str,
 
     Never a downgrade (app/core/archive_record.py): an incomplete run
     (`complete` False) does not replace an archive that holds a complete
-    one, nor a backtest (`realtime` False) one that holds a real-time run.
-    Then nothing is copied, the run's files stay in its own folder, and the
-    answer is "kept: <why>". The archive records which run it holds and
-    whether that run was made with modified model settings (archive.json),
-    whose files it keeps under their -modified names."""
+    one, nor a backtest (`realtime` False) one that holds a real-time run,
+    nor a run whose files carry the -modified names one whose files carry
+    the hub names (read from the run's own folder). Then nothing is
+    copied, the run's files stay in its own folder, and the answer is
+    "kept: <why>". The archive records which run it holds, whether that
+    run was made with modified model settings and whether its files carry
+    the hub names (archive.json); it keeps -modified files under their
+    -modified names."""
     import os
     import shutil
     from app.core import archive_record as _ar
@@ -1256,7 +1260,10 @@ def _archive_run(workroot: Path, forecast_date: str,
             shutil.rmtree(old)
         else:                   # crashed between the two renames below:
             os.replace(old, arch)   # the parked previous archive comes back
-    keep = _ar.keep_reason(arch, complete, full, realtime)
+    # a run that wrote no file is not held to the files' names
+    keep = _ar.keep_reason(arch, complete, full, realtime,
+                           hub_names=_ar.files_hub_named(workroot)
+                           is not False)
     if keep:
         return f"kept: {keep}"
     build.mkdir(parents=True)
@@ -1269,7 +1276,8 @@ def _archive_run(workroot: Path, forecast_date: str,
         if (workroot / "submission").is_dir():
             shutil.copytree(workroot / "submission", build / "submission")
         _ar.write_record(build, Path(workroot).name, complete, full,
-                         modified=_archived_modified(build))
+                         modified=_archived_modified(build),
+                         hub_names=bool(_ar.files_hub_named(build)))
     except BaseException:
         shutil.rmtree(build, ignore_errors=True)
         raise

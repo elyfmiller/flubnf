@@ -7,7 +7,10 @@ models that is not research, whatever its model settings. A vintage run
 and a modified run, under the hub names by override or under the
 -modified names, reach _archive_run, so they hold it; a research run and
 a one-model run do not. Another date's archive is never held (ST-08:
-before #88 every archive was held during any run).
+before #88 every archive was held during any run). A run whose files
+carry the -modified names never replaces an archive of hub-named files
+(app/core/archive_record.keep_reason), so it holds its date's archive
+only when that archive's files are -modified or there are none.
 """
 from pathlib import Path
 
@@ -75,3 +78,38 @@ def test_a_live_run_holds_the_archive_the_pipeline_would_write(state, kind):
     # another date's is not its to write: deletable (ST-08)
     _delete(OTHER)
     assert not (arch / OTHER).exists()
+
+
+#: what the live run's date's archive holds: its files' folder (None for
+#: no file) and whether a live run whose files carry the -modified names
+#: may replace it
+HELD = {"hub-named files": ("NAU_PyBNF-GroundHogCGR", False),
+        "retired hub-named files": ("NAU-PF-SIHRS", False),
+        "-modified files": ("NAU_PyBNF-GroundHogCGR-modified", True),
+        "no file": (None, True)}
+
+
+@pytest.mark.parametrize("held", list(HELD))
+@pytest.mark.parametrize("kind", ["modified, non-hub names",
+                                  "modified, hub names by override"])
+def test_a_modified_named_run_holds_no_archive_of_hub_named_files(state,
+                                                                 held, kind):
+    folder, replaceable = HELD[held]
+    arch = state["root"] / "archive"
+    (arch / DATE / "submission").mkdir(parents=True)
+    (arch / DATE / "report.html").write_text("<p>r</p>")
+    if folder:
+        (arch / DATE / "submission" / folder).mkdir()
+        (arch / DATE / "submission" / folder / "f.csv").write_text("x")
+    ui_shared._invalidate_scans()
+    engine, extra, _writes = KINDS[kind]
+    _go_live(state, engine, extra)
+    # under the hub names it may replace any; under the -modified names
+    # only an archive of -modified files or none (keep_reason's rule)
+    holds = replaceable or kind.endswith("by override")
+    assert ui_storage._archiving_date() == (DATE if holds else None)
+    busy = {a["id"]: a["busy"]
+            for a in ui_storage._storage_inventory()["report_archives"]}
+    assert busy[DATE] is holds
+    _delete(DATE)
+    assert (arch / DATE).is_dir() is holds

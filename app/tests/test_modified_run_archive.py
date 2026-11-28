@@ -12,7 +12,11 @@ such a run: test_newest_run_shown.py).
     "modified settings" as its workroot rows do; the card's own week is
     offered once;
   * an archive record from before the flag is read from its folder (a
-    modified run's knobs.json travels with its files).
+    modified run's knobs.json travels with its files);
+  * a week's archived files under the hub names (the files that went to
+    the hub) are never replaced by a run whose files carry the -modified
+    names; such a run still fills a week with no archive or one of
+    -modified files, and a hub-named run still replaces -modified files.
 """
 import sys
 from pathlib import Path
@@ -137,3 +141,70 @@ def test_an_older_archive_record_is_read_from_its_folder(tmp_path):
     AR.write_record(d, "x", True, modified=False)
     assert AR.modified_of(d) is False
     assert AR.modified_of(tmp_path / "nowhere") is False
+
+
+def _names(arch: Path) -> list:
+    return sorted(p.parent.name for p in arch.glob("submission/*/*.csv"))
+
+
+def test_a_modified_named_run_never_replaces_a_hub_named_week(root):
+    arch = root / "archive" / DATE
+    shipped = _run(root, "shipped")
+    P._archive_run(root / "workroots" / shipped, DATE)
+    mod = _run(root, "modified", knobs=MOD)
+    out = P._archive_run(root / "workroots" / mod, DATE)
+    assert out == ("kept: this run's files carry the -modified names, so "
+                   "the archive kept the earlier run whose files carry the "
+                   f"hub names {shipped}")
+    assert AR.read_record(arch)["run_id"] == shipped
+    assert _names(arch) == [GH]
+    assert AR.read_record(arch)["hub_names"] is True
+    # a modified run exported under the hub names by override replaces it,
+    # and a -modified run never replaces that one either
+    ov = _run(root, "override", knobs=MOD, override="the hub's own weight")
+    assert P._archive_run(root / "workroots" / ov, DATE) == str(arch)
+    rec = AR.read_record(arch)
+    assert rec["run_id"] == ov and rec["hub_names"] is True
+    assert rec["modified"] is True
+    mod2 = _run(root, "modified again", knobs=MOD)
+    assert P._archive_run(root / "workroots" / mod2, DATE).startswith(
+        "kept: this run's files carry the -modified names")
+    assert AR.read_record(arch)["run_id"] == ov
+
+
+def test_a_modified_named_run_replaces_modified_files_and_yields_to_hub(root):
+    arch = root / "archive" / DATE
+    first = _run(root, "modified", knobs=MOD)
+    P._archive_run(root / "workroots" / first, DATE)
+    later = _run(root, "modified later", knobs=MOD)
+    assert P._archive_run(root / "workroots" / later, DATE) == str(arch)
+    assert AR.read_record(arch)["run_id"] == later
+    assert _names(arch) == [GH + "-modified"]
+    assert AR.read_record(arch)["hub_names"] is False
+    shipped = _run(root, "shipped")
+    assert P._archive_run(root / "workroots" / shipped, DATE) == str(arch)
+    assert AR.read_record(arch)["run_id"] == shipped
+    assert _names(arch) == [GH]
+    assert AR.read_record(arch)["hub_names"] is True
+
+
+def test_an_older_record_is_hub_named_by_its_folders_files(root):
+    """A record from before "hub_names": the folder's own file names say
+    (any CSV under a hub model's name, a retired one included)."""
+    arch = root / "archive" / DATE
+    for folder, hub in (("NAU-PF-SIHRS", True), (GH, True),
+                        (GH + "-modified", False)):
+        if arch.exists():
+            import shutil
+            shutil.rmtree(arch)
+        (arch / "submission" / folder).mkdir(parents=True)
+        (arch / "submission" / folder / "f.csv").write_text("x")
+        AR._write_json(arch / AR.RECORD, {"run_id": "older",
+                                          "complete": True})
+        assert AR.hub_named_of(arch) is hub
+        mod = _run(root, "modified", knobs=MOD)
+        out = P._archive_run(root / "workroots" / mod, DATE)
+        assert out.startswith("kept: this run's files carry") is hub
+        assert (AR.read_record(arch)["run_id"] == "older") is hub
+    assert AR.files_hub_named(root / "nowhere") is None
+

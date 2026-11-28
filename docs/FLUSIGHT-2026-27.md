@@ -156,7 +156,9 @@ The 2026-27 season is the Oracle SIHRS model's first prospective test.
    report, Output's report card and the model pages show the newest
    real-time run whatever its settings; a run with modified settings is
    marked as modified there and in Archived weeks, and is archived
-   like any other, its files and report under their `-modified` names.
+   like any other, its files and report under their `-modified` names,
+   except that a week's archived hub-named files are never replaced by
+   `-modified` ones.
    For the authoritative
    check: `Rscript scripts/validate_submission.R <file.csv> <hub_clone> --window`
    (or `python scripts/validate_submission.py ...`).
