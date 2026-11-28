@@ -162,6 +162,7 @@ def _write_weekly_report(spec, workroot: Path, pf_samples: dict, obs: dict,
 
     from app.core import ensemble as _ens
     from app.core import report_v2
+    from app.core import run_label as _run_label_mod
     from app.core.report import (categorical_probs,
                                  categorical_probs_from_quantiles)
     from app.core.report_v2 import CATS
@@ -410,6 +411,9 @@ def _write_weekly_report(spec, workroot: Path, pf_samples: dict, obs: dict,
               "asof": spec.forecast_date,
               "reference_date": str(
                   hub_reference_date(spec.forecast_date).date()),
+              # the newest week the run read (outcome data_source), which
+              # names the run in the header (app/core/run_label)
+              "data_through": _run_label_mod.recorded_through(outcome),
               # v2: which model computed the map cards
               "cards_model": cards_model,
               "cards": cards, "details": details,

@@ -378,7 +378,9 @@ def test_home_outlook_caption_states_coverage_when_a_run_exists():
         outlook_n=1, missing=[],
         versions={"pybnf": "x", "bngsim": "x", "bionetgen": "x",
                   "fastapi": "x", "plotly": "x"})
-    assert "US categorical forecast · 2026-01-24" in html      # dated in the heading
+    # the run under the heading, by its name: the data it read, its weeks
+    from app.core import run_label
+    assert f"<span>{run_label.text('2026-01-24')}</span>" in html
     # one green state is not a national outlook: the coverage stat says
     # how many (the map's own legend names the rest "no data")
     assert ('<span class="uk-stat-v" id="hm-cover">1 of 52</span> '

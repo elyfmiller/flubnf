@@ -17,6 +17,7 @@ sys.path.insert(0, str(Path(__file__).resolve().parents[2]))
 from fastapi.testclient import TestClient           # noqa: E402
 
 import served_dom as SD                             # noqa: E402
+from app.core import run_label                      # noqa: E402
 from app.ui import forecast_aids as FA              # noqa: E402
 from app.ui import state as ui_state                # noqa: E402
 from app.ui.server import app as srv                # noqa: E402
@@ -30,13 +31,20 @@ STATES = ["Alabama", "New York", "Ohio"]
 def test_week_info_names_the_reference_date_and_window():
     w = FA.week_info("2026-10-03", today=date(2026, 10, 5))
     assert w["reference"] == "2026-10-10" and w["state"] == "due"
+    # what the date gives, in the words every run is named by, and its
+    # round for the line under them
+    assert w["label"] == ("Data through Oct 3 · forecasts for weeks ending "
+                          "Oct 10 to Oct 31")
+    assert w["round"] == "FluSight round 2026-10-10"
     assert w["badge"][0] == "warn" and "2026-10-07" in w["badge"][1]
     r = FA.week_info("2026-09-26", today=date(2026, 10, 5))
     assert r["reference"] == "2026-10-03"
     assert r["badge"] == ["neutral", "Not a FluSight round"]
+    assert r["round"] == "Not a FluSight round (2026-10-03)"
     assert FA.week_info("soon") == {}
     got = client.get("/api/forecast/week-info?week=2026-09-26").json()
     assert got["reference"] == "2026-10-03"
+    assert got["label"] == run_label.text("2026-09-26")
 
 
 def test_next_round_names_the_data_it_needs():
@@ -85,7 +93,12 @@ def test_fan_run_badges_an_earlier_run_and_says_why():
     rows = [_row("20261005T182531-ecda8f", "error"), _row(drawn)]
     fr = FA.fan_run(rows, drawn)
     assert fr["earlier"] == "earlier run · newest failed"
-    assert fr["label"].startswith("2026-09-26 · 10-05 18:21")
+    # the run by its name (the data, the weeks) and its time, and the parts
+    # the card draws
+    assert fr["label"] == (run_label.text("2026-09-26")
+                           + " · run 10-05 18:21:51")
+    assert fr["name"]["round"] == "Not a FluSight round (2026-10-03)"
+    assert fr["name"]["when"] == "10-05 18:21:51"
     assert fr["modified"] is False
     assert FA.fan_run(rows[1:], drawn)["earlier"] == ""
     for status, why in (("stopped", "stopped"), ("running", "still running"),
@@ -100,9 +113,9 @@ def test_fan_run_badges_an_earlier_run_and_says_why():
     mod = dict(_row(drawn), spec=json.dumps(
         {"engine": "all", "forecast_date": "2026-09-26",
          "extra": {"knobs": {"oracle.w": 0.25}}}))
-    assert FA.fan_run([mod], drawn) == {
-        "run_id": drawn, "label": FA.fan_run([mod], drawn)["label"],
-        "modified": True, "earlier": ""}
+    got = FA.fan_run([mod], drawn)
+    assert got == {"run_id": drawn, "label": got["label"],
+                   "name": got["name"], "modified": True, "earlier": ""}
     assert FA.fan_run(rows, None) is None
 
 

@@ -28,7 +28,7 @@ from fastapi.testclient import TestClient
 sys.path.insert(0, str(Path(__file__).resolve().parents[2]))
 
 import css_cascade                                             # noqa: E402
-from app.core import usmap                                     # noqa: E402
+from app.core import run_label, usmap                          # noqa: E402
 from app.ui import server as srv                               # noqa: E402
 from app.ui.routes import home as H                            # noqa: E402
 from app.ui.server import templates                            # noqa: E402
@@ -62,10 +62,22 @@ def _block(monkeypatch, has_report):
 
 # ---------------------------------------------------------- HM-02: the round
 
-def test_the_heading_names_the_round_with_its_as_of():
+def test_the_heading_names_the_run_and_its_round():
+    # the map's run by its name, as every page names a run: the data it
+    # read and the weeks it forecasts, its FluSight round under them
     html = _home(outlook_ref="2026-10-24")
-    assert ("US categorical forecast · Round 2026-10-24 (as of 2026-10-17)"
-            in html)
+    assert ">US categorical forecast</h2>" in html
+    run = html.split('id="hm-run"', 1)[1].split("</p>", 1)[0]
+    assert f"<span>{run_label.text('2026-10-17')}</span>" in run
+    assert '<span class="uk-run-sub">FluSight round 2026-10-24</span>' in run
+    # the route's own name links the run's page and leaves its time out
+    nm = {"text": "Data through Oct 17 · forecasts for weeks ending Oct 24 "
+                  "to Nov 14", "round": "FluSight round 2026-10-24",
+          "when": "10-21 10:14:16"}
+    run = _home(outlook_name=nm, outlook_rid="20261021T101416-1cc145"
+                ).split('id="hm-run"', 1)[1].split("</p>", 1)[0]
+    assert '<a href="/runs/20261021T101416-1cc145">Data through Oct 17' in run
+    assert "10:14:16" not in run
 
 
 # -------------------------------------------- HM-03: no report, no promise

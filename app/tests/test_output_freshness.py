@@ -23,6 +23,7 @@ from fastapi.testclient import TestClient
 sys.path.insert(0, str(Path(__file__).resolve().parents[2]))
 
 import app.core.runs as runs_mod                               # noqa: E402
+from app.core import run_label                                 # noqa: E402
 from app.core.runs import Ledger, RunSpec                      # noqa: E402
 from app.ui import server as srv                               # noqa: E402
 from app.ui import shared as ui_shared                         # noqa: E402
@@ -79,11 +80,14 @@ def test_the_report_buttons_name_the_run_beside_as_of(root):
     # no link that means "whatever is newest when clicked"
     assert 'href="/output/report"' not in html
     assert 'href="/output/report/download"' not in html
-    # beside "as of": the run, as the file rows name theirs
+    # beside the buttons: the run by its name, linked, its round and its
+    # time under it, as the file rows name theirs
     when = (f"{latest[4:6]}-{latest[6:8]} "
             f"{latest[9:11]}:{latest[11:13]}:{latest[13:15]}")
-    assert "as of 2098-01-10" in card
-    assert f'<a href="/runs/{latest}">run {when}</a>' in card
+    assert (f'<a href="/runs/{latest}">{run_label.text("2098-01-10")}'
+            f'<span class="uk-sr"> · run {when}</span></a>' in card)
+    assert (f'<span class="uk-run-sub">Not a FluSight round (2098-01-17) · '
+            f'run {when}</span>') in card
     # the link serves that run's report, under the dated name and its id
     r = client.get(f"/runs/{latest}/report/download")
     assert r.status_code == 200 and "REPORT latest" in r.text
@@ -286,5 +290,5 @@ def test_the_week_picker_offers_only_weeks_with_a_report(root):
     (older / "report.html").write_text("<html>OLDER</html>")
     ui_shared._invalidate_scans()
     html = client.get("/output").text
-    assert ('<option value="2097-12-27">2098-01-03 (as of 2097-12-27)'
+    assert (f'<option value="2097-12-27">{run_label.text("2097-12-27")}'
             '</option>') in html

@@ -240,22 +240,76 @@ def _console_elapsed(now: float | None = None) -> float | None:
 
 
 # === Run labels, outcome chips, latest results ===
-def _run_label(run_id: str, spec_json: str = "", tag: bool = True) -> str:
-    """'2026-07-04 · 08-18 09:31:05' (forecast date · run time, to the
-    second: two runs in one minute read apart). Research runs get
-    ' · research' unless tag=False (pages with a styled badge)."""
-    import json as _json
-    from app.core.runs import is_research
-    when = (f"{run_id[4:6]}-{run_id[6:8]} "
+def _run_time(run_id: str) -> str:
+    """A run's start as every label reads it, from its id: '11-25
+    22:12:51' (to the second: two runs in one minute read apart)."""
+    run_id = str(run_id or "")
+    return (f"{run_id[4:6]}-{run_id[6:8]} "
             f"{run_id[9:11]}:{run_id[11:13]}:{run_id[13:15]}")
+
+
+def _spec_dict(spec) -> dict:
+    """A ledger spec (JSON text or dict) as a dict; {} when unreadable."""
+    import json as _json
+    if isinstance(spec, dict):
+        return spec
+    try:
+        d = _json.loads(spec or "")
+    except (ValueError, TypeError):
+        return {}
+    return d if isinstance(d, dict) else {}
+
+
+def _run_name(run_id: str, spec_json="", outcome=None, asof: str = "",
+              today=None, hub: bool | None = None) -> dict:
+    """A run's name as every page shows it (app/core/run_label): {"text":
+    'Data through Nov 21 · forecasts for weeks ending Nov 28 to Dec 19',
+    "round": 'FluSight round 2026-11-28' for a hub run ('' for a run on
+    your own data), "when": its start ('11-25 22:12:51', _run_time; ''
+    for an id that is not a run's), "asof", "data_through", "reference",
+    "hub"}. The data-through week is the one the run recorded (`outcome`,
+    its ledger row's when not given), else the newest week of its stored
+    series, else its as-of (the spec's forecast date, or `asof` for an
+    archived week with no spec). `hub` overrides what the spec says (a run
+    a page knows is on your own data). "text" is '' when no date is
+    known."""
+    from app.core import run_label as _rl
+    d = _spec_dict(spec_json)
+    extra = d.get("extra") if isinstance(d.get("extra"), dict) else {}
+    if hub is None:
+        hub = not extra.get("dataset")
+    date = str(d.get("forecast_date") or asof or "").strip()
+    is_run = _runs.is_run_id(run_id)
+    if outcome is None and is_run and date:
+        try:
+            outcome = (_runs.Ledger().row(run_id) or {}).get("outcome")
+        except Exception:
+            outcome = None
+    wr = (Path(_runs.APP_STATE) / "workroots" / run_id) if is_run else None
+    through = _rl.data_through(date, outcome, wr) if date else ""
+    n = _rl.name(date, through, hub=hub, today=today)
+    n.update({"when": _run_time(run_id) if is_run else "", "hub": hub})
+    return n
+
+
+def _run_label(run_id: str, spec_json: str = "", tag: bool = True,
+               outcome=None) -> str:
+    """A run's name in one line, where a page has room for text only:
+    'Data through Nov 21 · forecasts for weeks ending Nov 28 to Dec 19 ·
+    run 11-25 22:12:51' (_run_name's text and time; the time alone when the
+    spec names no date). Research runs get ' · research' and modified ones
+    ' · modified settings' unless tag=False (pages with a styled badge).
+    A hub run's round is a line of its own, never in here."""
+    from app.core.runs import is_research
+    when = _run_time(run_id)
     suffix = " · research" if (tag and is_research(spec_json)) else ""
     if tag and _runs.is_modified(spec_json):
         suffix += " · modified settings"
-    try:
-        s = _json.loads(spec_json)
-        return f"{s.get('forecast_date','run')} · {when}{suffix}"
-    except Exception:
-        return when + suffix
+    n = _run_name(run_id, spec_json, outcome) if _spec_dict(spec_json) \
+        else {}
+    if n.get("text"):
+        return f"{n['text']} · run {when}{suffix}"
+    return when + suffix
 
 
 def relwis_chip(value, cells=None, member: str = "") -> str:

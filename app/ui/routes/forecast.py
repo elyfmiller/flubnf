@@ -278,7 +278,11 @@ def forecast_page(request: Request, source: str = "", tab: str = ""):
     ledger_rows = Ledger().rows(5, hub_only=True)
     from app.core.runs import APP_STATE
     for r in ledger_rows:
-        r["label"] = _run_label(r["run_id"], r.get("spec", ""))
+        r["label"] = _run_label(r["run_id"], r.get("spec", ""),
+                                outcome=r.get("outcome"))
+        # the run's name as the card shows it (tips.runname)
+        r["name"] = shared._run_name(r["run_id"], r.get("spec", ""),
+                                     r.get("outcome"))
         r["modified"] = _runs.is_modified(r.get("spec", ""))
         r["settings"] = spec_settings(r.get("spec", ""), r.get("outcome", ""),
                                       run_id=r["run_id"])
@@ -799,8 +803,12 @@ def run_page(request: Request, run_id: str):
         "pf_name": _runs.pf_member_name(o, run_id),
         # the relWIS convention only beside a relWIS
         "results_tip": results_tip(spec_json, o),
-        # the page shows a research badge, so the label stays untagged
-        "label": _run_label(run_id, spec_json, tag=False),
+        # the page shows a research badge, so the label stays untagged;
+        # the heading names the run by its parts (shared._run_name)
+        "label": _run_label(run_id, spec_json or res.get("spec", ""),
+                            tag=False, outcome=o),
+        "name": shared._run_name(run_id, spec_json or res.get("spec", ""),
+                                 o),
         "research": is_research(spec_json),
         "modified": _runs.is_modified(spec_json),
         "override": _knobs.override_reason(spec_json),

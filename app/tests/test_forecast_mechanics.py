@@ -27,8 +27,10 @@ sys.path.insert(0, str(Path(__file__).resolve().parents[2]))
 
 import app.core.runs as runs_mod                             # noqa: E402
 from app.core import knobs as K                              # noqa: E402
+from app.core import run_label                               # noqa: E402
 from app.core.runs import (Ledger, RunSpec, results_html,     # noqa: E402
                            results_tip)
+from app.ui import forecast_aids as FA                       # noqa: E402
 from app.ui import server as srv                             # noqa: E402
 from app.ui import shared as ui_shared                       # noqa: E402
 from app.ui import state as ui_state                         # noqa: E402
@@ -97,6 +99,32 @@ def test_the_forecast_tab_draws_the_newest_run_with_modified_settings(state):
     ui_shared._invalidate_scans()
     assert ui_shared._latest_results() == (None, None)
     assert ui_shared._latest_results(include_modified=True, newest=True)[0] == modified
+
+
+def test_a_run_whose_ledger_row_was_cleared_is_named_by_its_own_files(state):
+    """Storage's "Clear N rows not running (files kept)" drops a run's
+    ledger row and keeps its workroot, whose fans the card still draws.
+    The card linked it with no words; it names the run from its own
+    results.json, and by its start when that names no date."""
+    rid = _run(date="2098-01-03")
+    Ledger().delete_runs([rid])
+    assert Ledger().row(rid) is None
+    ui_shared._invalidate_scans()
+    words = run_label.text("2098-01-03")
+    fr = FA.fan_run([], rid)
+    assert fr["name"]["text"] == words
+    assert fr["label"] == f"{words} · run {ui_shared._run_time(rid)}"
+    html = client.get("/forecast").text
+    assert (f'<a href="/runs/{rid}" id="fc-fan-run">{words}<span class='
+            f'"uk-sr"> · run {ui_shared._run_time(rid)}</span></a>') in html
+    # a results.json with no spec and no date: the run's start
+    (runs_mod.APP_STATE / "workroots" / rid / "results.json").write_text(
+        json.dumps({"models": FANS}), encoding="utf-8")
+    ui_shared._invalidate_scans()
+    html = client.get("/forecast").text
+    assert (f'<a href="/runs/{rid}" id="fc-fan-run">'
+            f'{ui_shared._run_time(rid)}</a>') in html
+    assert 'id="fc-fan-run"></a>' not in html
 
 
 def test_an_earlier_run_says_why_the_newest_is_not_drawn(state):

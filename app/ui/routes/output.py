@@ -24,7 +24,7 @@ from fastapi.responses import HTMLResponse
 
 from app.ui import downloadlog, shared
 from app.ui.forms import _knobs
-from app.ui.shared import _archive_dates, _run_label
+from app.ui.shared import _archive_dates, _run_name, _run_time
 from app.ui.state import REPO as _REPO
 from app.ui.state import _status
 from app.ui.templating import templates
@@ -651,9 +651,8 @@ def _hub_candidates(app_state: Path, ledger) -> tuple:
 
 def _run_when(run_id: str) -> str:
     """A run's start as the page shows it beside a file or the report:
-    "MM-DD HH:MM:SS" (_run_label's time); "" for no run."""
-    return (_run_label(run_id, "", tag=False).split(" · ")[-1]
-            if run_id else "")
+    "MM-DD HH:MM:SS" (shared._run_time); "" for no run."""
+    return _run_time(run_id) if run_id else ""
 
 
 def _file_entry(c: dict) -> dict:
@@ -710,17 +709,31 @@ def forecast_dates(today=None, now=None) -> tuple:
     for asof in sorted(by, reverse=True):
         ref = _reference_date(asof)
         files, modified = [], []
+        chosen = []
         for d in sorted(by[asof], key=lambda d: (_member_order(d), d)):
-            e = _file_entry(_ar.choose(by[asof][d]))
+            c = _ar.choose(by[asof][d])
+            chosen.append(c)
+            e = _file_entry(c)
             (modified if e["modified"] else files).append(e)
         status = _date_status(ref, today=today, now=now) if ref else {}
+        # the date's runs by their name (shared._run_name): the data the
+        # shown files' first run read, the weeks they forecast, the round
+        first = next((c for c in chosen if c.get("run_id")), {})
         dates.append({"asof": asof, "ref": ref or asof,
+                      "name": _run_name(
+                          first.get("run_id", ""), first.get("spec") or "",
+                          (first.get("row") or {}).get("outcome"),
+                          asof=asof, today=today),
                       "window": status.get("text", ""), "status": status,
                       # the data the shown files' runs read, once each
                       "data_src": list(dict.fromkeys(
                           x for x in (_run_data_source(e["run_id"])
                                       for e in files + modified) if x)),
                       "files": files, "modified": modified})
+    # newest data first: the week each date's runs read through (its as-of
+    # for every run that recorded nothing else)
+    dates.sort(key=lambda d: (d["name"].get("data_through") or d["asof"],
+                              d["asof"]), reverse=True)
     own = []
     for r in own_runs:
         res = r["res"]
@@ -731,8 +744,12 @@ def forecast_dates(today=None, now=None) -> tuple:
         own.append({"run_id": r["run_id"],
                     "asof": str(res.get("forecast_date") or ""),
                     "dataset": str(ds.get("name") or ds.get("id") or "dataset"),
-                    "run_when": _run_label(r["run_id"], "", tag=False
-                                           ).split(" · ")[-1],
+                    "run_when": _run_time(r["run_id"]),
+                    # its name (no round: a run on your own data)
+                    "name": _run_name(r["run_id"], res.get("spec") or "",
+                                      asof=str(res.get("forecast_date")
+                                               or ""), today=today,
+                                      hub=False),
                     "files": exports})
     return dates, own
 
@@ -793,8 +810,9 @@ def output_page(request: Request):
         # another run than the archive holds for its week: a modified run
         # (never archived) or a newer run on a few states (never archived
         # over a whole-set one), so the week's report stays reachable;
-        # each (as-of, reference date)
-        "archive_dates": [(d, _reference_date(d) or d)
+        # each (as-of, the weeks it is for: its run's name's words)
+        "archive_dates": [(d, _run_name("", {"forecast_date": d}).get("text")
+                           or d)
                           for d in reversed(_archive_dates())
                           if (d != report_asof or report_modified
                               or held_run(d) not in ("", rid))
@@ -810,6 +828,10 @@ def output_page(request: Request):
         # beside its buttons (which name that run)
         "report_asof": report_asof,
         "report_when": _run_when(rid) if has_report else "",
+        # that run by its name (tips.runname), as its files are named
+        "report_name": (_run_name(rid, (res or {}).get("spec") or "",
+                                  asof=report_asof)
+                        if has_report else None),
         "report_modified": report_modified,
         # Your data's empty state: with a dataset stored, its way on is
         # the dataset's Forecast form, else the place a dataset is added

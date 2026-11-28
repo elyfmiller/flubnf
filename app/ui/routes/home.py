@@ -486,6 +486,11 @@ def home(request: Request):
         # the round the date answers, as Output and the report head it
         "outlook_ref": (_reference_date(ob["outlook_date"])
                         if ob["outlook_date"] else ""),
+        # the run the map shows, by its name (shared._run_name), and its page
+        "outlook_name": (shared._run_name(rid or "", (res or {}).get("spec")
+                                          or "", asof=ob["outlook_date"])
+                         if ob["outlook_date"] else None),
+        "outlook_rid": rid if ob["outlook_date"] else "",
         "outlook_n": ob["outlook_n"], "outlook_us": ob.get("outlook_us", ""),
         "outlook_us_by_model": ob.get("us_by_model", {}),
         "outlook_model_label": ob["label"],
