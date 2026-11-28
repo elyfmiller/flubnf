@@ -443,7 +443,9 @@ def test_each_panel_names_its_h3_97_5_over_the_recent_level():
     assert ">8.5\u00d7</span>" in cap and "g-tail-over" not in cap
     assert 'data-s="analogue"' in cap               # the legend switch hides it
     assert "8.5 times the recent level" in G.panel_label(p)
-    assert "h3 97.5%" in G.flag_key("Jan 31")
+    # one legend line says what the figure is; the flag key no longer does
+    assert "h3 97.5%" in G.tail_key("Jan 31")
+    assert "h3 97.5%" not in G.flag_key("Jan 31")
 
 
 def test_over_fifteen_times_reads_red():
@@ -454,15 +456,83 @@ def test_over_fifteen_times_reads_red():
     assert not at[1] and G._times(at[0]) == "15\u00d7"
     over = G.tail_ratios(_wide(q975=15 * 3 + 1, obs=3.0))["analogue"]
     assert over[1]
-    assert "before any upper-tail cap" in G.flag_key("Jan 31")
+    assert "red</span> above 15\u00d7" in G.tail_key("Jan 31")
+    assert "before the cap" in G.tail_key("Jan 31", capped=True)
     html = G._figure(_wide(q975=600.0), "X", "", 0, COLORS)
-    assert '<span class="g-tail-over">30\u00d7</span>' in html
+    assert ('<span class="g-tail-over" aria-hidden="true">30\u00d7</span>'
+            in html)
     css = G.grid_css()
     assert ".g-tail-over{color:var(--bad)" in css
     assert 'html.g-off-analogue .g-tail [data-s="analogue"]' in css
     # no level, no figure
     assert G._tail(_wide(obs=0.0), COLORS) == ""
     assert G.tail_ratios({"observed": [], "models": {}}) == {}
+
+
+def test_a_figure_beside_the_red_line_never_reads_against_it():
+    """Red is decided on the ratio to two decimals (_above), so a whole
+    number that would read as 15x (15.18 red, 14.58 not, in one report) or
+    on the wrong side of it gets one decimal, in the token and in its words
+    alike, and a second while a red one still reads 15.0. Every other
+    figure is as it was."""
+    import html
+    name = G._SHORT["analogue"]
+
+    def shown(q975):                                # level 50
+        p = _wide(q975=q975, obs=50.0)
+        x, over, filed = G.tail_ratios(p)["analogue"]
+        tail = G._tail(p, COLORS)
+        cls = "g-tail-over" if over else "g-tail-own"
+        tok = re.search(rf'<span class="{cls}" aria-hidden="true">'
+                        r'([^<]+)</span>', tail).group(1)
+        words = G.tail_words("analogue", x, over, filed)
+        assert f'<span class="uk-sr">{html.escape(words)}</span>' in tail
+        return over, tok, words
+
+    over, tok, words = shown(759.0)                 # 15.18x
+    assert over and tok == "15.2×"
+    assert words == (f"97.5% at h3 = 15.2× the last three weeks' "
+                     f"average ({name}), above 15×")
+    over, tok, words = shown(729.0)                 # 14.58x
+    assert not over and tok == "14.6×"
+    assert words == (f"97.5% at h3 = 14.6× the last three weeks' "
+                     f"average ({name})")
+    # on the line itself, and just above it
+    assert shown(750.0)[:2] == (False, "15.0×")
+    assert shown(752.0)[:2] == (True, "15.04×")
+    # away from the line the whole numbers stay
+    assert shown(820.0)[:2] == (True, "16×")   # 16.4x
+    assert shown(680.0)[:2] == (False, "14×")  # 13.6x
+    assert shown(1200.0)[:2] == (True, "24×")
+
+
+def test_a_figure_on_the_red_line_is_not_above_it_and_prints_no_float_noise():
+    """245 over the level of 16, 16, 17 is 15.000000000000002 in floating
+    point (and 245 > 15 x 16.333 holds): a figure on the line is not above
+    it, so it is muted with no "above 15x", and no figure prints more than
+    two decimals. One that still reads 15.00 at two decimals is on the
+    line too; 15.01 is above it."""
+    p = _wide(q975=245.0)
+    p["observed"] = [["2097-12-20", 16.0], ["2097-12-27", 16.0], [ASOF, 17.0]]
+    x, over, filed = G.tail_ratios(p)["analogue"]
+    assert x != 15.0 and 245.0 > 15 * (49.0 / 3)    # the noise itself
+    assert not over and filed is None
+    tail = G._tail(p, COLORS)
+    assert '<span class="g-tail-own" aria-hidden="true">15.0×</span>' in tail
+    assert "g-tail-over" not in tail and "above" not in tail
+    assert "15.00" not in tail
+    assert "above" not in G.panel_label(p)
+    # within the last decimal of the line (level 50: 750.15 is 15.003x)
+    x, over, _ = G.tail_ratios(_wide(q975=750.15, obs=50.0))["analogue"]
+    assert x > 15.0 and not over and G._tail_times(x, over) == "15.0×"
+    # 750.3 is 15.006x: above, and it reads so
+    x, over, _ = G.tail_ratios(_wide(q975=750.3, obs=50.0))["analogue"]
+    assert over and G._tail_times(x, over) == "15.01×"
+    # never more than two decimals, whatever `over` says
+    for x in (15.000000000000002, 15.0001, 15.004, 14.9999):
+        for over in (True, False):
+            s = G._tail_times(x, over)
+            assert len(s[:-1].partition(".")[2]) <= 2, s
 
 
 # ---------------------- before and after the cap, per location (2026-10-28)
@@ -522,12 +592,12 @@ def test_a_location_opens_on_its_file_and_keeps_the_models_own(tmp_path):
     shown = G.shown(oh2)
     assert shown["models"]["pf"]["q"][3][4] == 30.0
     assert shown["before"]["pf"]["q"][3][4] == 46.0
-    # the switch, Submitted pressed; the drawing is the file's
+    # no switch on the panel (one report-wide switch): a "cap applied"
+    # link, closed; the drawing is the file's
     html = G._figure(oh2, "Ohio", "", 0, COLORS)
-    assert ('data-ba-key="OH" data-ba="s" aria-pressed="true"' in html
-            and 'data-ba-key="OH" data-ba="b" aria-pressed="false"' in html)
-    assert ">Before cap</button>" in html
-    assert "data-ba-key" not in G._figure(al2, "Alabama", "", 0, COLORS)
+    assert "data-ba-key" not in html and ">Before cap<" not in html
+    assert 'data-cap-key="OH" aria-expanded="false"' in html
+    assert "data-cap-key" not in G._figure(al2, "Alabama", "", 0, COLORS)
     # the figure: the model's own, then the file's
     x, _over, filed = G.tail_ratios(shown)["pf"]
     assert filed is not None and filed < x
@@ -539,3 +609,34 @@ def test_a_location_opens_on_its_file_and_keeps_the_models_own(tmp_path):
     assert d["OH"]["topb"] >= 46 and "s" not in d["AL"]
     js = G.grid_js(g2, COLORS)
     assert "addEventListener('rp-ba'" in js and "p.topb" in js
+
+
+def test_an_older_bundles_rounding_is_not_a_move(tmp_path):
+    """An older bundle's grid kept unrounded quantiles (two decimals); a
+    file that only rounds them to whole admissions (half to even, or a
+    hair either way) is the model's own, so the location carries nothing
+    to switch; on a grid in whole admissions one admission is a move."""
+    g = _grid()
+    oh = next(p for p in g["panels"] if p["key"] == "OH")
+    oh["models"]["pf"]["q"] = [[r[0] + .5, r[1] + .4, r[2] - .45, r[3],
+                                r[4] + .3] for r in oh["models"]["pf"]["q"]]
+    _filed(tmp_path, dict(oh, models={"pf": {
+        "times": oh["models"]["pf"]["times"],
+        "q": [[float(round(v)) for v in r]
+              for r in oh["models"]["pf"]["q"]]}}))
+    g2 = G.attach_submitted(g, G.submitted_fans(tmp_path))
+    assert not any(p.get("submitted") for p in g2["panels"])
+    assert not G.any_capped(g2)                     # no switch, no link
+    assert G.cap_parts(next(p for p in g2["panels"] if p["key"] == "OH"),
+                       "OH") == ("", "")
+    # whole-admission grids compare exactly: one admission at h3 is a move
+    g = _grid()
+    oh = next(p for p in g["panels"] if p["key"] == "OH")
+    f = oh["models"]["pf"]
+    q = [list(r) for r in f["q"]]
+    q[3][4] -= 1
+    _filed(tmp_path / "w", dict(oh, models={"pf": dict(f, q=q)}))
+    g2 = G.attach_submitted(g, G.submitted_fans(tmp_path / "w"))
+    oh2 = next(p for p in g2["panels"] if p["key"] == "OH")
+    assert oh2["submitted"]["pf"]["q"][3][4] == f["q"][3][4] - 1
+    assert G.cap_moves(oh2) == [("pf", f["q"][3][4], f["q"][3][4] - 1)]

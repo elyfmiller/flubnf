@@ -42,6 +42,7 @@ import re
 from pathlib import Path
 
 import numpy as np
+from markupsafe import Markup
 
 from app.core import html_page, usmap
 
@@ -620,17 +621,15 @@ _MAP_FOLD_JS = """<script>
 </script>"""
 
 
-def _ba_pair(key: str, shown: str, before: str, switch: bool = True) -> str:
+def _ba_pair(key: str, shown: str, before: str) -> str:
     """A detail part in both versions: the submitted one (as it opens) and
-    the model's own before the upper-tail cap, behind the location's
-    switch (`switch`: drawn here; the numbers follow the fan's); `shown`
-    alone when the file did not move it."""
+    the model's own before the upper-tail cap, shown by the report-wide
+    switch or the location's "cap applied" link (_BA_JS); `shown` alone
+    when the file did not move it."""
     if not before or not shown:
         return shown
-    from app.core.report_grid import ba_switch
     k = _esc(key)
-    sw = ba_switch(key) if switch else ""
-    return (f'<div class="rp-ba" data-ba-for="{k}">{sw}'
+    return (f'<div class="rp-ba" data-ba-for="{k}">'
             f'<div data-ba-v="s">{shown}</div>'
             f'<div data-ba-v="b" hidden>{before}</div></div>')
 
@@ -650,21 +649,24 @@ _DRAW_JS = """window.rpDraw = function(el) {
   }
 };"""
 
-#: every switch for one location moves together: its buttons, its detail
-#: parts and (the rp-ba event) its live panels; a chart shown from hidden
-#: takes its width again
+#: the report-wide switch (data-ba-all) shows every location submitted (as
+#: it opens) or before the cap; a location's "cap applied" link
+#: (data-cap-key) shows that location before the cap whatever the switch
+#: says, and opens its line. Each location moves everywhere at once: its
+#: links, lines, detail parts and (the rp-ba event) its live panels; a
+#: chart shown from hidden takes its width again
 _BA_JS = """<script>
 (function(){
-  function set(key, mode) {
-    var bs = document.querySelectorAll('button[data-ba-key]');
-    for (var i = 0; i < bs.length; i++)
-      if (bs[i].getAttribute('data-ba-key') === key)
-        bs[i].setAttribute('aria-pressed',
-                           String(bs[i].getAttribute('data-ba') === mode));
-    var ws = document.querySelectorAll('[data-ba-for]');
-    for (var j = 0; j < ws.length; j++) {
-      if (ws[j].getAttribute('data-ba-for') !== key) continue;
-      var vs = ws[j].querySelectorAll('[data-ba-v]');
+  var ALL = 's', OPEN = {};
+  function each(sel, fn) {
+    var ns = document.querySelectorAll(sel);
+    for (var i = 0; i < ns.length; i++) fn(ns[i]);
+  }
+  function show(key) {
+    var mode = ALL === 'b' || OPEN[key] ? 'b' : 's';
+    each('[data-ba-for]', function (w) {
+      if (w.getAttribute('data-ba-for') !== key) return;
+      var vs = w.querySelectorAll('[data-ba-v]');
       for (var k = 0; k < vs.length; k++) {
         var on = vs[k].getAttribute('data-ba-v') === mode;
         vs[k].hidden = !on;
@@ -674,16 +676,48 @@ _BA_JS = """<script>
             try { Plotly.Plots.resize(gs[n]); } catch (e) {}
         }
       }
-    }
+    });
+    each('button[data-cap-key]', function (b) {
+      if (b.getAttribute('data-cap-key') === key)
+        b.setAttribute('aria-expanded', String(!!OPEN[key]));
+    });
+    each('[data-cap-line]', function (p) {
+      if (p.getAttribute('data-cap-line') === key) p.hidden = !OPEN[key];
+    });
     try {
       dispatchEvent(new CustomEvent('rp-ba', {detail: {key: key, mode: mode}}));
     } catch (e) {}
   }
+  function keys() {
+    var seen = {}, out = [];
+    each('[data-ba-for]', function (n) {
+      var k = n.getAttribute('data-ba-for');
+      if (!seen[k]) { seen[k] = 1; out.push(k); }
+    });
+    each('button[data-cap-key]', function (n) {
+      var k = n.getAttribute('data-cap-key');
+      if (!seen[k]) { seen[k] = 1; out.push(k); }
+    });
+    return out;
+  }
+  function all(mode) {
+    ALL = mode === 'b' ? 'b' : 's';
+    each('button[data-ba-all]', function (b) {
+      b.setAttribute('aria-pressed',
+                     String(b.getAttribute('data-ba-all') === ALL));
+    });
+    var ks = keys();
+    for (var i = 0; i < ks.length; i++) show(ks[i]);
+  }
+  function cap(key) { OPEN[key] = !OPEN[key]; show(key); }
   document.addEventListener('click', function (e) {
-    var b = e.target.closest && e.target.closest('button[data-ba-key]');
-    if (b) set(b.getAttribute('data-ba-key'), b.getAttribute('data-ba'));
+    var t = e.target;
+    var b = t.closest && t.closest('button[data-ba-all]');
+    if (b) { all(b.getAttribute('data-ba-all')); return; }
+    var c = t.closest && t.closest('button[data-cap-key]');
+    if (c) cap(c.getAttribute('data-cap-key'));
   });
-  window.rpBA = set;
+  window.rpBA = {all: all, cap: cap};
 })();
 </script>"""
 
@@ -793,9 +827,8 @@ def _report_css() -> str:
  .rp-themesel select{font:inherit;font-weight:500;color:var(--ink);
    background:var(--card);border:1px solid var(--field-line);
    border-radius:6px;padding:.15rem .3rem}
- /* a location's switch in its detail: under the card heading */
- .rp-ba > .g-ba{margin:0 0 .4rem}
- .rp-ba > .g-ba > button{font-size:var(--fs-label)}
+ /* a location's "cap applied" line in its detail: under the heading */
+ .card > .g-capline{margin:0 0 .4rem}
  /* the map card's fold: the map and its keys; the US panel stays */
  .rp-mapfold{margin-left:auto}
  @media screen{.rp-mapcard.is-folded .rp-mapbody{display:none}}
@@ -1284,6 +1317,9 @@ def build_report(asof: str, state_cards: dict, state_details: dict,
                              'aria-hidden="true">Model</span>'
                              f'{model_toggle_html}</span>')
 
+    # each location's grid panel, for its detail's "cap applied" link
+    from app.core import report_grid
+    grid_panels = {p.get("key"): p for p in (grid or {}).get("panels") or []}
     sections = []
     back_btn = ('<button type="button" class="backbtn" '
                 'onclick="backToMap()">&larr; back to map</button>')
@@ -1302,8 +1338,12 @@ def build_report(asof: str, state_cards: dict, state_details: dict,
         rows = "".join(f'<tr><td>{_md(r[0])}</td><td class="num">'
                        f'{float(r[1]):,.0f}</td></tr>'
                        for r in d.get("table_rows", []))
+        # the link only where this detail has a before-the-cap version
+        cap_link, cap_line = report_grid.cap_parts(
+            dict(grid_panels.get(a) or {}, data_key=a),
+            f"st-{a}") if d.get("fan_before") else ("", "")
         fan_head = str(kit.heading("Weekly admissions", id=f"fan-{a}",
-                                   level=3))
+                                   level=3, aside=Markup(cap_link))) + cap_line
         who = MODEL_SHORT.get(d.get("model") or "pf", "Oracle SIHRS")
         cat_head = str(kit.heading(f"Next week ({who})", id=f"cat-{a}",
                                    level=3))
@@ -1312,7 +1352,7 @@ def build_report(asof: str, state_cards: dict, state_details: dict,
                                  d.get("times") or []),
             _forecast_numbers(a + "-before", d.get("numbers_before") or {},
                               d.get("times") or [])
-            if d.get("numbers_before") else "", switch=False)
+            if d.get("numbers_before") else "")
         fan_html = _ba_pair(a, _html(d['fan'], lazy=True),
                             _html(d['fan_before'], lazy=True)
                             if d.get("fan_before") else "")
@@ -1331,8 +1371,11 @@ def build_report(asof: str, state_cards: dict, state_details: dict,
     # state whose "?" says when they come
     nat_cards = []
     if national.get("fan"):
+        cap_link, cap_line = report_grid.cap_parts(
+            dict(grid_panels.get("US") or {}, data_key="US"),
+            "st-US") if national.get("fan_before") else ("", "")
         nat_head = str(kit.heading("Weekly admissions", id="fan-US",
-                                   level=3))
+                                   level=3, aside=Markup(cap_link))) + cap_line
         nat_fan = _ba_pair("US", _html(national["fan"], lazy=True),
                            _html(national["fan_before"], lazy=True)
                            if national.get("fan_before") else "")
@@ -1343,7 +1386,7 @@ def build_report(asof: str, state_cards: dict, state_details: dict,
             _forecast_numbers("US-before",
                               national.get("numbers_before") or {},
                               national.get("times") or [])
-            if national.get("numbers_before") else "", switch=False)
+            if national.get("numbers_before") else "")
         if nat_num:
             nat_cards.append(nat_num)
     nat_body = "\n  ".join(nat_cards) or str(kit.empty(
@@ -1414,7 +1457,6 @@ def build_report(asof: str, state_cards: dict, state_details: dict,
 
     # every location at a glance (report_grid): a panel title opens the
     # location's detail section where there is one
-    from app.core import report_grid
     have_detail = {a for a in state_details if a != "US"}
     if national.get("fan"):
         have_detail.add("US")
@@ -1459,8 +1501,15 @@ def build_report(asof: str, state_cards: dict, state_details: dict,
                 f'{loc_opts}</nav>')
 
     natbtn = '<button type="button" id="natbtn">US forecast detail</button>'
+    # one report-wide switch for every chart, where the cap changed a file
+    cap_html = ""
+    if report_grid.any_capped(grid):
+        cap_html = ('<span class="rp-ctl"><span class="rp-lbl" '
+                    'aria-hidden="true">Charts</span>'
+                    f'{report_grid.cap_switch()}</span>')
     controls = (f'{model_toggle_html}'
-                f'<span class="rp-ctlpair">{view_toggle}{natbtn}</span>')
+                f'<span class="rp-ctlpair">{view_toggle}{natbtn}</span>'
+                f'{cap_html}')
 
     html = f"""<!doctype html><html lang="en"><head><meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1">
