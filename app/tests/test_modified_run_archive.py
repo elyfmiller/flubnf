@@ -16,7 +16,12 @@ such a run: test_newest_run_shown.py).
   * a week's archived files under the hub names (the files that went to
     the hub) are never replaced by a run whose files carry the -modified
     names; such a run still fills a week with no archive or one of
-    -modified files, and a hub-named run still replaces -modified files.
+    -modified files, and a hub-named run still replaces -modified files;
+  * a past week with no archive folder (the weeks run with modified
+    settings before such runs were archived) is in the picker too, by the
+    run the archive's rule picks among its real-time runs with a report,
+    and its report and download are that run's, named as an archived
+    week's.
 """
 import sys
 from pathlib import Path
@@ -28,6 +33,7 @@ from app.core import archive_record as AR                      # noqa: E402
 from app.core import run_label                                 # noqa: E402
 from app.core.runs import Ledger                               # noqa: E402
 from app.ui import pipeline as P                               # noqa: E402
+from app.ui.routes import output as O                          # noqa: E402
 
 from test_newest_run_shown import DATE, GH, MOD, _run, client, root  # noqa: E402,F401
 from test_optional_outputs import _default_run, pipeline_env   # noqa: E402,F401
@@ -208,3 +214,109 @@ def test_an_older_record_is_hub_named_by_its_folders_files(root):
         assert (AR.read_record(arch)["run_id"] == "older") is hub
     assert AR.files_hub_named(root / "nowhere") is None
 
+
+def _picker(html: str) -> str:
+    return html.split('<select id="archreport">', 1)[1].split("</select>", 1)[0]
+
+
+def test_the_picker_reaches_a_past_week_with_no_archive_folder(root):
+    """Nothing is archived but one week: the others' runs wrote -modified
+    files before such runs were archived (as 2026-10-31 to 2026-11-21 on
+    the stored runs did)."""
+    shipped_week, week, vintage_week, card_week = (
+        "2097-12-20", "2097-12-27", "2097-12-13", "2098-01-10")
+    shipped = _run(root, "shipped", asof=shipped_week)
+    P._archive_run(root / "workroots" / shipped, shipped_week)
+    # the week's complete run (both models' files) stands for it over a
+    # newer incomplete one; a research run and a vintage backtest never do
+    done = _run(root, "complete modified", knobs=MOD, asof=week)
+    other = root / "workroots" / done / "submission" / (
+        "NAU_PyBNF-OracleSIHRS-modified")
+    other.mkdir()
+    (other / "f.csv").write_text("x")
+    _run(root, "incomplete modified", knobs=MOD, asof=week)
+    _run(root, "research", asof=week, extra={"oracle": "none"})
+    _run(root, "backtest", mode="vintage", asof=week)
+    # a week whose only run is a backtest has no run to stand for it, and
+    # a week whose run wrote no report has nothing to open
+    _run(root, "backtest only", mode="vintage", asof=vintage_week)
+    noreport = _run(root, "no report", knobs=MOD, asof=DATE)
+    (root / "workroots" / noreport / "report.html").unlink()
+    card = _run(root, "on the card", knobs=MOD, asof=card_week)
+    assert not (root / "archive" / week).exists()
+    html = client.get("/output").text
+    assert f'href="/runs/{card}/report"' in html.split('id="weekly-report"')[1]
+    picker = _picker(html)
+    # newest first; the modified week marked as the archived ones are; the
+    # card's own week offered once, by the card
+    assert picker.count("<option") == 2
+    assert picker.index(f'value="{week}"') < picker.index(
+        f'value="{shipped_week}"')
+    assert (f'<option value="{week}">{run_label.text(week)} '
+            '(modified settings)</option>') in picker
+    assert (f'<option value="{shipped_week}">{run_label.text(shipped_week)}'
+            '</option>') in picker
+    # the week opens its chosen run's report, and downloads it under the
+    # week's name, -modified as its files are, as an archived week's
+    assert "REPORT complete modified" in client.get(
+        f"/output/report?date={week}").text
+    r = client.get(f"/output/report/download?date={week}")
+    assert r.status_code == 200 and "REPORT complete modified" in r.text
+    ref = O._reference_date(week)
+    assert (f'filename="{ref}-NAU_PyBNF-weekly-report-modified.html"'
+            in r.headers["content-disposition"])
+    # the weeks with nothing to open answer as before
+    for d in (vintage_week, DATE, "2098-02-07"):
+        assert client.get(f"/output/report?date={d}").status_code == 404
+        assert client.get(
+            f"/output/report/download?date={d}").status_code == 404
+    assert client.get("/output/report?date=2098-13-45").status_code == 400
+    assert client.get(
+        "/output/report/download?date=junk").status_code == 400
+    # once a newer round is on the card, the card's old week joins them
+    _run(root, "next round", knobs=MOD, asof="2098-01-17")
+    picker = _picker(client.get("/output").text)
+    assert (f'<option value="{card_week}">{run_label.text(card_week)} '
+            '(modified settings)</option>') in picker
+    assert "REPORT on the card" in client.get(
+        f"/output/report?date={card_week}").text
+
+
+def test_a_past_weeks_hub_named_run_stands_over_a_later_modified_one(root):
+    """The week's run is the one the archive would hold had each run been
+    archived as it ran: hub-named files are never replaced by -modified
+    ones, so a later -modified run does not stand for the week."""
+    week = "2097-12-27"
+    ov = _run(root, "override", knobs=MOD, override="the hub's own weight",
+              asof=week)
+    _run(root, "modified later", knobs=MOD, asof=week)
+    _run(root, "on the card", asof="2098-01-10")
+    picker = _picker(client.get("/output").text)
+    # its settings are modified (by override), so the option says so
+    assert (f'<option value="{week}">{run_label.text(week)} '
+            '(modified settings)</option>') in picker
+    assert "REPORT override" in client.get(f"/output/report?date={week}").text
+    r = client.get(f"/output/report/download?date={week}")
+    assert "REPORT override" in r.text
+    # its files carry the hub names, so the name does too
+    assert (f'filename="{O._reference_date(week)}-NAU_PyBNF-weekly-report'
+            '.html"' in r.headers["content-disposition"])
+    assert O._week_runs()[week][0].name == ov
+
+
+def test_held_after_applies_the_keep_rule_run_by_run():
+    def c(rid, **k):
+        return {"run_id": f"2098010{rid}T100000-x", **k}
+    hub, mod = c(1, hub_names=True), c(2, hub_names=False)
+    assert AR.held_after([mod, hub]) is hub      # in the order they ran
+    assert AR.held_after([c(1, hub_names=False), c(2, hub_names=True)])[
+        "run_id"].startswith("20980102")         # hub replaces -modified
+    # the complete rule comes first: an incomplete hub-named run does not
+    # replace a complete -modified one
+    done_mod = c(1, hub_names=False)
+    assert AR.held_after([done_mod, c(2, complete=False)]) is done_mod
+    # a run that wrote no file is held to neither name
+    empty = c(1, hub_names=None, complete=False)
+    later = c(2, hub_names=False, complete=False)
+    assert AR.held_after([empty, later]) is later
+    assert AR.held_after([]) is None

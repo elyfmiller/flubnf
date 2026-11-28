@@ -158,7 +158,9 @@ The 2026-27 season is the Oracle SIHRS model's first prospective test.
    marked as modified there and in Archived weeks, and is archived
    like any other, its files and report under their `-modified` names,
    except that a week's archived hub-named files are never replaced by
-   `-modified` ones.
+   `-modified` ones. Archived weeks also lists a past week with no
+   archive folder (the weeks run with modified settings before such runs
+   were archived) by the run the archive would hold for it.
    For the authoritative
    check: `Rscript scripts/validate_submission.R <file.csv> <hub_clone> --window`
    (or `python scripts/validate_submission.py ...`).

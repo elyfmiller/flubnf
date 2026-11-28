@@ -636,8 +636,14 @@ def _hub_candidates(app_state: Path, ledger) -> tuple:
                           "realtime": _ar.realtime_of(res.get("spec", "")),
                           "row": ledger.row(rid) if (ledger and rid) else None,
                           "spec": res.get("spec", ""), "wr": d})
-    # runs that started in the same second take the ledger's order, as
-    # shared._scan_results orders them, never their random suffix
+    _set_order(cands, app_state)
+    return cands, own
+
+
+def _set_order(cands: list, app_state: Path) -> None:
+    """Give each candidate its "order" (archive_record.choose): runs that
+    started in the same second take the ledger's order, as
+    shared._scan_results orders them, never their random suffix."""
     from collections import Counter
     from app.core.runs import run_order
     ids = {c["run_id"] for c in cands if c["run_id"]}
@@ -646,7 +652,88 @@ def _hub_candidates(app_state: Path, ledger) -> tuple:
     order = run_order(app_state / "ledger.sqlite", tied) if tied else {}
     for c in cands:
         c["order"] = order.get(c["run_id"], (0.0, 0))
-    return cands, own
+
+
+def _run_complete(row, wr: Path) -> bool:
+    """Whether a closed run counts as complete the way the pipeline's
+    archive step counts it (pipeline.py, step 7): it finished ok, withheld,
+    dropped and failed no submission, and wrote a file for both models,
+    under the hub name or the -modified one. A workroot without a ledger
+    row counts as complete once both files are there, as _file_complete
+    counts its files."""
+    import json as _json
+    sfx = _knobs.MODIFIED_SUFFIX
+    written = {n[:-len(sfx)] if n.endswith(sfx) else n
+               for n in (p.parent.name
+                         for p in Path(wr).glob("submission/*/*.csv"))}
+    if not _registered_model_ids() <= written:
+        return False
+    if row is None:
+        return True
+    if row.get("status") != "ok":
+        return False
+    try:
+        o = _json.loads(row.get("outcome") or "{}")
+    except (ValueError, TypeError):
+        o = {}
+    o = o if isinstance(o, dict) else {}
+    return not (o.get("submission_errors") or o.get("submission_withheld")
+                or o.get("submission_dropped"))
+
+
+def _week_runs() -> dict:
+    """as-of -> (workroot, spec) of the run that stands for each week the
+    forecast archive holds no folder for: among the week's runs the
+    pipeline's archive step would have archived (real-time runs of both
+    models, not research, that wrote a weekly report), the one the
+    archive would hold had each been archived as it ran
+    (archive_record.held_after: complete, on the whole hub set, the hub
+    names over the -modified ones, then the newest). A vintage backtest
+    never stands for a week. Weeks run with modified settings before such
+    runs were archived (2026-11-27) have no folder; Output's Archived
+    weeks reaches their reports through this."""
+    from app.core import archive_record as _ar
+    from app.core.runs import APP_STATE, Ledger, _spec_dict, is_research
+    from app.core.submit import MODEL_ABBR
+    archived = set(_archive_dates())
+    try:
+        ledger = Ledger()
+    except Exception:
+        ledger = None
+    by = {}
+    for f in shared._workroot_results():
+        res = _read_json(f)
+        if res is None or res.get("dataset") or res.get("research"):
+            continue
+        spec, wr = res.get("spec", ""), f.parent
+        asof = str(res.get("forecast_date") or "")
+        if (not asof or asof in archived or is_research(spec)
+                or not _ar.realtime_of(spec)
+                # a one-model run is never the date's forecast
+                or str(_spec_dict(spec).get("engine") or "all") in MODEL_ABBR
+                or not (wr / "report.html").is_file()):
+            continue
+        row = ledger.row(wr.name) if ledger else None
+        by.setdefault(asof, []).append({
+            "run_id": wr.name, "complete": _run_complete(row, wr),
+            "full": _ar.scope_of(spec), "realtime": True,
+            "hub_names": _ar.files_hub_named(wr),
+            "wr": wr, "spec": spec})
+    _set_order([c for cs in by.values() for c in cs], APP_STATE)
+    return {asof: (c["wr"], c["spec"])
+            for asof, cs in by.items() for c in [_ar.held_after(cs)]}
+
+
+def _week_report_dir(date: str, weeks: dict | None = None):
+    """The folder whose weekly report stands for a week: its archive
+    folder when there is one, else the run _week_runs picks (`weeks`, its
+    answer when the caller has it); None for neither."""
+    from app.core.runs import APP_STATE
+    d = APP_STATE / "archive" / date
+    if d.is_dir():
+        return d
+    hit = (_week_runs() if weeks is None else weeks).get(date)
+    return hit[0] if hit else None
 
 
 def _run_when(run_id: str) -> str:
@@ -769,7 +856,7 @@ def output_stamp() -> dict:
 def output_page(request: Request):
     import datetime as _dt
     from app.core import archive_record as _ar
-    from app.core.runs import APP_STATE, is_contained
+    from app.core.runs import APP_STATE, is_contained, is_modified
     stamp = output_stamp()
     # the run Home shows: the newest real-time run, a modified one
     # included (its files sit under their date, tagged)
@@ -784,23 +871,30 @@ def output_page(request: Request):
     report_asof = (str((res or {}).get("forecast_date") or "")
                    if has_report else "")
 
+    # the past weeks the archive holds no folder for, each by the run that
+    # stands for it (its report opens from the picker as an archived one)
+    weeks = _week_runs()
+
     def card_holds(d: str) -> bool:
-        """Whether the card's run is the one the archived week holds, so
-        the picker need not offer the week again. A folder from before the
-        record names no run: taken as the card's, unless the card's run
-        wrote -modified files (such runs were not archived then, so the
-        folder holds another run)."""
-        held = str((_ar.read_record(APP_STATE / "archive" / d) or {})
-                   .get("run_id") or "")
+        """Whether the card's run is the one that stands for the week (the
+        run its archive holds, else _week_runs'), so the picker need not
+        offer the week again. A folder from before the record names no
+        run: taken as the card's, unless the card's run wrote -modified
+        files (such runs were not archived then, so the folder holds
+        another run)."""
+        held = (weeks[d][0].name if d in weeks else
+                str((_ar.read_record(APP_STATE / "archive" / d) or {})
+                    .get("run_id") or ""))
         return held == rid or (not held and not report_modified)
 
     def week_words(d: str) -> str:
-        """An archived week as its option reads: the weeks it is for (its
-        run's name's words), and "(modified settings)" for a run with
-        changed settings (an option holds no badge)."""
+        """A past week as its option reads: the weeks it is for (its run's
+        name's words), and "(modified settings)" for a run with changed
+        settings (an option holds no badge)."""
         words = _run_name("", {"forecast_date": d}).get("text") or d
-        return (words + " (modified settings)"
-                if _ar.modified_of(APP_STATE / "archive" / d) else words)
+        mod = (is_modified(weeks[d][1]) if d in weeks
+               else _ar.modified_of(APP_STATE / "archive" / d))
+        return words + " (modified settings)" if mod else words
     # each file gets the hub validator's command (--window for a round
     # that is open or coming)
     for d in dates:
@@ -815,17 +909,20 @@ def output_page(request: Request):
     return templates.TemplateResponse(request, "output.html", {
         "active": "Output", "rid": rid,
         "dates": dates, "own": own,
-        # the archived weeks the picker offers: those whose archive holds a
-        # report (a run whose report failed is archived without one), less
-        # the week the card already offers above it, unless the card shows
-        # another run than the archive holds for its week (a newer run on a
-        # few states, never archived over a whole-set one, or a modified
-        # run made before such runs were archived), so the week's report
-        # stays reachable; each (as-of, week_words)
+        # the past weeks the picker offers, newest first: those whose
+        # archive holds a report (a run whose report failed is archived
+        # without one) and those with no archive folder whose run
+        # (_week_runs) wrote one, less the week the card already offers
+        # above it, unless the card shows another run than the one that
+        # stands for its week (a newer run on a few states, never archived
+        # over a whole-set one, or a modified run made before such runs
+        # were archived), so the week's report stays reachable; each
+        # (as-of, week_words)
         "archive_dates": [(d, week_words(d))
-                          for d in reversed(_archive_dates())
+                          for d in sorted(set(_archive_dates()) | set(weeks),
+                                          reverse=True)
                           if (d != report_asof or not card_holds(d))
-                          and (APP_STATE / "archive" / d
+                          and (_week_report_dir(d, weeks)
                                / "report.html").is_file()],
         "has_report": has_report,
         # a round open now: its files' Download is the page's primary
@@ -1053,14 +1150,15 @@ def _bad_date(date: str, request: Request):
 
 @router.get("/output/report", response_class=HTMLResponse)
 def output_report(request: Request, date: str = ""):
-    """Latest run's report, or ?date=YYYY-MM-DD from the archive (both via
-    _report_for_serving)."""
+    """Latest run's report, or ?date=YYYY-MM-DD, a past week's: from its
+    archive folder, else from the run that stands for a week with none
+    (_week_report_dir; both via _report_for_serving)."""
     from app.core.runs import APP_STATE
     if date:
         if bad := _bad_date(date, request):
             return bad
-        d = APP_STATE / "archive" / date
-        if not (d / "report.html").is_file():
+        d = _week_report_dir(date)
+        if d is None or not (d / "report.html").is_file():
             # 404, as the same date's download answers
             return _notice(request, 404, "empty",
                            f"No archived report for {date}")
@@ -1162,11 +1260,14 @@ def _folder_suffix(d: Path) -> str:
 
 
 def _weekly_report_file(dirpath: Path, date: str, request: Request = None,
-                        notice: dict | None = None, route: str = ""):
+                        notice: dict | None = None, route: str = "",
+                        tag: str | None = None):
     """The weekly report as a download, refreshed first (same bytes as the
     page); missing -> 404 (a console page when `request` is given;
     `notice` holds _notice's action, active and heading for a run's).
-    The download log names `route` (app/ui/downloadlog.py)."""
+    The download log names `route` (app/ui/downloadlog.py). `tag` is the
+    run id its name carries (_report_tag's by default; "" for a past
+    week's, named by the week alone)."""
     from fastapi.responses import FileResponse
     f = Path(dirpath) / "report.html"
     if not f.is_file():
@@ -1178,21 +1279,24 @@ def _weekly_report_file(dirpath: Path, date: str, request: Request = None,
     downloadlog.write(route or "report download", f)
     return FileResponse(f, filename=_weekly_report_name(
                             date, _report_suffix(dirpath),
-                            _report_tag(dirpath)),
+                            _report_tag(dirpath) if tag is None else tag),
                         media_type="text/html",
                         content_disposition_type="attachment")
 
 
 @router.get("/output/report/download")
 def output_report_download(request: Request, date: str = ""):
-    """/output/report's file, as a download."""
+    """/output/report's file, as a download; a past week's is named by its
+    week alone, as an archived one is, whichever folder holds it."""
     from app.core.runs import APP_STATE
     if date:
         if bad := _bad_date(date, request):
             return bad
-        return _weekly_report_file(APP_STATE / "archive" / date, date,
+        return _weekly_report_file(_week_report_dir(date)
+                                   or APP_STATE / "archive" / date, date,
                                    request,
-                                   route=f"/output/report/download?date={date}")
+                                   route=f"/output/report/download?date={date}",
+                                   tag="")
     rid, res = shared._latest_results()        # the run Home shows, as above
     return _weekly_report_file(APP_STATE / "workroots" / (rid or ""),
                                (res or {}).get("forecast_date", ""), request,

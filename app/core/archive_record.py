@@ -22,7 +22,9 @@ earlier one is not. A run made in the round's own week (real-time) is the
 date's forecast: a later backtest of that week (a vintage run) replaces
 it only when no real-time run wrote one. choose() applies it to the runs
 that wrote a file for a date (the Output page shows the chosen run's file
-per model); keep_reason() applies it to the archive folder. A run's model
+per model); keep_reason() applies it to the archive folder, and
+held_after() to a date's runs in the order they ran (the run a week with
+no archive folder stands by, on Output's Archived weeks). A run's model
 settings play no part: a run made with modified settings is archived by
 the same rule, its files under their own -modified names, and its record
 says so (modified_of). Its files' names do: an archive whose files carry
@@ -134,19 +136,23 @@ def realtime_of(spec) -> bool:
         return True
 
 
+def _newest_last(c):
+    """A candidate's place among its date's runs, oldest first: run ids
+    sort by start time, to the second, and runs that started in the same
+    second by "order", the ledger's (created_utc, rowid), as
+    app/ui/shared._scan_results orders them, never by the id's random
+    suffix."""
+    rid = str(c.get("run_id") or "")
+    return rid[:15], tuple(c.get("order") or (0.0, 0)), rid
+
+
 def choose(candidates):
     """The candidate a date shows: among the real-time runs (all of them
     when none is), the newest complete one from a run on the whole hub
     set, then the newest complete one, then the newest. Each candidate is
-    a dict with "run_id" (run ids sort by start time, to the second),
-    "complete", "full" and "realtime", and may carry "order", the
-    ledger's (created_utc, rowid): runs that started in the same second
-    are newest by it, as app/ui/shared._scan_results orders them, never by
-    the id's random suffix. None for none."""
-    def newest_last(c):
-        rid = str(c.get("run_id") or "")
-        return rid[:15], tuple(c.get("order") or (0.0, 0)), rid
-    cands = sorted(candidates or [], key=newest_last)
+    a dict with "run_id", "complete", "full" and "realtime", and may carry
+    "order" (_newest_last). None for none."""
+    cands = sorted(candidates or [], key=_newest_last)
     if not cands:
         return None
     # a backtest of a past week never replaces the run made in that week
@@ -156,35 +162,70 @@ def choose(candidates):
     return (whole or done or cands)[-1]
 
 
+def held_after(candidates):
+    """The candidate an archive folder would hold had each run been
+    archived as it ran, oldest first (_newest_last): keep_reason's rule
+    applied run by run, so the hub-named files a week sent are never
+    replaced by -modified ones. Each candidate is a dict as choose()
+    takes, with "hub_names" too, files_hub_named of its folder (None, for
+    a run that wrote no file, is held to neither name). None for none."""
+    held = None
+    for c in sorted(candidates or [], key=_newest_last):
+        if not held_reason(held, c.get("complete", True),
+                           c.get("full", True), c.get("realtime", True),
+                           c.get("hub_names", True) is not False):
+            held = c
+    return held
+
+
+def held_of(d: Path) -> dict | None:
+    """What keep_reason weighs of the run the archive in `d` holds, in a
+    held_after candidate's keys; None for no folder."""
+    d = Path(d)
+    if not d.is_dir():
+        return None
+    rec = read_record(d) or {}
+    return {"run_id": str(rec.get("run_id") or ""),
+            "complete": rec.get("complete", True),
+            "full": rec.get("full", True),
+            "realtime": realtime_of((_read(d / "results.json") or {})
+                                    .get("spec", "")),
+            "hub_names": hub_named_of(d)}
+
+
 def keep_reason(d: Path, complete: bool, full: bool = True,
                 realtime: bool = True, hub_names: bool = True) -> str:
     """Why a new run must NOT replace the archive in `d` ("" when it may):
-    the new run is a backtest (vintage) and the archive holds a real-time
-    run, or the new run is incomplete and the archive holds a complete
-    one, or it covers part of the hub set and the archive holds a
-    whole-set complete run (the rule of choose()), or its files carry the
-    -modified names (`hub_names` False) and the archive's carry the hub
-    names (hub_named_of): the files that went to the hub stay."""
-    d = Path(d)
-    if not d.is_dir():
+    held_reason for the run the folder holds (held_of)."""
+    return held_reason(held_of(d), complete, full, realtime, hub_names)
+
+
+def held_reason(held: dict | None, complete: bool, full: bool = True,
+                realtime: bool = True, hub_names: bool = True) -> str:
+    """Why a new run must NOT replace the `held` one (a held_after
+    candidate; None for none, which any run replaces): the new run is a
+    backtest (vintage) and the held run is real-time, or the new run is
+    incomplete and the held one complete, or it covers part of the hub set
+    and the held one is a whole-set complete run (the rule of choose()),
+    or its files carry the -modified names (`hub_names` False) and the
+    held run's carry the hub names: the files that went to the hub stay.
+    "" when it may."""
+    if not held:
         return ""
-    rec = read_record(d) or {}
-    held = rec.get("run_id") or ""
-    held_done = rec.get("complete", True)
-    if not realtime and realtime_of((_read(d / "results.json") or {})
-                                    .get("spec", "")):
+    rid = held.get("run_id") or ""
+    tail = f" {rid}" if rid else ""
+    held_done = held.get("complete", True)
+    if not realtime and held.get("realtime", True):
         return ("this run is a vintage run of a past week, so the archive "
-                "kept the run made in that week"
-                + (f" {held}" if held else ""))
+                "kept the run made in that week" + tail)
     if not complete and held_done:
         return ("this run is not complete, so the archive kept the "
-                "earlier complete run" + (f" {held}" if held else ""))
-    if not full and held_done and rec.get("full", True):
+                "earlier complete run" + tail)
+    if not full and held_done and held.get("full", True):
         return ("this run covers part of the 53 locations, so the "
-                "archive kept the earlier run on all 53"
-                + (f" {held}" if held else ""))
-    if not hub_names and hub_named_of(d):
+                "archive kept the earlier run on all 53" + tail)
+    if not hub_names and held.get("hub_names", True):
         return ("this run's files carry the -modified names, so the "
                 "archive kept the earlier run whose files carry the hub "
-                "names" + (f" {held}" if held else ""))
+                "names" + tail)
     return ""
