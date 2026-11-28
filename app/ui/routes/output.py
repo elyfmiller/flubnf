@@ -868,6 +868,13 @@ def output_page(request: Request):
     # says so, once the run has a report (its settings are on its run page)
     report_modified = bool(has_report and res
                            and is_contained(res.get("spec", "")))
+    # the badge's words: those for -modified files, else "modified
+    # settings" for a run exported under the hub names by override, as
+    # Home and the model pages mark it
+    report_mod = ("modified · non-hub names" if report_modified
+                  else "modified settings"
+                  if has_report and res and is_modified(res.get("spec", ""))
+                  else "")
     report_asof = (str((res or {}).get("forecast_date") or "")
                    if has_report else "")
 
@@ -938,7 +945,7 @@ def output_page(request: Request):
         "report_name": (_run_name(rid, (res or {}).get("spec") or "",
                                   asof=report_asof)
                         if has_report else None),
-        "report_modified": report_modified,
+        "report_mod": report_mod,
         # Your data's empty state: with a dataset stored, its way on is
         # the dataset's Forecast form, else the place a dataset is added
         "own_stored": bool(not own and _datasets_stored()),
