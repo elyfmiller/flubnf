@@ -112,19 +112,24 @@ def restore_last_form(last_form: dict, default_date) -> bool:
 
 # === The date: reference date and FluSight window ===
 def week_info(week: str, today=None, now=None) -> dict:
-    """{"week", "reference", "badge": [state, words], "state", "text"} for
-    an anchor week (a Saturday): the reference date is a week later, the
-    window the hub's for that round (output._date_status); {} for a
-    non-date."""
+    """{"week", "label", "round", "reference", "badge": [state, words],
+    "state", "text"} for an anchor week: "label" is what a run from it
+    reads and forecasts, in the words every run is named by
+    (app/core/run_label: "Data through Nov 21 · forecasts for weeks ending
+    Nov 28 to Dec 19"); "round" the hub round it answers ("FluSight round
+    2026-11-28", the reference date a week later); the badge the hub's
+    window for that round (output._date_status). {} for a non-date."""
     try:
         w = date.fromisoformat(str(week)[:10])
     except (TypeError, ValueError):
         return {}
+    from app.core import run_label as _rl
     ref = (w + timedelta(days=7)).isoformat()
     from app.ui.routes.output import _date_status
     st = _date_status(ref, today=today, now=now) or {}
     badge = list(st.get("badge") or ("neutral", "window unknown"))
-    return {"week": w.isoformat(), "reference": ref, "badge": badge,
+    return {"week": w.isoformat(), "label": _rl.text(w, today=today),
+            "round": _rl.round_text(w), "reference": ref, "badge": badge,
             "state": st.get("state", ""), "text": st.get("text", "")}
 
 
@@ -177,9 +182,35 @@ _NOT_DRAWN = {"running": "still running", "error": "failed",
               "interrupted": "interrupted"}
 
 
+def _stored_spec(rid) -> str:
+    """The spec a run kept in its own results.json (JSON text, its
+    forecast date taken from the file's when the spec has none); '' when
+    there is none to read. Storage's "Clear N rows not running (files
+    kept)" drops a run's ledger row and keeps its workroot, whose fans the
+    card still draws."""
+    from app.core import runs as _runs
+    from app.ui.shared import _spec_dict
+    if not _runs.is_run_id(rid):
+        return ""
+    try:
+        res = json.loads((Path(_runs.APP_STATE) / "workroots" / rid
+                          / "results.json").read_text(encoding="utf-8"))
+    except (OSError, ValueError):
+        return ""
+    if not isinstance(res, dict):
+        return ""
+    spec = dict(_spec_dict(res.get("spec")))
+    if not spec.get("forecast_date") and res.get("forecast_date"):
+        spec["forecast_date"] = str(res["forecast_date"])
+    return json.dumps(spec) if spec else ""
+
+
 def fan_run(ledger_rows: list, rid) -> dict | None:
-    """The run the Forecasts card draws: {"run_id", "label", "modified",
-    "earlier"}. modified: it ran with modified model settings (the card
+    """The run the Forecasts card draws: {"run_id", "label", "name",
+    "modified", "earlier"}. label: its one-line name (shared._run_label);
+    name: its parts (shared._run_name, the card's tips.runname), read
+    from the run's own results.json when the ledger has no row for it.
+    modified: it ran with modified model settings (the card
     badges it). earlier: "" when it is the newest hub row of the ledger,
     else the badge's words, saying why the newest is not drawn (it failed,
     stopped or is still running, is a research run, Storage deleted its
@@ -187,18 +218,21 @@ def fan_run(ledger_rows: list, rid) -> dict | None:
     if not rid:
         return None
     from app.core import runs as _runs
-    from app.ui.shared import _run_label
-    spec = ""
+    from app.ui.shared import _run_label, _run_name
+    spec, outcome = "", None
     for r in ledger_rows or []:
         if r.get("run_id") == rid:
-            spec = r.get("spec") or ""
+            spec, outcome = r.get("spec") or "", r.get("outcome")
             break
     else:
         try:
             row = _runs.Ledger().row(rid)
-            spec = (row or {}).get("spec") or ""
         except Exception:
-            spec = ""
+            row = None
+        spec = (row or {}).get("spec") or ""
+        outcome = (row or {}).get("outcome")
+    if not spec:
+        spec = _stored_spec(rid)
     top = (ledger_rows or [None])[0] if ledger_rows else None
     earlier = ""
     if top and top.get("run_id") != rid:
@@ -207,7 +241,9 @@ def fan_run(ledger_rows: list, rid) -> dict | None:
                    else "has its files deleted" if top.get("files_deleted")
                    else "has no forecasts"))
         earlier = f"earlier run · newest {why}"
-    return {"run_id": rid, "label": _run_label(rid, spec, tag=False),
+    return {"run_id": rid,
+            "label": _run_label(rid, spec, tag=False, outcome=outcome),
+            "name": _run_name(rid, spec, outcome),
             "modified": _runs.is_modified(spec), "earlier": earlier}
 
 

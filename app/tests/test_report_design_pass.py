@@ -11,7 +11,7 @@ import pandas as pd
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[2]))
 
-from app.core import report_v2, scoring, usmap               # noqa: E402
+from app.core import report_v2, run_label, scoring, usmap    # noqa: E402
 from app.tests.test_report_grid import ASOF, _grid           # noqa: E402
 
 OH_Q = {t: {str(lv): 20.0 + 10 * lv for lv in report_v2.FAN_LEVELS}
@@ -56,14 +56,79 @@ def _render(tmp_path, **kw):
         .read_text(encoding="utf-8")
 
 
-def test_title_and_page_name_the_reference_date(tmp_path):
+def test_title_and_page_name_the_run_in_the_pages_words_by_its_as_of_year(
+        tmp_path):
+    """The header names the run in the console's words (app/core/run_label:
+    the data it read and the weeks it forecasts, its round under that),
+    with the year rule taken against the run's as-of, not today; the
+    reference date stays in the file names, never as a name of its own.
+    The title carries the round after the name (its year with it). The
+    console names the same run by today's year rule, with its years."""
+    from app.ui import shared as ui_shared
     html = _render(tmp_path)
-    assert "<title>FluBNF weekly report, reference date 2098-01-10</title>" \
-        in html
-    assert "Reference date 2098-01-10 · data through Jan 3" in html
+    words = run_label.text("2098-01-03", today="2098-01-03")
+    assert words == ("Data through Jan 3 · forecasts for weeks ending "
+                     "Jan 10 to Jan 31")
+    console = ui_shared._run_name("", {"forecast_date": "2098-01-03"})["text"]
+    assert console == run_label.text("2098-01-03")
+    assert console.endswith(", 2098") and console != words
+    assert (f"<title>FluBNF weekly report: {words} (Not a FluSight round, "
+            "2098-01-10)</title>") in html
+    assert '<span class="rp-weekname"><span class="rp-week">' in html
+    assert (f'{words}</span><span class="uk-run-sub">Not a FluSight round '
+            '(2098-01-10)</span></span>') in html
+    assert "Reference date" not in html
     d = report_v2.report_dates("2026-10-03")
     assert d["ref"] == "2026-10-10"
-    assert d["line"] == "Reference date 2026-10-10 · data through Oct 3"
+    assert d["line"] == ("Data through Oct 3 · forecasts for weeks ending "
+                         "Oct 10 to Oct 31")
+    assert d["round"] == "FluSight round 2026-10-10"
+    assert d["title"] == d["line"] + " (FluSight round 2026-10-10)"
+    # a week the run recorded reading names it
+    d = report_v2.report_dates("2026-10-03", "2026-09-26")
+    assert d["line"].startswith("Data through Sep 26 · ")
+    html = _render(tmp_path, data_through="2097-12-27")
+    assert "Data through Dec 27, 2097 · forecasts for weeks ending" in html
+
+
+def test_the_report_names_its_run_the_same_whatever_day_it_is_built(
+        monkeypatch):
+    """The header took "this year" from the day the page was built, so a
+    stored report rebuilt in a later year (or shared) read differently.
+    The year rule is taken against the run's as-of: a date carries its year
+    only when the label's dates cross one."""
+    from datetime import date
+
+    class _Later(date):
+        @classmethod
+        def today(cls):
+            return date(2099, 6, 1)
+
+    monkeypatch.setattr(run_label, "date", _Later)
+    d = report_v2.report_dates("2026-10-03")
+    assert d["line"] == ("Data through Oct 3 · forecasts for weeks ending "
+                         "Oct 10 to Oct 31")
+    # weeks into the next year, data from the last: every date its year
+    assert report_v2.report_dates("2025-12-20")["line"] == (
+        "Data through Dec 20, 2025 · forecasts for weeks ending Dec 27, "
+        "2025 to Jan 17, 2026")
+    assert report_v2.report_dates("2026-01-03", "2025-12-27")["line"] == (
+        "Data through Dec 27, 2025 · forecasts for weeks ending Jan 10 to "
+        "Jan 31, 2026")
+
+
+def test_a_change_to_the_run_label_makes_stored_reports_stale(
+        tmp_path, monkeypatch):
+    # run_label writes the header: a stored report older than it is
+    # rebuilt from its bundle
+    import os
+    import time
+    (tmp_path / "report_v2.py").write_text("")
+    (tmp_path / "run_label.py").write_text("")
+    later = time.time() + 365 * 86400
+    os.utime(tmp_path / "run_label.py", (later, later))
+    monkeypatch.setattr(report_v2, "__file__", str(tmp_path / "report_v2.py"))
+    assert report_v2.builder_sources_mtime() == later
 
 
 def test_member_tokens_bands_and_no_data_per_card(tmp_path):

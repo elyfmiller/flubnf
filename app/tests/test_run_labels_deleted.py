@@ -3,8 +3,9 @@ soft (bug hunt 2026-10-25, G15).
 
   * Every run label reads the run's time to the second, so two runs in one
     minute read apart: the run page, its Superseded notice, Output, the
-    Storage ledger and the workroot rows; a report archive names its round
-    as the workroot rows do.
+    Storage ledger and the workroot rows, whose links and Deletes carry it
+    in hidden words; a report archive names its weeks and its round as the
+    workroot rows do.
   * A run whose workroot Storage deleted says so: its page (no Superseded
     notice), its Results, the ledger's facts, the Forecast tab's card and
     the fans' badge.
@@ -24,6 +25,7 @@ from fastapi.testclient import TestClient
 sys.path.insert(0, str(Path(__file__).resolve().parents[2]))
 
 import app.core.runs as runs_mod                               # noqa: E402
+from app.core import run_label                                 # noqa: E402
 from app.core.runs import Ledger, RunSpec, results_html        # noqa: E402
 from app.ui import forecast_aids as fa                         # noqa: E402
 from app.ui import server as srv                               # noqa: E402
@@ -88,8 +90,11 @@ def test_two_runs_in_one_minute_read_apart_everywhere(root):
     assert _time(a) != _time(b)
     # the passed-over run names the one Output shows, by a label of its own
     page = client.get(f"/runs/{a}").text
-    assert f"Run: 2026-10-17 · {_time(a)}" in page
-    assert f"Output shows run {_time(b)} for 2026-10-24." in page
+    # the heading names the run's weeks, the line under it its round and
+    # its time
+    assert f"Run: {run_label.text('2026-10-17')}</h1>" in page
+    assert f"FluSight round 2026-10-24 · run {_time(a)}</p>" in page
+    assert f"Output shows run {_time(b)} instead." in page
     assert f"Open run {_time(b)}</a>" in page
     assert O._run_when(b) == _time(b)
     # Storage: the ledger row and the workroot row read the same time
@@ -98,15 +103,45 @@ def test_two_runs_in_one_minute_read_apart_everywhere(root):
     assert rows[a]["when"] == _time(a)
 
 
+def test_one_weeks_workroot_rows_have_links_and_deletes_of_their_own(root):
+    """Storage's Run workroots rows linked one week's runs by the same
+    words and named their Deletes alike: the start sat only in the meta
+    line. The link and the Delete now carry it in hidden words, the start
+    seen in the meta line is kept from screen readers (read once), and the
+    confirmation names the run as before."""
+    a, b = _run(root), _run(root)
+    page = client.get("/storage").text
+    words = run_label.text("2026-10-17")
+    links, dels = set(), set()
+    for rid in (a, b):
+        row = page.split(f'data-wid="{rid}"', 1)[1].split("</div>", 1)[0]
+        link = (f'<a href="/runs/{rid}">{words}<span class="uk-sr"> · run '
+                f'{_time(rid)}</span></a>')
+        assert (link + '<span class="uk-run-sub">FluSight round 2026-10-24'
+                '</span>') in row
+        assert re.search(r'<li aria-hidden="true"><svg [^>]*>.*?</svg>'
+                         rf'<span>run {_time(rid)}</span></li>', row)
+        label = f"Delete the run {words} · run {_time(rid)}"
+        assert f'aria-label="{label}" data-del-storage' in row
+        assert f'data-what="the run {words}"' in row
+        links.add(link.split(">", 1)[1])
+        dels.add(label)
+    assert len(links) == len(dels) == 2
+
+
 def test_a_report_archive_names_its_round_as_the_workroot_rows_do(root):
-    _run(root)
+    rid = _run(root)
     arch = root / "archive" / "2026-10-17"
     arch.mkdir(parents=True)
     (arch / "report.html").write_text("<p>r</p>")
     page = client.get("/storage").text
-    assert ("Weekly report and submissions · Round 2026-10-24 (as of "
-            "2026-10-17)") in page
-    assert "Round 2026-10-24 (as of 2026-10-17)</a>" in page   # workroot
+    words = run_label.text("2026-10-17")
+    assert f"Weekly report and submissions · {words}</strong>" in page
+    assert "<li>FluSight round 2026-10-24</li>" in page
+    # the workroot's row: its name, linked, its round under it
+    assert (f'">{words}<span class="uk-sr"> · run {_time(rid)}</span></a>'
+            '<span class="uk-run-sub">FluSight round 2026-10-24</span>'
+            ) in page
 
 
 # -------------------------------------- FC-16: files Storage deleted say so
@@ -171,5 +206,6 @@ def test_every_workroot_row_links_its_run_page_an_unrecorded_one_too(root):
     ui_shared._invalidate_scans()
     page = client.get("/storage").text
     row = page.split(f'data-wid="{rid}"', 1)[1].split("</div>", 1)[0]
-    assert f'<a href="/runs/{rid}">Unrecorded run</a>' in row
+    assert (f'<a href="/runs/{rid}">Unrecorded run<span class="uk-sr"> · '
+            f'run {_time(rid)}</span></a>') in row
     assert client.get(f"/runs/{rid}").status_code == 200

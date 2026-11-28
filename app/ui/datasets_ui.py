@@ -914,7 +914,11 @@ def forecast_page(request: Request, ds):
     series = {n: ds.series(n) for n in sel}
     rows = _ledger_for(ds.id)
     for r in rows:
-        r["label"] = shared._run_label(r["run_id"], r.get("spec", ""))
+        r["label"] = shared._run_label(r["run_id"], r.get("spec", ""),
+                                       outcome=r.get("outcome"))
+        # the run's name as the card shows it (tips.runname)
+        r["name"] = shared._run_name(r["run_id"], r.get("spec", ""),
+                                     r.get("outcome"), hub=False)
         r["modified"] = _runs.is_modified(r.get("spec", ""))
         r["settings"] = spec_settings(r.get("spec", ""))
         r["has_report"] = False
@@ -931,6 +935,9 @@ def forecast_page(request: Request, ds):
         "ledger": rows, "all_locs": ds.groups,
         "vintage_dates": list(reversed(dates)), "anchor_note": note,
         "anchor_week": anchor if ok else "",
+        # what the date gives, in the words a run is named by (no round:
+        # a run on your own data never names one)
+        "week_info": _fa.week_info(anchor) if ok else {},
         "default_date": newest, "locations_error": "", "form": form,
         "knob_panel": dataset_panel(
             forms._knob_panel("forecast", form,
@@ -959,6 +966,9 @@ def forecast_page(request: Request, ds):
         "run_aside_json": templating._script_json(shared._run_aside(rid)),
         "fc_date": (res or {}).get("forecast_date", ""),
         "fc_run": rid or "",
+        # the drawn run by its name (tips.runname), as the hub's card has it
+        "fc_name": (shared._run_name(rid, (res or {}).get("spec", ""),
+                                     hub=False) if rid else None),
         "dataset": view, "source_choices": choices(),
         "engine_names": ENGINE_NAMES})
 

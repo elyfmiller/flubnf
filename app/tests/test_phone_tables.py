@@ -18,6 +18,7 @@ HOME = C.Cascade.page("tabs/home.css")
 METHODS = C.Cascade.page("tabs/methods.css", "tabs/models.css")
 MODEL = C.Cascade.page("tabs/models.css")
 DATA = C.Cascade.page("tabs/data.css")
+STORAGE = C.Cascade.page("tabs/storage.css")
 
 
 def _get(cas, chain, props, width):
@@ -183,3 +184,19 @@ def test_a_stacked_dataset_row_fits_a_phones_card_at_large_text():
         floor = DATA.value(C.path(*name), "min-width", width)
         for text in (100, 130, 160):
             assert C.px(floor, 16 * text / 100, width) == 0, (width, text)
+
+
+def test_a_ledger_runs_name_leaves_its_status_room_on_a_phone():
+    # Storage's ledger: the run column's 12rem floor held inside the phone's
+    # card rows too (the name and the status share a line, minmax(0,1fr)
+    # auto), so at 320 to 375 px the name ran under a wide status
+    # ("interrupted", "running", "failed")
+    row = MAIN + ("div.tablewrap.st-ledger", "table", "tbody.st-group",
+                  "tr[data-st]")
+    run = row + ("td.st-run",)
+    assert _get(STORAGE, row, ("grid-template-columns",), PHONE) == (
+        "grid-template-columns", "minmax(0,1fr) auto")
+    assert _get(STORAGE, run, "min-width", WIDE) == ("min-width", "12rem")
+    for width in (320, 375, PHONE):
+        assert _get(STORAGE, run, "min-width", width) == (
+            "min-width", "0"), width

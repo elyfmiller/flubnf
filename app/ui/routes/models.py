@@ -12,7 +12,7 @@ from app.core import oracle_text as ot
 from app.core import runs as _runs
 from app.ui import pipeline, shared, templating
 from app.ui.forms import _default_forecast_date, _knobs
-from app.ui.shared import _run_label
+from app.ui.shared import _run_label, _run_name
 from app.ui.state import REPO, _last_form, _status
 from app.ui.templating import _member_colors, _script_json, templates
 
@@ -249,6 +249,9 @@ def model_page(request: Request, name: str):
         "rid": rid,
         # the run's clock time (its id); the forecast date is `date`
         "run_when": _run_label(rid) if rid else "",
+        # the run by its name, as every page names it (tips.runname)
+        "run_nm": (_run_name(rid, (res or {}).get("spec") or "")
+                   if rid else None),
         # a modified run is here only when an override exported it under
         # the hub names: badged as Storage and the run page badge it
         "run_modified": _runs.is_modified((res or {}).get("spec", "")),

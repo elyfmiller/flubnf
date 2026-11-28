@@ -111,8 +111,9 @@
   .fc-loc[data-state=live],.fc-skel-row i{animation:none}
   .fc-loc-bar i{transition:none}
 }
-/* latest run: the run's link and its status badge on one line */
-.fc-runline{display:flex;align-items:center;flex-wrap:wrap;gap:.3rem .6rem;
+/* latest run: the run's name and its status badge on one line, the badge
+   on the name's first line (the round and start sit under the name) */
+.fc-runline{display:flex;align-items:baseline;flex-wrap:wrap;gap:.3rem .6rem;
   margin:.1rem 0 .5rem}
 .fc-runline a{font-size:var(--fs-lead);font-weight:700}
 /* a card's actions: link buttons and the re-run form in one row */
@@ -204,6 +205,8 @@ details[data-scope] > summary{scroll-margin-top:.75rem}
 /* ---- 5. the run page ---- */
 /* the title and its badges, the re-run at the right */
 .fc-runhead{margin-bottom:.3rem}
+/* the run page's quieter line under its name: its round and start */
+.fc-runhead > .uk-run-sub{margin:-.3rem 0 .7rem}
 /* a card that is its heading alone (the weekly report and its actions) */
 .fc-flush{margin-bottom:0}
 /* results and settings side by side where the window allows */
@@ -232,15 +235,16 @@ details[data-scope] > summary{scroll-margin-top:.75rem}
 .fc-medians td:first-child{white-space:nowrap}
 
 /* ---- 6. the form's aids ---- */
-/* the round row under the date: the reference date, the window badge.
-   The badge wraps inside the card rather than running past it, and the
-   labels stay on one line */
-.fc-datestats{margin:.15rem 0 .35rem;font-size:var(--fs-label)}
-.fc-datestats .uk-stat{flex-wrap:wrap;min-width:0;max-width:100%}
-.fc-datestats .uk-stat dt{white-space:nowrap}
-.fc-datestats .uk-stat dd,.fc-datestats .uk-stat-v{min-width:0;max-width:100%}
+/* what the date gives, under it: the run's name (the data it reads, the
+   weeks it forecasts) and, for the hub, the round's quieter line with the
+   window badge. The badge wraps inside the card rather than running past
+   it */
+.fc-datestats{margin:.2rem 0 .35rem;font-size:var(--fs-label)}
+p.fc-gives{margin:0;overflow-wrap:anywhere}
+p.fc-round{display:flex;flex-wrap:wrap;align-items:center;gap:.1rem .5rem;
+  margin:.1rem 0 0}
 .fc-datestats .uk-badge{white-space:normal}
-#fc-datestats[hidden],.fc-anchor-kv[hidden]{display:none}
+#fc-datestats[hidden],.fc-anchor-kv[hidden],#fc-win-slot[hidden]{display:none}
 .fc-anchor-kv{display:inline-flex;align-items:center;gap:.2rem .4rem}
 /* the location presets: one select over the list (the filter and the
    list's count are nau.css's, shared with the Retrospective's groups) */

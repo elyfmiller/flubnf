@@ -883,6 +883,8 @@ def page_style() -> str:
   gap:.6rem 1rem;margin:0 0 var(--sp-2,.6rem)}}
  .rp-title{{display:flex;align-items:center;flex-wrap:wrap;
   gap:.35rem .75rem;min-width:0}}
+ .rp-weekname{{display:flex;flex-direction:column;min-width:0}}
+ .rp-weekname > .uk-run-sub{{margin:0 0 0 1.35em}}
  .rp-week{{display:inline-flex;align-items:center;gap:.35em;
   color:var(--mut);font-size:var(--fs-label);font-weight:650;
   font-variant-numeric:tabular-nums}}
@@ -1027,20 +1029,37 @@ def _md(iso: str) -> str:
     return f"{d.strftime('%b')} {d.day}"
 
 
-def report_dates(asof: str) -> dict:
+def report_dates(asof: str, data_through=None) -> dict:
     """The report's dates from its as-of: the reference date (as-of + 7,
-    submit.hub_reference_date's rule) and the four target weeks (horizons
-    0 to 3: the reference date and the three Saturdays after it)."""
+    submit.hub_reference_date's rule), the four target weeks (horizons 0
+    to 3: the reference date and the three Saturdays after it), and the
+    header's words, the run's name in the pages' words
+    (app/core/run_label): "line" ("Data through Nov 21 · forecasts for
+    weeks ending Nov 28 to Dec 19", from the week the run recorded reading
+    when given), "round" ("FluSight round 2026-11-28") and "title" (the
+    page title's: the line, then the round, which carries the year).
+
+    The line's year rule is taken against the as-of, not the day the page
+    is built: a stored or shared report reads the same whenever it is
+    rebuilt, its dates carrying their years only when they cross one. The
+    pages take it against today, so an earlier year's run reads there with
+    years this header leaves out."""
     from datetime import date as _date, timedelta as _td
+    from app.core import run_label
     try:
         a = _date.fromisoformat(str(asof)[:10])
     except ValueError:
         return {}
     ref = a + _td(days=7)
     targets = [ref + _td(days=7 * h) for h in range(4)]
+    line = run_label.text(a, data_through, today=a)
+    rnd = run_label.round_text(a)
+    # the title's round in brackets after the line; a week the hub takes no
+    # files for says so with its reference date, in one pair of brackets
+    note = (rnd if run_label.is_round(ref.isoformat())
+            else f"Not a {run_label.ROUND_WORDS}, {ref.isoformat()}")
     return {"asof": a, "ref": ref.isoformat(), "targets": targets,
-            "line": (f"Reference date {ref.isoformat()} · data through "
-                     f"{_md(a.isoformat())}")}
+            "line": line, "round": rnd, "title": f"{line} ({note})"}
 
 
 def _run_time(seconds) -> str:
@@ -1138,9 +1157,12 @@ def build_report(asof: str, state_cards: dict, state_details: dict,
                  national_map_cards: dict | None = None,
                  cards_model: str = "",
                  fitted_fips=None, national_in_run=None,
-                 gap_fips=None, no_forecast=None, grid=None) -> Path:
-    """asof: the run's as-of date (the page names it with the reference
-    date and the target weeks).
+                 gap_fips=None, no_forecast=None, grid=None,
+                 data_through: str = "") -> Path:
+    """asof: the run's as-of date (the page names the run by it, as every
+    page does: the data through it and the target weeks, then its round).
+    data_through: the newest week the run recorded reading, when the bundle
+    holds it (else the as-of).
     state_cards: abbr -> hover-card data (choropleth).
     state_details: abbr -> dict(name, fan=…, cat=…, acc=…, table_rows=[…],
     numbers={model: {time: {level: value}}}, times=[…]).
@@ -1404,9 +1426,11 @@ def build_report(asof: str, state_cards: dict, state_details: dict,
     # page's spare height)
     us_feature = report_grid.us_feature_html(grid, MEMBER_COLORS)
 
-    dates = report_dates(asof)
+    dates = report_dates(asof, data_through)
     week_line = dates.get("line") or f"week of {asof}"
-    ref = dates.get("ref") or asof
+    # the run's FluSight round, quieter, under its name
+    round_line = (f'<span class="uk-run-sub">{_esc(dates["round"])}</span>'
+                  if dates.get("round") else "")
 
     # the jump bar: the page's parts, then any location's panel
     jumps = [("#map-anchor", "Map")]
@@ -1440,7 +1464,7 @@ def build_report(asof: str, state_cards: dict, state_details: dict,
 
     html = f"""<!doctype html><html lang="en"><head><meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1">
-<title>FluBNF weekly report, reference date {ref}</title>
+<title>FluBNF weekly report: {_esc(dates.get("title") or week_line)}</title>
 {theme_boot_script()}
 {plotly_js}
 {page_style()}{grid_style}</head><body>
@@ -1448,7 +1472,7 @@ def build_report(asof: str, state_cards: dict, state_details: dict,
 <main>
 <div class="rp-titlerow">
  <div class="rp-title"><h1>US influenza forecast</h1>
-  <span class="rp-week">{kit.icon("calendar")}{week_line}</span></div>
+  <span class="rp-weekname"><span class="rp-week">{kit.icon("calendar")}{week_line}</span>{round_line}</span></div>
  <div class="rp-controls">
   {controls}
  </div>
@@ -1710,18 +1734,21 @@ def render_bundle(bundle: dict, out_path: Path) -> Path:
         gap_fips=bundle.get("gap_fips"),
         no_forecast=bundle.get("no_forecast"),
         # v8 field (absent: no "All locations" pages)
-        grid=grid)
+        grid=grid,
+        # the week the run recorded reading (absent: its as-of)
+        data_through=str(bundle.get("data_through") or ""))
 
 
 # ---------------------------------------------------------- 6. serve time
 def builder_sources_mtime() -> float:
     """Newest mtime of the weekly report's builder sources (this module,
-    html_page, scoring, usmap, nau.css, charts.js, and the UI kit it
-    inlines: ui-kit.css, tips.js, _tips.html, the faces and the marks): a
-    stored report.html older than this is stale."""
+    html_page, scoring, usmap, run_label (the header's words), nau.css,
+    charts.js, and the UI kit it inlines: ui-kit.css, tips.js, _tips.html,
+    the faces and the marks): a stored report.html older than this is
+    stale."""
     srcs = [Path(__file__).with_name(m + ".py")
             for m in ("report_v2", "report_grid", "html_page", "scoring",
-                      "us_national", "usmap")]
+                      "us_national", "usmap", "run_label")]
     kit = [html_page.KIT_CSS, html_page.KIT_JS, html_page.TIPS_TPL,
            html_page.FONTS_CSS, html_page.LOGOS_CSS]
     return max([0.0] + [p.stat().st_mtime

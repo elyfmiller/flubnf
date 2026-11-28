@@ -255,11 +255,14 @@
 {%- endmacro %}
 
 {# a row of facts instead of a sentence: items are (icon, text), (icon,
-   text, label) or plain text; `label` is spoken before the text (visually
-   hidden) where the icon alone names the fact ("Size: 5.4 MB"). #}
+   text, label), (icon, text, label, said) or plain text; `label` is
+   spoken before the text (visually hidden) where the icon alone names the
+   fact ("Size: 5.4 MB"); a true `said` keeps the fact from screen readers
+   (aria-hidden), for one the row already says to them (a run's start that
+   its link carries in hidden words). #}
 {% macro meta(items, label="") -%}
 <ul class="uk-meta"{% if label %} aria-label="{{ label }}"{% endif %}>
-{%- for it in items %}{% if it is string %}<li>{{ it }}</li>{% else %}<li>{% if it[0] %}{{ icon(it[0]) }}{% endif %}{% if it | length > 2 and it[2] %}<span class="uk-sr">{{ it[2] }}: </span>{% endif %}<span>{{ it[1] }}</span></li>{% endif %}
+{%- for it in items %}{% if it is string %}<li>{{ it }}</li>{% else %}<li{% if it | length > 3 and it[3] %} aria-hidden="true"{% endif %}>{% if it[0] %}{{ icon(it[0]) }}{% endif %}{% if it | length > 2 and it[2] %}<span class="uk-sr">{{ it[2] }}: </span>{% endif %}<span>{{ it[1] }}</span></li>{% endif %}
 {%- endfor %}</ul>
 {%- endmacro %}
 
@@ -279,4 +282,29 @@
 {% macro namechip(text, id, tiptext="", tip_label="") -%}
 {%- set body %}{% if caller is defined %}{{ caller() }}{% else %}{{ tiptext }}{% endif %}{% endset -%}
 <span class="uk-name">{{ text }}{% if body | trim %}{{ tip(id, tip_label or (text | lower), body) }}{% endif %}</span>
+{%- endmacro %}
+
+{# a run's name, the one way every page names a run (shared._run_name):
+   the data it read and the weeks it forecasts, a link to the run when
+   `href` is given. Under it, on a quieter line: a hub run's round unless
+   round=False (a list that groups runs by round says it once, in a
+   <p class="uk-run-sub"> heading), and its start unless when=False (runs
+   of one week read apart by it). A run on your own data has no round.
+   `id` names the words (the link). With its start shown, the link also
+   carries it in hidden words, so the links of one week's runs have names
+   of their own when read out or listed, and the start seen under it is
+   kept from screen readers (aria-hidden), so it is read once; the round
+   is read as it stands. when="hidden" gives the link the start in hidden
+   words alone, for a row that shows the start in a line of its own. #}
+{% macro runname(n, href="", when=True, round=True, id="", cls="") -%}
+{%- set start = ("run " ~ n.when) if when and n.when else "" -%}
+{%- set said = start if href else "" -%}
+{%- set shown = start if when != "hidden" else "" -%}
+{%- set rnd = n.round if round and n.round else "" -%}
+<span class="uk-run{% if cls %} {{ cls }}{% endif %}">
+{%- if href %}<a href="{{ href }}"{% if id %} id="{{ id }}"{% endif %}>{{ n.text }}{% if said %}<span class="uk-sr"> · {{ said }}</span>{% endif %}</a>{% else %}<span{% if id %} id="{{ id }}"{% endif %}>{{ n.text }}</span>{% endif %}
+{%- if rnd or shown %}<span class="uk-run-sub">{{ rnd }}
+{%- if shown %}{% set part = (" · " if rnd else "") ~ shown %}{% if said %}<span aria-hidden="true">{{ part }}</span>{% else %}{{ part }}{% endif %}{% endif -%}
+</span>{% endif -%}
+</span>
 {%- endmacro %}

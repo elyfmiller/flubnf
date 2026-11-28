@@ -210,7 +210,7 @@ Progressive disclosure for detail the reader asks for: a closed fold whose summa
 
 ### Meta row: `tips.meta(items, label="")`
 
-A row of facts, each an icon and a value, instead of a "run 2026-09-20 · on dataset X · 5.4 MB" sentence. Items are `(icon, text)`, `(icon, text, label)` or plain text; `label` is spoken before the text where the icon alone names the fact.
+A row of facts, each an icon and a value, instead of a "run 2026-09-20 · on dataset X · 5.4 MB" sentence. Items are `(icon, text)`, `(icon, text, label)`, `(icon, text, label, said)` or plain text; `label` is spoken before the text where the icon alone names the fact, and a true `said` keeps the fact from screen readers (`aria-hidden`) where the row already says it to them, as a Storage workroot row's link carries the run's start.
 
 ```jinja
 {{ tips.meta([("calendar", w.when, "Run"), ("folder", w.size_h, "Size"), ("clock", r.elapsed_s | hms, "Wall time")]) }}
@@ -232,6 +232,14 @@ The short name of the formula or figure beside it: an equation's caption, as pla
 <p class="uk-figline"><span class="math">...</span>
  {{ tips.namechip("Seasonal forcing", "dg-eq-forcing") }}</p>
 <p class="eqnote md-eqnote">The curve the filter bends each week.</p>
+```
+
+### Run name: `tips.runname(n, href="", when=True, round=True, id="", cls="")`
+
+The one way a page names a run: the data it read and the weeks it forecasts ("Data through Nov 21 · forecasts for weeks ending Nov 28 to Dec 19"), from `shared._run_name` (`app/core/run_label.py`), never a bare forecast or reference date. With `href` the words link to the run. Under them, on a quieter line, a FluSight hub run's round ("FluSight round 2026-11-28") and the run's start ("run 11-25 22:12:51"), so runs of one week read apart; a link also carries the start in hidden words (`uk-sr`), so the links of one week's runs have names of their own when read out or listed, and the start seen under it is kept from screen readers (`aria-hidden`), so it is read once: `when=False` drops the start where only one run can be meant, `when="hidden"` gives the link the start in hidden words alone where the row shows it in a line of its own (a Storage workroot row's meta line), and a list that groups runs by round says the round once in the group's heading (`<p class="uk-run-sub">`) and passes `round=False`. A run on your own data never has a round. File names keep the reference date.
+
+```jinja
+{{ tips.runname(r.name, href="/runs/" ~ r.run_id) }}
 ```
 
 ### Segmented switch: `<div class="uk-seg" role="group" aria-label="...">`

@@ -22,7 +22,8 @@ from app.ui.retro_prep import _results_jobs
 from app.ui.retro_seasons import (_RETRO_ACTIVE, _sealed_roots,
                                   _season_status, _valid_season)
 from app.ui.shared import (_back, _flash, _invalidate_scans, _outcome_items,
-                           _run_label, _scan_archive_dates)
+                           _run_label, _run_name, _run_time,
+                           _scan_archive_dates)
 from app.ui.state import _status
 from app.ui.templating import templates
 
@@ -278,29 +279,54 @@ def _spec_of(spec) -> dict:
 
 
 def _round_label(spec, fallback: str) -> str:
-    """A hub forecast run's row label by its round, as Output heads its
-    cards: "Round 2026-10-10 (as of 2026-10-03)"; `fallback` (run_display's
-    words) for a retrospective fit, a run on your own data or an
-    unrecorded run."""
-    from app.ui.routes.output import _reference_date
+    """A run's row label as every page names it (shared._run_name): "Data
+    through Oct 3 · forecasts for weeks ending Oct 10 to Oct 31";
+    `fallback` (run_display's words) for a retrospective fit or a run
+    whose spec names no date."""
     d = _spec_of(spec)
-    extra = d.get("extra") if isinstance(d.get("extra"), dict) else {}
-    asof = str(d.get("forecast_date") or "").strip()
-    if not asof or str(d.get("engine")) == "retro" or extra.get("dataset"):
+    if str(d.get("engine")) == "retro":
         return fallback
-    ref = _reference_date(asof)
-    return f"Round {ref} (as of {asof})" if ref else fallback
+    return _run_name("", d).get("text") or fallback
 
 
-def _ledger_parts(run_id: str, spec) -> list:
-    """A ledger row's label in its parts, each kept whole on a narrow
-    screen: ["as of 2026-10-03", "run 10-05 14:31:07"] (the run's local
-    start, from its id, as every run label reads it); just the run's time
-    when the spec names no date."""
-    asof = str(_spec_of(spec).get("forecast_date") or "").strip()
-    when = (f"run {_run_label(run_id, '', tag=False)}"
+def _ledger_parts(run_id: str, spec, outcome=None, name=None) -> list:
+    """A ledger row's label in its parts: [the run's name (shared._run_name:
+    "Data through Oct 3 · forecasts for weeks ending Oct 10 to Oct 31"),
+    "run 10-05 14:31:07" (the run's local start, from its id, as every
+    run label reads it)]; just the run's time when the spec names no
+    date. `name`: the run's name when the caller has it already."""
+    text = (name or _run_name(run_id, spec, outcome)).get("text", "")
+    when = (f"run {_run_time(run_id)}"
             if _runs.is_run_id(run_id) else run_id)
-    return ([f"as of {asof}"] if asof else []) + [when]
+    return ([text] if text else []) + [when]
+
+
+def _ledger_groups(rows: list) -> list:
+    """The ledger's rows grouped as Output groups them: hub runs under
+    their FluSight round, runs on your own data under their dataset's
+    name, a run with no date alone at the end. [{"heading", "rows"}],
+    the groups newest data first (the newest data-through week of each),
+    each group's runs newest first as the ledger holds them. Every row
+    carries its "name" (shared._run_name)."""
+    groups: dict = {}
+    for r in rows:
+        n = r.get("name") or {}
+        x = _spec_of(r.get("spec", "")).get("extra") or {}
+        ds = x.get("dataset") if isinstance(x, dict) else None
+        if not n.get("text"):
+            key, head = ("none", r["run_id"]), ""
+        elif isinstance(ds, dict) and ds:
+            key = ("dataset", str(ds.get("id") or ds.get("name") or ""))
+            head = str(ds.get("name") or ds.get("id") or "your data")
+        else:
+            key, head = ("round", n.get("reference", "")), n.get("round", "")
+        g = groups.setdefault(key, {"heading": head, "rows": [],
+                                    "newest": ""})
+        g["rows"].append(r)
+        g["newest"] = max(g["newest"], n.get("data_through", ""))
+    return sorted(groups.values(), key=lambda g: (g["newest"] != "",
+                                                  g["newest"]),
+                  reverse=True)
 
 
 def _storage_inventory() -> dict:
@@ -346,9 +372,15 @@ def _storage_inventory() -> dict:
             st = str(row.get("status") or "")
             if st == "running" and p.name not in live_ids:
                 st = "interrupted"
+            name = (_run_name(p.name, row.get("spec"), row.get("outcome"))
+                    if row and str(_spec_of(row.get("spec")).get("engine"))
+                    != "retro" else {})
             inv["workroots"].append({
                 "id": p.name, "size_h": retro.human_bytes(size),
-                "label": _round_label(row.get("spec"), disp["what"]),
+                # the run's name (shared._run_name), its words alone
+                # where it names the run in a sentence (the delete's)
+                "label": name.get("text") or disp["what"],
+                "name": name if name.get("text") else None,
                 # the run's time as the ledger row and every label read it
                 "status": st,
                 "when": (_run_label(p.name, "", tag=False)
@@ -406,8 +438,10 @@ def _storage_inventory() -> dict:
         inv["total_bytes"] += size
         inv["report_archives"].append({
             "id": d, "size_h": retro.human_bytes(size), "bytes": size,
-            # its round, as the workroot rows above name it
+            # the weeks it is for, as the workroot rows above name
+            # their runs, and its round
             "label": _round_label({"forecast_date": d}, d),
+            "round": _run_name("", {"forecast_date": d}).get("round", ""),
             # the Output tab serves an archived report by its date
             "report": (arch / d / "report.html").is_file(),
             "busy": run_fd is not None and run_fd in ("", d),
@@ -485,8 +519,12 @@ def runs_page(request: Request):
     rows = ledger.rows(LEDGER_ROWS)
     for r in rows:
         # the research badge carries the tag, so the label stays untagged;
-        # its parts each hold together on a narrow screen
-        r["parts"] = _ledger_parts(r["run_id"], r.get("spec", ""))
+        # the row shows the run's name (tips.runname), the summary and the
+        # filter its words in one line
+        r["name"] = _run_name(r["run_id"], r.get("spec", ""),
+                              r.get("outcome"))
+        r["parts"] = _ledger_parts(r["run_id"], r.get("spec", ""),
+                                   name=r["name"])
         r["label"] = " · ".join(r["parts"])
         r["asof"] = str(_spec_of(r.get("spec", "")).get("forecast_date")
                         or "")
@@ -506,6 +544,8 @@ def runs_page(request: Request):
     cw = _clearable_workroots()
     return templates.TemplateResponse(request, "runs.html", {
         "active": "Storage", "ledger": rows,
+        # the same rows by FluSight round (or dataset), as Output has them
+        "ledger_groups": _ledger_groups(rows),
         # how many runs the ledger holds: the table shows the newest
         # LEDGER_ROWS and says when it leaves older ones out
         "ledger_total": max(len(ledger.rows(1_000_000)), len(rows)),

@@ -197,6 +197,24 @@ def inline_static(rel: str):
 templates.env.globals["inline_static"] = inline_static
 templates.env.globals["static_data_uri"] = _data_uri
 templates.env.globals["results_html"] = results_html
+def _weeks_span(first, last, today=None) -> str:
+    """Two weeks as a span in the run labels' words
+    (app/core/run_label.span_text), imported at first use."""
+    from app.core.run_label import span_text
+    return span_text(first, last, today=today)
+
+
+templates.env.globals["weeks_span"] = _weeks_span
+
+
+def _run_name_for(asof: str) -> dict:
+    """The name of a hub run with this as-of (shared._run_name), for a page
+    that has the date alone."""
+    from app.ui.shared import _run_name
+    return _run_name("", {"forecast_date": asof})
+
+
+templates.env.globals["run_name_for"] = _run_name_for
 
 
 # === Model names, relWIS/Oracle wording, member and season colors ===

@@ -31,6 +31,7 @@ from fastapi.testclient import TestClient
 sys.path.insert(0, str(Path(__file__).resolve().parents[2]))
 
 import app.core.runs as runs_mod                     # noqa: E402
+from app.core import run_label                       # noqa: E402
 from app.core.runs import Ledger, RunSpec            # noqa: E402
 from app.ui import server as srv                     # noqa: E402
 from app.ui.routes import storage as ui_storage      # noqa: E402
@@ -181,9 +182,12 @@ def test_workroot_rows_read_as_human_labels_with_the_id_secondary(state):
     html = client.get("/storage").text
     rid = state["rids"]["ok"]
     row = html.split(f'data-wid="{rid}"', 1)[1].split("</div>", 1)[0]
-    # a hub forecast reads by its round, as Output heads its cards
-    assert (f'<strong><a href="/runs/{rid}">Round 2098-01-10 (as of '
-            '2098-01-03)</a></strong>') in row
+    # a hub forecast reads by its name, as every page names a run, its
+    # round under it; its link carries the start in hidden words
+    assert (f'<strong><span class="uk-run"><a href="/runs/{rid}">'
+            f'{run_label.text("2098-01-03")}<span class="uk-sr"> · run '
+            f'{ui_shared._run_time(rid)}</span></a><span class="uk-run-sub">'
+            'Not a FluSight round (2098-01-10)</span></span></strong>') in row
     meta = row.split('class="uk-meta"', 1)[1]
     assert f"<span>run {rid[4:6]}-{rid[6:8]} " in meta   # the wall clock
     assert f"<code" in meta and rid in meta       # the id, small and mono
@@ -194,8 +198,8 @@ def test_workroot_rows_read_as_human_labels_with_the_id_secondary(state):
     ui_shared._invalidate_scans()
     html = client.get("/storage").text
     row = html.split(f'data-wid="{orphan}"', 1)[1].split("</div>", 1)[0]
-    assert (f'<strong><a href="/runs/{orphan}">Unrecorded run</a></strong>'
-            in row)
+    assert (f'<strong><a href="/runs/{orphan}">Unrecorded run<span '
+            'class="uk-sr"> · run 01-18 09:30:00</span></a></strong>' in row)
     assert "run 01-18 09:30:00" in row            # parsed from the id
 
 

@@ -402,6 +402,14 @@ details.uk-fold[open] > summary::before{transform:rotate(45deg)}
 .uk-figline{display:flex;flex-wrap:wrap;align-items:center;
   justify-content:center;gap:.25rem .8rem;margin:.45rem 0}
 
+/* a run's name (tips.runname): its words, then a quieter line of its
+   own with a hub run's round and its start; the same line alone heads a
+   group of runs (<p class="uk-run-sub">) */
+.uk-run{overflow-wrap:anywhere}
+.uk-run-sub{display:block;margin:.1rem 0 0;color:var(--mut);
+  font-size:var(--fs-label);font-weight:400;letter-spacing:normal;
+  text-transform:none}
+
 /* ---- 13. segmented switch: one choice among a few, joined ---- */
 /* <div class="uk-seg" role="group" aria-label="...">: buttons whose
    aria-pressed says which is on, or links with the current choice a span

@@ -7,13 +7,15 @@
    (Delete, or a disabled Delete whose "?" says why), and a meta row of
    facts under the title. A Delete is the kit's quiet danger (nau.css
    button.quiet.danger), so it never reads as the row's links. No <div> inside a row: tests find a row by its
-   data-wid and read it up to its closing </div>. #}
-{% macro del_form(action, kind, ident, what, size, hint, confirm="") -%}
+   data-wid and read it up to its closing </div>. `label` is what the
+   button reads out when `what`, which its confirmation names, would read
+   the same on two rows. #}
+{% macro del_form(action, kind, ident, what, size, hint, confirm="", label="") -%}
 <form class="st-act" method="post" action="{{ action }}">
  {% if kind %}<input type="hidden" name="kind" value="{{ kind }}">{% endif %}
  <input type="hidden" name="ident" value="{{ ident }}">
  <input type="hidden" name="confirm" value="">
- <button type="button" class="quiet danger st-del" aria-label="Delete {{ what }}" data-del-storage{% if confirm %} data-confirm="{{ confirm }}"{% endif %}
+ <button type="button" class="quiet danger st-del" aria-label="Delete {{ label or what }}" data-del-storage{% if confirm %} data-confirm="{{ confirm }}"{% endif %}
    data-what="{{ what }}" data-size="{{ size }}"
    data-hint="{{ hint }}">Delete</button>
 </form>
@@ -65,13 +67,22 @@
    labelled #}
 {% set NO_ELAPSED = {"running": "still running",
                      "interrupted": "the app closed mid-run"} %}
-<div class="tablewrap st-ledger"><table><tr><th>run</th><th>status</th><th>elapsed</th><th class="num">on disk</th><th>summary</th></tr>
-{% for r in ledger %}{% set ri = loop.index %}
+{# the runs grouped as Output groups them (routes/storage._ledger_groups):
+   hub runs under their FluSight round, said once in the group's heading
+   row, runs on your own data under their dataset's name; each run by its
+   name (tips.runname: the data it read and the weeks it forecasts, its
+   start under it). A group whose runs the filter hides goes with them #}
+{% set groups = ledger_groups if ledger_groups is defined else [{"heading": "", "rows": ledger}] %}
+<div class="tablewrap st-ledger"><table><thead><tr><th>run</th><th>status</th><th>elapsed</th><th class="num">on disk</th><th>summary</th></tr></thead>
+{% set rn = namespace(i=0) %}
+{% for g in groups %}<tbody class="st-group">
+{% if g.heading %}<tr class="st-ghead"><th colspan="5" scope="rowgroup"><span class="uk-run-sub">{{ g.heading }}</span></th></tr>{% endif %}
+{% for r in g.rows %}{% set rn.i = rn.i + 1 %}{% set ri = rn.i %}
 {# the modified-settings fact, read from the outcome: whether the files
    took the hub names by override, said once in the run label's badge #}
 {% set kf = (r.facts or []) | selectattr("text", "equalto", "modified settings") | first %}
 {% set hub_names = kf and "hub names by override" in kf.chip %}
- <tr data-st="{{ r.status }}"{% if r.research %} data-research{% endif %}{% if r.modified %} data-modified{% endif %} data-find="{{ r.asof }} {{ r.run_id[:8] }} {{ r.run_id[:4] }}-{{ r.run_id[4:6] }}-{{ r.run_id[6:8] }} {{ r.label }}"><td class="st-run"><a href="/runs/{{ r.run_id }}">{% for part in r.parts %}<span class="st-nw">{{ part }}{{ " ·" if not loop.last }}</span>{{ " " if not loop.last }}{% endfor %}</a>
+ <tr data-st="{{ r.status }}"{% if r.research %} data-research{% endif %}{% if r.modified %} data-modified{% endif %} data-find="{{ r.asof }} {{ (r.name or {}).reference }} {{ r.run_id[:8] }} {{ r.run_id[:4] }}-{{ r.run_id[4:6] }}-{{ r.run_id[6:8] }} {{ r.label }}"><td class="st-run">{% if r.name and r.name.text %}{{ tips.runname(r.name, href="/runs/" ~ r.run_id, round=not g.heading) }}{% else %}<a href="/runs/{{ r.run_id }}">{{ r.label }}</a>{% endif %}
  {# research badge (the spec asked for the third member) #}
  {%- if r.research %} {{ tips.badge("info", "research") }}{% endif %}
  {# model settings off the default ones (a knobs record in the spec),
@@ -92,6 +103,7 @@
   {%- elif f.tip %}<span class="st-fact">{{ f.chip | safe }}</span>
   {%- else %}<span class="st-fact">{{ f.text }}</span>{% endif %}</span>
  {%- endfor %}</span></td></tr>
+{% endfor %}</tbody>
 {% endfor %}
 </table></div>
 <p class="st-none" id="st-none" hidden>{{ tips.icon("info") }} No run matches.</p>
@@ -111,11 +123,14 @@
    if(kind==='research'&&!r.hasAttribute('data-research'))return false;
    if(kind==='modified'&&!r.hasAttribute('data-modified'))return false;
    var q=(find.value||'').replace(/^\s+|\s+$/g,'');
-   return !q||r.getAttribute('data-find').indexOf(q)>=0;
+   return !q||r.getAttribute('data-find').toLowerCase().indexOf(q.toLowerCase())>=0;
   }
+  var gs=document.querySelectorAll('.st-ledger tbody.st-group');
   function apply(){
    var n=0;
    for(var i=0;i<rows.length;i++){var on=fits(rows[i]);rows[i].hidden=!on;if(on)n++;}
+   // a group heading goes with the last of its runs
+   for(var g=0;g<gs.length;g++)gs[g].hidden=!gs[g].querySelector('tr[data-st]:not([hidden])');
    shown.textContent=n===rows.length?'':n+' of '+rows.length+' shown';
    none.hidden=n>0;
   }
@@ -297,15 +312,19 @@
  {% for w in storage.workroots %}
  {# label from the run's ledger row, linked to its run page (the id is
     secondary); no row = an unrecorded run, time parsed from the id, whose
-    page still shows its report and files #}
+    page still shows its report and files. The link and the Delete carry
+    the run's start in hidden words, so one week's runs read apart when
+    read out or listed; the start seen in the meta line is then kept from
+    screen readers, read once. #}
+ {% set wr_start = (w.name.when if w.name else w.when) %}
  <div class="st-row" data-wid="{{ w.id }}">
-  <span class="st-title"><strong><a href="/runs/{{ w.id }}">{{ w.label }}</a></strong>
+  <span class="st-title"><strong>{% if w.name %}{{ tips.runname(w.name, href="/runs/" ~ w.id, when="hidden") }}{% else %}<a href="/runs/{{ w.id }}">{{ w.label }}{% if wr_start %}<span class="uk-sr"> · run {{ wr_start }}</span>{% endif %}</a>{% endif %}</strong>
    {%- if w.research %} {{ tips.badge("info", "research") }}{% endif %}
    {%- if w.modified %} {{ tips.badge("neutral", "modified settings") }}{% endif %}
    {%- if w.busy %} {{ tips.badge("pending", "running now") }}
    {%- elif w.status and w.status != "ok" %} {{ tips.badge(ST.get(w.status, "error"), w.status) }}{% endif %}</span>
   {% set items = [] %}
-  {% if w.when %}{% set _ = items.append(("clock", "run " ~ w.when, "")) %}{% endif %}
+  {% if w.when %}{% set _ = items.append(("clock", "run " ~ w.when, "", wr_start)) %}{% endif %}
   {% if w.dataset_name %}{% set ds_link %}on <a href="/data?source={{ w.dataset }}#browser">{{ w.dataset_name }}</a>{% endset %}{% set _ = items.append(("folder", ds_link, "")) %}{% endif %}
   {% if w.scope %}{% set _ = items.append(w.scope) %}{% endif %}
   {% set wid %}<code>{{ w.id }}</code>{% endset %}{% set _ = items.append(wid) %}
@@ -316,7 +335,8 @@
   {# the hint names only what the folder holds (a stopped run may have
      written no report), and a ledger row only for a recorded run #}
   {% else %}{% set wr_hint = "Its folder " ~ w.id ~ " goes" ~ ((", with the run's " ~ w.files ~ " in it") if w.files else "") ~ "." ~ (" The ledger row stays and shows a dash for disk use." if w.recorded else "") %}
-  {{ del_form("/storage/delete", "workroot", w.id, ("the run " ~ w.label) if w.recorded else ("the unrecorded run " ~ w.id), w.size_h, wr_hint) }}{% endif %}
+  {% set wr_what = ("the run " ~ w.label) if w.recorded else ("the unrecorded run " ~ w.id) %}
+  {{ del_form("/storage/delete", "workroot", w.id, wr_what, w.size_h, wr_hint, label=(wr_what ~ " · run " ~ w.when) if w.recorded and w.when else "") }}{% endif %}
  </div>
  {% else %}{{ tips.empty("No workroots on disk", compact=True) }}{% endfor %}
  </section>
@@ -366,8 +386,9 @@
  {% for f in storage.report_archives %}
  <div class="st-row">
   <span class="st-title"><strong>Weekly report and submissions · {{ f.label }}</strong></span>
-  {% if f.report %}{% set rlink %}<a href="/output/report?date={{ f.id }}" target="_blank">Open the report {{ tips.icon("external") }}</a>{% endset %}
-  {{ tips.meta([rlink]) }}{% endif %}
+  {% set fitems = [f.round] if f.round else [] %}
+  {% if f.report %}{% set rlink %}<a href="/output/report?date={{ f.id }}" target="_blank">Open the report {{ tips.icon("external") }}</a>{% endset %}{% set fitems = fitems + [rlink] %}{% endif %}
+  {% if fitems %}{{ tips.meta(fitems) }}{% endif %}
   <span class="st-size">{{ f.size_h }}</span>
   {% if f.protected %}<span class="st-act">{{ tips.badge("neutral", "protected", icon_name="lock") }}</span>
   {% elif f.busy %}{{ busy_act("st-rp-" ~ loop.index, f.why, "archived " ~ f.id ~ " report and submissions") }}

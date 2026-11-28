@@ -11,21 +11,25 @@
    makes the ids unique. #}
 {% macro winbadge(d, di) -%}
 {% if d.status %}{% set st = d.status.state %}
+{#- a week that is not a round says so on its round line: the badge says
+    only what that makes its files #}
 {%- set words = ("Closed " ~ d.status.text | replace("The window closed ", "") | trim(".")) if st == "closed"
-     else ((d.status.badge[1] ~ " · record only") if st == "record" else d.status.badge[1]) %}
+     else ("record only" if st == "record" else d.status.badge[1]) %}
 {#- the time left, which the page script keeps to the minute #}
 {%- set tail = " · " ~ d.status.left %}
 {%- if d.status.left and words.endswith(tail) %}{% set words %}{{ words[:words | length - tail | length] }} · <span data-out-left="{{ d.status.deadline }}">{{ d.status.left }}</span>{% endset %}{% endif %}
 <span class="out-bt"{% if d.status.flips %} data-out-flips="{{ d.status.flips | join(' ') }}"{% endif %}>{{ tips.badge(d.status.badge[0], words, id="out-win-" ~ di) }}</span>{% endif %}
 {%- if running_asof and d.asof == running_asof %} <span class="out-bt out-live">{% call tips.badge("pending", "newer run in progress", id="out-live-" ~ di) %}A console run for this date is in progress.{% endcall %}<a href="/forecast">Open Forecast</a></span>{% endif %}
 {%- endmacro %}
-{# One forecast date as a card (routes/output.forecast_dates): its
-   reference date and window, the as-of and the data the runs read, then
-   each model's hub file and each -modified file. The open round's card
-   stands out (out-day--due) and its Download buttons are the primary. #}
+{# One forecast date as a card (routes/output.forecast_dates): its runs'
+   name (shared._run_name: the data they read and the weeks they
+   forecast) and window, its FluSight round once on the quieter line under
+   it, the data the runs read, then each model's hub file and each
+   -modified file. The open round's card stands out (out-day--due) and its
+   Download buttons are the primary. #}
 {% macro daycard(d, di) -%}
 {% set open = d.status and d.status.state in ("due", "soon") %}
-{% set facts = namespace(items=[("calendar", "as of " ~ d.asof)]) %}
+{% set facts = namespace(items=[]) %}
 {# an open or coming round: its close on the reader's clock (the badge
    says Eastern), which the page script writes over the Eastern words;
    "closes" is in the text, so the fact needs no spoken label #}
@@ -33,8 +37,9 @@
 {% set facts.items = facts.items + [("clock", local)] %}{% endif %}
 {% for s in d.data_src %}{% set facts.items = facts.items + [("folder", s, "Data")] %}{% endfor %}
 <div class="card out-day{{ ' out-day--due' if open }}" id="fc-{{ d.asof }}">
- {{ tips.heading("Forecast " ~ d.ref, "out-d" ~ di, after=winbadge(d, di)) }}
- {{ tips.meta(facts.items) }}
+ {{ tips.heading(d.name.text or ("Forecast " ~ d.ref), "out-d" ~ di, after=winbadge(d, di), cls="out-runh") }}
+ {% if d.name.round %}<p class="uk-run-sub out-round">{{ d.name.round }}</p>{% endif %}
+ {% if facts.items %}{{ tips.meta(facts.items) }}{% endif %}
  {% for f in d.files %}{% set fi = di ~ "-" ~ loop.index %}
  {% set run %}{% if f.run_id %}{{ fr.runref(f.run_id, f.run_when, not f.complete, id="out-inc-" ~ fi) }}{% endif %}{% endset %}
  {% set status %}{% if f.check %}{{ fr.checks(f.check.ok, f.check_head, f.problems, "out-chk-" ~ fi) }}{% endif %}
@@ -51,15 +56,15 @@
  {% endfor %}
 </div>
 {%- endmacro %}
-{# A past date or a record date on one line: the reference date, its
-   badge, the as-of, a download per file (the model's short name), and
-   one badge when any file fails the hub's checks. The run pages hold the
-   rest (each model's run, coverage, Show in folder). #}
+{# A past date or a record date on one line: its runs' name, its badge,
+   its FluSight round under the name (quieter), a download per file (the
+   model's short name), and one badge when any file fails the hub's
+   checks. The run pages hold the rest (each model's run, coverage, Show
+   in folder). #}
 {% macro dayline(d, di) -%}
 {% set bad = d.files | selectattr("check") | rejectattr("check.ok") | list %}
 <div class="out-line" id="fc-{{ d.asof }}">
- <span class="out-line-id"><strong class="out-line-ref">Forecast {{ d.ref }}</strong>{{ winbadge(d, di) }}</span>
- <span class="out-line-asof">{{ tips.icon("calendar") }} as of {{ d.asof }}</span>
+ <span class="out-line-id"><span class="out-line-name"><strong class="out-line-ref">{{ d.name.text or ("Forecast " ~ d.ref) }}</strong>{% if d.name.round %}<span class="uk-run-sub">{{ d.name.round }}</span>{% endif %}</span>{{ winbadge(d, di) }}</span>
  <span class="out-line-dl">
  {%- for f in d.files + d.modified %}
   <a class="btn quiet out-dl" href="/output/download?path={{ f.path | urlencode }}" download="{{ f.name }}" aria-label="Download {{ f.name }}" title="{{ f.name }}">{{ tips.icon("download") }} {{ f.model.split("-", 1)[-1] }}{% if f.modified %} (modified){% endif %}</a>
@@ -83,7 +88,7 @@
 {% else %}
 {# the page's explainer: what the files are and the rules they follow #}
 {% set about %}<strong class="uk-tt-title">Submission files</strong>
-<span class="uk-tt-line">Your forecasts by reference date, newest first, as the hub's CSV files, each checked against the hub's rules before it is written.</span>
+<span class="uk-tt-line">Your forecasts, newest data first, as the hub's CSV files, each checked against the hub's rules before it is written.</span>
 <span class="uk-tt-line">A date run more than once shows the newest complete run's files: all 53 locations first, and a run made in the round's own week before a later vintage run. Modified settings write &lt;model&gt;-modified files, not for the hub.</span>
 <span class="uk-tt-line">The hub takes files from Sunday to Wednesday before the reference date, until 11 PM Eastern. FluBNF only writes them; you upload them yourself.</span>
 {% endset %}
@@ -91,11 +96,11 @@
 {% if rid or archive_dates %}
 {# the weekly report: the latest run's at the right of the title, an
    earlier week's from the picker. The buttons name the run whose report
-   they are, the one beside "as of", so a page left open never hands out
-   a later run's report under an earlier one's label. While a round is
+   they are, the one named beside the heading (tips.runname), so a page
+   left open never hands out a later run's report under an earlier one's
+   label. While a round is
    open its CSV downloads are the page's primary, so this one is quiet. #}
-{% set rep_run %}<a href="/runs/{{ rid }}">run {{ report_when }}</a>{% endset %}
-{% set rep_when %}{% if has_report and report_asof %}{{ tips.meta([("calendar", "as of " ~ report_asof), ("clock", rep_run, "Run")]) }}{% endif %}
+{% set rep_when %}{% if has_report and report_name and report_name.text %}{{ tips.runname(report_name, href="/runs/" ~ rid, cls="out-repname") }}{% endif %}
 {#- the newest run with modified settings and no override: shown here,
     badged (routes/output.output_page report_modified); the same badge
     tags its -modified files under their date below #}
@@ -106,14 +111,14 @@
  {{ tips.heading("Weekly report", "out-report", after=rep_when, aside=rep_acts) }}
  {% if not has_report %}{{ tips.empty("No report for the latest run" if rid else "No report yet", "clock", compact=True, id="out-noreport") }}{% endif %}
  {% if archive_dates %}
- {# each archived week by its reference date, as the cards are headed
-    (the card's own week too when the card shows a newer run on a few
-    states or a modified one); the value stays the as-of date the archive
-    is filed under #}
+ {# each archived week by its run's name, as the cards are headed (the
+    card's own week too when the card shows a newer run on a few states
+    or a modified one); the value stays the as-of date the archive is
+    filed under #}
  <div class="out-arch">
   <label for="archreport">Archived weeks</label>
   <select id="archreport">
-   {% for d, ref in archive_dates %}<option value="{{ d }}">{{ ref }} (as of {{ d }})</option>{% endfor %}
+   {% for d, words in archive_dates %}<option value="{{ d }}">{{ words }}</option>{% endfor %}
   </select>
   <span class="out-arch-acts">
   <button class="quiet" type="button"
@@ -150,14 +155,14 @@
 {% for d, i in ns.full %}{{ daycard(d, i) }}{% endfor %}
 {% if ns.lines[:nlines] %}
 <div class="card out-past" id="out-past">
- {{ tips.heading("Earlier forecast dates", "out-past") }}
+ {{ tips.heading("Earlier forecasts", "out-past") }}
  {% for d, i in ns.lines[:nlines] %}{{ dayline(d, i) }}{% endfor %}
 </div>
 {% endif %}
 {% if ns.lines | length > nlines %}{% set older = ns.lines[nlines:] %}
 <details class="out-older" id="out-older">
- <summary><span class="out-older-t">{{ older | length }} earlier forecast date{{ "s" if older | length != 1 }}</span>
-  <span class="out-older-span">{{ tips.icon("calendar") }} {{ older[-1][0].ref }} to {{ older[0][0].ref }}</span></summary>
+ <summary><span class="out-older-t">{{ older | length }} earlier forecast{{ "s" if older | length != 1 }}</span>
+  <span class="out-older-span">{{ tips.icon("calendar") }} data through {{ weeks_span(older[-1][0].name.data_through or older[-1][0].asof, older[0][0].name.data_through or older[0][0].asof) }}</span></summary>
  <div class="card out-past">{% for d, i in older %}{{ dayline(d, i) }}{% endfor %}</div>
 </details>
 {% endif %}
@@ -173,10 +178,10 @@
  {{ tips.empty("No forecasts on your datasets yet", "folder", action=own_go, compact=True, id="out-own-empty") }}
  {% endif %}
  {% for r in own %}
- {% set runlink %}<a href="/runs/{{ r.run_id }}">run {{ r.run_when }}</a>{% endset %}
  <section class="out-set" aria-labelledby="out-set-{{ loop.index }}">
   <h3 class="out-set-name" id="out-set-{{ loop.index }}">{{ r.dataset }}</h3>
-  {{ tips.meta([("calendar", "as of " ~ r.asof), ("clock", runlink, "Run")]) }}
+  {# the run by its name (no round: your own data) #}
+  <p class="out-set-run">{{ tips.runname(r.name, href="/runs/" ~ r.run_id) }}</p>
   {% for e in r.files %}{{ fr.filerow(e.model, e.name, e.path) }}{% endfor %}
  </section>
  {% endfor %}

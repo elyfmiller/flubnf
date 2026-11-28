@@ -28,6 +28,7 @@ from fastapi.testclient import TestClient
 sys.path.insert(0, str(Path(__file__).resolve().parents[2]))
 
 import app.core.runs as runs_mod                               # noqa: E402
+from app.core import run_label                                 # noqa: E402
 from app.core.runs import Ledger, RunSpec                      # noqa: E402
 from app.ui import server as srv                               # noqa: E402
 from app.ui import shared as ui_shared                         # noqa: E402
@@ -159,10 +160,15 @@ def test_past_dates_are_lines_and_the_picker_reads_by_round(root):
     line = html.split('<div class="out-line" id="fc-2098-01-03">', 1)[1] \
         .split("</div>", 1)[0]
     assert 'aria-label="Download 2098-01-10-NAU_PyBNF-GroundHogCGR.csv"' in line
-    # the picker: earlier weeks only, each by its reference date
+    # the line names its runs as every page does, its round under that
+    assert (f'<strong class="out-line-ref">{run_label.text("2098-01-03")}'
+            '</strong><span class="uk-run-sub">Not a FluSight round '
+            '(2098-01-10)</span>') in line
+    assert "as of" not in line
+    # the picker: earlier weeks only, each by its run's name
     picker = html.split('id="archreport"', 1)[1].split("</select>", 1)[0]
-    assert '<option value="2098-01-03">2098-01-10 (as of 2098-01-03)</option>' \
-        in picker
+    assert (f'<option value="2098-01-03">{run_label.text("2098-01-03")}'
+            '</option>') in picker
     assert 'value="2098-01-10"' not in picker
     assert rid
 
@@ -228,7 +234,7 @@ def test_a_failed_run_names_the_run_output_shows(root):
     sup = page.split('id="run-supersession"', 1)[1].split("</div>", 1)[0]
     assert "Superseded." in sup and f'href="/runs/{ok}"' in sup
     good = client.get(f"/runs/{ok}").text
-    assert "Output shows this run&#39;s files for 2098-01-10." in good
+    assert "Output shows this run&#39;s files." in good
 
 
 def test_a_running_run_shows_one_progress_card(root):
@@ -352,11 +358,21 @@ def test_storage_rows_read_by_round_and_status(root):
                   outcome={"error": "boom"})
     html = client.get("/storage").text
     row = html.split(f'data-wid="{failed}"', 1)[1].split("</div>", 1)[0]
-    assert "Round 2098-01-10 (as of 2098-01-03)" in row
+    words = run_label.text("2098-01-03")
+    assert (f'">{words}<span class="uk-sr"> · run '
+            f'{ui_shared._run_time(failed)}</span></a><span class="uk-run-sub">'
+            'Not a FluSight round (2098-01-10)</span>') in row
     assert '<span class="uk-badge-t">failed</span>' in row
     led = html.split('id="ledgerfold"', 1)[1].split("</details>", 1)[0]
-    assert ('<span class="st-nw">as of 2098-01-03 ·</span> '
-            '<span class="st-nw">run ') in led
+    # the ledger groups runs by round, said once; each run by its name and
+    # its time
+    assert led.count('<span class="uk-run-sub">Not a FluSight round '
+                     '(2098-01-10)</span></th></tr>') == 1
+    when = (f"{failed[4:6]}-{failed[6:8]} "
+            f"{failed[9:11]}:{failed[11:13]}:{failed[13:15]}")
+    assert (f'<a href="/runs/{failed}">{words}<span class="uk-sr"> · run '
+            f'{when}</span></a><span class="uk-run-sub"><span '
+            f'aria-hidden="true">run {when}</span></span>') in led
     assert 'id="st-filter"' in led and 'data-lf="research"' in led
     assert 'data-st="failed"' in led
     assert 'id="st-cap"' not in led
