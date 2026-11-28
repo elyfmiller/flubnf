@@ -9,6 +9,10 @@ a "?" stayed open after Escape and covered the select it explained.
   * a click outside hides a shown tip; a click inside its box (the
     glossary link, its text) keeps it; a click on another "?" swaps them.
     A toggletip's panel closes the same two ways.
+  * a reason button (tips.reason_button): a click or tap on the disabled
+    button lands on its wrapper and keeps the reason it shows; an enabled
+    one has no reason to show, so the pointer on it, or on one enabled
+    while the pointer rests there, never holds an Escape back.
   * placement (FluBNFUI.place, one rule for both): under the button,
     above it when under it would cover a form control (the field a
     label's "?" explains, a drop zone) and above fits, inside the window
@@ -28,9 +32,13 @@ from fastapi.testclient import TestClient
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[2]))
 
+from app.core import datasets as D                       # noqa: E402
+from app.ui import datasets_ui as DU                     # noqa: E402
+from app.ui import shared as ui_shared                   # noqa: E402
 from app.ui.server import app as srv                    # noqa: E402
 
 import served_dom as SD                                  # noqa: E402
+from test_dataset_engines import grouped_bytes           # noqa: E402
 
 client = TestClient(srv)
 TIPS_JS = Path(__file__).resolve().parents[1] / "ui" / "static" / "tips.js"
@@ -208,6 +216,99 @@ def test_a_click_outside_hides_a_tip_and_a_click_inside_keeps_it(tmp_path):
     assert out["swapped"] == [{"open": False, "hidden": True},
                               {"open": True, "hidden": False}]
     assert out["again"] == {"open": False, "hidden": True}
+
+
+# ------------------------------------------------------ a reason button
+
+@pytest.fixture
+def two_datasets(tmp_path, monkeypatch):
+    """The Data tab's list with two datasets, a replay on the first: its
+    Delete is served off with its reason (tips.reason_button, off=True),
+    the other's on with its "?" hidden (off=False)."""
+    monkeypatch.setattr(D, "ROOT", tmp_path / "datasets")
+    busy = D.ingest(grouped_bytes(), "Kids", kind="count")
+    D.ingest(grouped_bytes(groups=("Adult", "Pediatric")), "Adults",
+             kind="count")
+    monkeypatch.setitem(DU._REPLAY, "id", busy.id)
+    ui_shared._invalidate_scans()
+    yield
+    ui_shared._invalidate_scans()
+
+
+#: the two Delete buttons by state, each with its wrapper and reason id
+_DELETES = """
+  var off = null, on = null, all = document.querySelectorAll('button[data-del-dataset]');
+  for (var i = 0; i < all.length; i++) if (all[i].disabled) off = all[i]; else on = all[i];
+  var offWrap = off.parentNode, onWrap = on.parentNode,
+      offId = off.getAttribute('data-uk-reason'), onId = on.getAttribute('data-uk-reason');
+"""
+
+
+def test_a_click_on_a_disabled_button_keeps_its_reason(tmp_path, two_datasets):
+    """The disabled button lets the pointer through (ui-kit.css), so the
+    click or tap lands on its wrapper, the reason's hover host but not
+    inside the tip: the reason it shows stays up. On a phone a tap is the
+    pointer arriving, then the click. A click elsewhere still hides it,
+    and so does Escape."""
+    out = _run(tmp_path, "/data", _DELETES + """
+      var r = {served: [all.length, offWrap.className, onWrap.className,
+                        document.getElementById('tip-' + offId).textContent]};
+      HOVER(offWrap);
+      r.hovered = STATE(offId);
+      CLICK(offWrap);
+      r.clicked = STATE(offId);
+      CLICK(offWrap);
+      r.again = STATE(offId);
+      CLICK(document.querySelector('h1'));
+      r.elsewhere = STATE(offId);
+      // the pointer back on it, then Escape
+      LEAVE(offWrap); HOVER(offWrap);
+      var e = KEY('Escape');
+      r.escape = [STATE(offId), e.stopped];
+      return r;
+    """)
+    shown = {"open": False, "hidden": False}
+    # served off, with its reason, beside the free one
+    assert out["served"] == [2, "uk-reason", "uk-reason",
+                             "A replay on it is in progress."]
+    assert out["hovered"] == shown
+    assert out["clicked"] == shown and out["again"] == shown
+    assert out["elsewhere"] == {"open": False, "hidden": True}
+    assert out["escape"] == [{"open": False, "hidden": True}, True]
+
+
+def test_an_enabled_reason_button_never_holds_escape_back(tmp_path,
+                                                          two_datasets):
+    """An enabled reason button's "?" is hidden: the pointer on it shows
+    nothing, so Escape goes on to the page (the Display menu, the Manage
+    menu, a dialog). The same once a script enables the button the pointer
+    rests on (FluBNFUI.setReason(button, null)), or removes a tip the
+    pointer was on."""
+    out = _run(tmp_path, "/data", _DELETES + """
+      var r = {onHidden: onWrap.querySelector('.uk-reason-tip').hidden},
+          main = document.querySelector('main');
+      HOVER(on, main);
+      r.onButton = KEY('Escape').stopped;
+      HOVER(onWrap, main);
+      r.onWrap = KEY('Escape').stopped;
+      // the pointer on the off one, which its replay's end enables
+      HOVER(offWrap, main);
+      r.offShown = KEY('Escape').stopped;
+      LEAVE(offWrap, main); HOVER(offWrap, main);
+      window.FluBNFUI.setReason(off, null);
+      r.enabledUnder = KEY('Escape').stopped;
+      // a tip the pointer is on, removed by a script that redraws its part
+      var t = TIP('archive'), p = t.parentNode, tb = t.querySelector('.tipbtn');
+      HOVER(tb, main);
+      r.tipShown = KEY('Escape').stopped;
+      LEAVE(tb, main); HOVER(tb, main);
+      p.childNodes.splice(p.childNodes.indexOf(t), 1); t.parentNode = null;
+      r.removed = KEY('Escape').stopped;
+      return r;
+    """)
+    assert out == {"onHidden": True, "onButton": False, "onWrap": False,
+                   "offShown": True, "enabledUnder": False,
+                   "tipShown": True, "removed": False}
 
 
 def test_a_toggletip_closes_on_escape_and_on_a_click_outside(tmp_path):

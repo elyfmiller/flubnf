@@ -18,15 +18,24 @@
     var btn = t.querySelector('.tipbtn'), b = t.querySelector('.tipbox');
     if (btn && b && window.FluBNFUI) window.FluBNFUI.place(btn, b);
   }
+  // whether a tip is on the page and drawn: a script may remove it, or
+  // hide what holds it (a reason's "?" once its button is enabled), while
+  // the pointer still rests there
+  function drawn(t) {
+    return document.documentElement.contains(t) && !t.closest('[hidden]') &&
+      (!t.checkVisibility || t.checkVisibility());
+  }
   // the tips shown now: open (clicked), holding focus, or under the
-  // pointer, less the ones already hidden
+  // pointer, less the ones already hidden or no longer drawn
   function shown() {
     var out = [];
     document.querySelectorAll('.tip.open').forEach(function (t) { out.push(t); });
     [tipOf(document.activeElement), hot].forEach(function (t) {
       if (t && out.indexOf(t) < 0) out.push(t);
     });
-    return out.filter(function (t) { return !t.classList.contains('dismissed'); });
+    return out.filter(function (t) {
+      return !t.classList.contains('dismissed') && drawn(t);
+    });
   }
   function hide(t) {
     t.classList.remove('open');
@@ -34,11 +43,13 @@
   }
   // the element whose hover shows a tip: the tip, or a reason button's
   // wrapper (its disabled button passes the pointer through, ui-kit.css)
+  // while it has a reason (an enabled button's "?" is hidden: none)
   function hoverTip(el) {
     var t = tipOf(el);
     if (t) return {tip: t, host: t};
     var r = el && el.closest ? el.closest('.uk-reason') : null,
-        rt = r ? r.querySelector('.uk-reason-tip .tip') : null;
+        w = r ? r.querySelector('.uk-reason-tip') : null,
+        rt = w && !w.hidden ? w.querySelector('.tip') : null;
     return rt ? {tip: rt, host: r} : null;
   }
   document.addEventListener('mouseover', function (e) {
@@ -69,8 +80,11 @@
     var btn = e.target && e.target.closest ? e.target.closest('.tipbtn') : null;
     var t = btn ? btn.parentNode : null;
     // a click elsewhere hides every shown tip but the one it lands in (its
-    // glossary link, its text); the clicked "?" toggles its own
-    var keep = t || tipOf(e.target);
+    // glossary link, its text) or whose hover host it lands on (a reason
+    // button's wrapper, where a click or tap on the disabled button goes:
+    // its reason stays up); the clicked "?" toggles its own
+    var h = t ? null : hoverTip(e.target),
+        keep = t || (h ? h.tip : null);
     shown().forEach(function (s) { if (s !== keep) hide(s); });
     if (!t) return;
     e.preventDefault();                  // a tip inside a <label> or <summary>

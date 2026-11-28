@@ -174,7 +174,7 @@ Labelled values. A sentence that strings facts together ("212 vintages, newest w
 
 ### Reason button: `tips.reason_button(text, id, reason, off=True, cls="", type="", name="", value="", data={}, attrs="", label="")`
 
-A control that is off for a reason. The button is disabled and described by a "?" that states why, instead of a sentence beside it; the "?" takes focus where the disabled button cannot. Hovering the disabled button shows the reason too. `off=False` renders it enabled with the "?" hidden, for a script that switches it: `FluBNFUI.setReason(button, reason)` disables it with that reason, `FluBNFUI.setReason(button, null)` enables it. `data` becomes `data-*` attributes (`{"guard": "console-run"}`); `attrs` is raw markup for anything else.
+A control that is off for a reason. The button is disabled and described by a "?" that states why, instead of a sentence beside it; the "?" takes focus where the disabled button cannot. Hovering the disabled button shows the reason too, and a click or tap on it leaves the reason up. `off=False` renders it enabled with the "?" hidden, for a script that switches it: `FluBNFUI.setReason(button, reason)` disables it with that reason, `FluBNFUI.setReason(button, null)` enables it. `data` becomes `data-*` attributes (`{"guard": "console-run"}`); `attrs` is raw markup for anything else.
 
 ```jinja
 {{ tips.reason_button("Apply the Oracle step", "sb-oracle-why", oracle_gate.reason,
