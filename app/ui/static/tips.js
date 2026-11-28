@@ -41,6 +41,14 @@
     t.classList.remove('open');
     t.classList.add('dismissed');
   }
+  // an open tip whose holder a script hid is out of reach of the rules
+  // below, which hide only what is drawn: a click or an Escape drops its
+  // open mark, so it never comes back open by itself where it last stood
+  function forget() {
+    document.querySelectorAll('.tip.open').forEach(function (t) {
+      if (!drawn(t)) t.classList.remove('open');
+    });
+  }
   // the element whose hover shows a tip: the tip, or a reason button's
   // wrapper (its disabled button passes the pointer through, ui-kit.css)
   // while it has a reason (an enabled button's "?" is hidden: none)
@@ -85,6 +93,7 @@
     // its reason stays up); the clicked "?" toggles its own
     var h = t ? null : hoverTip(e.target),
         keep = t || (h ? h.tip : null);
+    forget();
     shown().forEach(function (s) { if (s !== keep) hide(s); });
     if (!t) return;
     e.preventDefault();                  // a tip inside a <label> or <summary>
@@ -101,6 +110,7 @@
   // page's own Escape handler
   window.addEventListener('keydown', function (e) {
     if (e.key !== 'Escape') return;
+    forget();
     var list = shown();
     if (!list.length) return;
     var a = document.activeElement, f = tipOf(a),
@@ -298,11 +308,13 @@
     el.innerHTML = badgeInner(state, text);
   }
   // a reason button (tips.reason_button): a reason disables it and shows
-  // the "?" with that reason; null enables it and hides the "?"
+  // the "?" with that reason; null enables it and hides the "?", clearing
+  // a click's or an Escape's mark on it, so the next reason starts closed
   function setReason(btn, reason) {
     if (!btn) return;
     var id = btn.getAttribute('data-uk-reason'),
         wrap = btn.parentNode ? btn.parentNode.querySelector('.uk-reason-tip') : null,
+        t = wrap ? wrap.querySelector('.tip') : null,
         box = id ? document.getElementById('tip-' + id) : null;
     btn.disabled = !!reason;
     if (reason) {
@@ -310,6 +322,7 @@
       if (box) box.textContent = reason;
     } else {
       btn.removeAttribute('aria-describedby');
+      if (t) { t.classList.remove('open'); t.classList.remove('dismissed'); }
     }
     if (wrap) wrap.hidden = !reason;
   }

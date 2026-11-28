@@ -12,7 +12,10 @@ a "?" stayed open after Escape and covered the select it explained.
   * a reason button (tips.reason_button): a click or tap on the disabled
     button lands on its wrapper and keeps the reason it shows; an enabled
     one has no reason to show, so the pointer on it, or on one enabled
-    while the pointer rests there, never holds an Escape back.
+    while the pointer rests there, never holds an Escape back. A reason
+    open when its button is enabled comes back closed when it goes off
+    again; any open tip a script hides loses its open mark at the next
+    click or Escape.
   * placement (FluBNFUI.place, one rule for both): under the button,
     above it when under it would cover a form control (the field a
     label's "?" explains, a drop zone) and above fits, inside the window
@@ -309,6 +312,53 @@ def test_an_enabled_reason_button_never_holds_escape_back(tmp_path,
     assert out == {"onHidden": True, "onButton": False, "onWrap": False,
                    "offShown": True, "enabledUnder": False,
                    "tipShown": True, "removed": False}
+
+
+def test_a_reason_open_when_its_button_is_enabled_comes_back_closed(
+        tmp_path, two_datasets):
+    """A reason opened by a click (or Enter) whose button a script then
+    enables (FluBNFUI.setReason(button, null): its "?" hidden) is out of
+    reach of Escape and of a click elsewhere, which hide only what is
+    drawn. setReason clears its open mark, and an Escape's, so when the
+    button goes off again the reason starts closed instead of popping up
+    by itself where it last stood. Any other open tip a script hides (what
+    holds it) loses its open mark at the next click or Escape."""
+    out = _run(tmp_path, "/data", _DELETES + """
+      var tb = offWrap.querySelector('.tipbtn'), r = {},
+          why = document.getElementById('tip-' + offId).textContent;
+      CLICK(tb);
+      r.opened = STATE(offId);
+      window.FluBNFUI.setReason(off, null);
+      r.enabled = STATE(offId);
+      window.FluBNFUI.setReason(off, why);
+      r.offAgain = [STATE(offId), KEY('Escape').stopped];
+      // hidden by Escape, then enabled and off again: it starts afresh
+      CLICK(tb); KEY('Escape');
+      r.escaped = STATE(offId);
+      window.FluBNFUI.setReason(off, null);
+      window.FluBNFUI.setReason(off, why);
+      r.fresh = STATE(offId);
+      // an open tip whose holder a script hides: a click elsewhere, or an
+      // Escape, drops its open mark while it is not drawn
+      var t = TIP('archive'), p = t.parentNode, ab = t.querySelector('.tipbtn');
+      CLICK(ab); p.hidden = true;
+      CLICK(document.querySelector('h1'));
+      p.hidden = false;
+      r.afterClick = STATE('archive');
+      CLICK(ab); p.hidden = true;
+      r.escHidden = KEY('Escape').stopped;
+      p.hidden = false;
+      r.afterEscape = STATE('archive');
+      return r;
+    """)
+    closed = {"open": False, "hidden": False}
+    assert out["opened"] == {"open": True, "hidden": False}
+    assert out["enabled"] == closed
+    assert out["offAgain"] == [closed, False]
+    assert out["escaped"] == {"open": False, "hidden": True}
+    assert out["fresh"] == closed
+    assert out["afterClick"] == closed
+    assert out["escHidden"] is False and out["afterEscape"] == closed
 
 
 def test_a_toggletip_closes_on_escape_and_on_a_click_outside(tmp_path):
