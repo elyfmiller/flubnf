@@ -784,11 +784,23 @@ def output_page(request: Request):
     report_asof = (str((res or {}).get("forecast_date") or "")
                    if has_report else "")
 
-    def held_run(d: str) -> str:
-        """The run an archived week holds ('' for a folder from before
-        the record)."""
-        return str((_ar.read_record(APP_STATE / "archive" / d) or {})
+    def card_holds(d: str) -> bool:
+        """Whether the card's run is the one the archived week holds, so
+        the picker need not offer the week again. A folder from before the
+        record names no run: taken as the card's, unless the card's run
+        wrote -modified files (such runs were not archived then, so the
+        folder holds another run)."""
+        held = str((_ar.read_record(APP_STATE / "archive" / d) or {})
                    .get("run_id") or "")
+        return held == rid or (not held and not report_modified)
+
+    def week_words(d: str) -> str:
+        """An archived week as its option reads: the weeks it is for (its
+        run's name's words), and "(modified settings)" for a run with
+        changed settings (an option holds no badge)."""
+        words = _run_name("", {"forecast_date": d}).get("text") or d
+        return (words + " (modified settings)"
+                if _ar.modified_of(APP_STATE / "archive" / d) else words)
     # each file gets the hub validator's command (--window for a round
     # that is open or coming)
     for d in dates:
@@ -806,15 +818,13 @@ def output_page(request: Request):
         # the archived weeks the picker offers: those whose archive holds a
         # report (a run whose report failed is archived without one), less
         # the week the card already offers above it, unless the card shows
-        # another run than the archive holds for its week: a modified run
-        # (never archived) or a newer run on a few states (never archived
-        # over a whole-set one), so the week's report stays reachable;
-        # each (as-of, the weeks it is for: its run's name's words)
-        "archive_dates": [(d, _run_name("", {"forecast_date": d}).get("text")
-                           or d)
+        # another run than the archive holds for its week (a newer run on a
+        # few states, never archived over a whole-set one, or a modified
+        # run made before such runs were archived), so the week's report
+        # stays reachable; each (as-of, week_words)
+        "archive_dates": [(d, week_words(d))
                           for d in reversed(_archive_dates())
-                          if (d != report_asof or report_modified
-                              or held_run(d) not in ("", rid))
+                          if (d != report_asof or not card_holds(d))
                           and (APP_STATE / "archive" / d
                                / "report.html").is_file()],
         "has_report": has_report,

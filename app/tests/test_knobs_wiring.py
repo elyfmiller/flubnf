@@ -443,7 +443,9 @@ def test_a_modified_run_exports_under_the_non_hub_names(console):
         p = Path(p)
         assert p.parent.name == mid and p.name == f"2098-01-11-{mid}.csv"
     assert not list((w / "submission").glob("NAU_PyBNF-OracleSIHRS/*"))
-    assert out["archived"].startswith("skipped: modified model settings")
+    # archived as any run of both models is (the fixture stands in for the
+    # archive itself), its files keeping their -modified names
+    assert out["archived"] == "archived"
     rec = json.loads((w / "knobs.json").read_text())
     assert rec["values"] == {"oracle.w": 0.25} and rec["override"] is None
     assert rec["digest"] == K.digest({"oracle.w": 0.25})

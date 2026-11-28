@@ -385,7 +385,8 @@
  {{ tips.heading("Report archives", "st-rp", level=3, after=rp_after, cls="st-h") }}
  {% for f in storage.report_archives %}
  <div class="st-row">
-  <span class="st-title"><strong>Weekly report and submissions · {{ f.label }}</strong></span>
+  <span class="st-title"><strong>Weekly report and submissions · {{ f.label }}</strong>
+   {%- if f.modified %} {{ tips.badge("neutral", "modified settings") }}{% endif %}</span>
   {% set fitems = [f.round] if f.round else [] %}
   {% if f.report %}{% set rlink %}<a href="/output/report?date={{ f.id }}" target="_blank">Open the report {{ tips.icon("external") }}</a>{% endset %}{% set fitems = fitems + [rlink] %}{% endif %}
   {% if fitems %}{{ tips.meta(fitems) }}{% endif %}

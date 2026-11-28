@@ -112,9 +112,10 @@
  {% if not has_report %}{{ tips.empty("No report for the latest run" if rid else "No report yet", "clock", compact=True, id="out-noreport") }}{% endif %}
  {% if archive_dates %}
  {# each archived week by its run's name, as the cards are headed (the
-    card's own week too when the card shows a newer run on a few states
-    or a modified one); the value stays the as-of date the archive is
-    filed under #}
+    card's own week too when the card shows another run than the week's
+    archive holds), with "(modified settings)" after a run made with
+    modified settings (an option holds words, never a badge); the value
+    stays the as-of date the archive is filed under #}
  <div class="out-arch">
   <label for="archreport">Archived weeks</label>
   <select id="archreport">

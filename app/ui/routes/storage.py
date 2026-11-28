@@ -100,11 +100,10 @@ def _live_workroot_ids() -> set:
 def _may_archive() -> bool:
     """Whether the console run in progress can write a report archive, by
     the pipeline's own archive step (pipeline.py, step 7): it skips a
-    one-model run, a research run and a modified run whose files carry the
-    non-hub name; every other run reaches _archive_run, a vintage run and a
-    modified run exported under the hub names included. A dataset run or
-    replay never reaches it. A run still starting may."""
-    from app.core.knobs import hub_names
+    one-model run and a research run; every other run reaches
+    _archive_run, a vintage run and a run with modified model settings
+    included, whatever its files are named. A dataset run or replay never
+    reaches it. A run still starting may."""
     from app.core.runs import is_research
     running = _status.get("running") or ""
     if not running:
@@ -119,9 +118,9 @@ def _may_archive() -> bool:
     except Exception:
         return True
     spec = row.get("spec") or ""
-    # the step's own three skips, in its order; a vintage run is not one
+    # the step's own two skips, in its order; a vintage run is not one
     # (_archive_run writes it when the date holds no real-time run)
-    return (not is_research(spec) and hub_names(spec)
+    return (not is_research(spec)
             and str(_spec_of(spec).get("engine") or "all")
             not in ("analogue", "pf"))
 
@@ -432,6 +431,7 @@ def _storage_inventory() -> dict:
     # held only while the run in progress can write a report archive, and
     # then only its own date's
     run_fd = _archiving_date()
+    from app.core.archive_record import modified_of
     arch = APP_STATE / "archive"
     for d in reversed(_scan_archive_dates(arch)):
         size = _tree_size(str(arch / d))
@@ -444,6 +444,9 @@ def _storage_inventory() -> dict:
             "round": _run_name("", {"forecast_date": d}).get("round", ""),
             # the Output tab serves an archived report by its date
             "report": (arch / d / "report.html").is_file(),
+            # the run it holds was made with modified model settings, as
+            # the workroot rows above say of theirs
+            "modified": modified_of(arch / d),
             "busy": run_fd is not None and run_fd in ("", d),
             "protected": _storage_protected(arch / d),
             "why": _busy_why("report-archive", d)})

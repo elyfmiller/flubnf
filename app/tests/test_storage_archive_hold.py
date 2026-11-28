@@ -3,11 +3,11 @@
 
 A live run holds its own date's archive exactly when the pipeline's
 archive step (app/ui/pipeline.py, step 7) would write it: a run of both
-models that is not research and whose files go out under the hub names.
-A vintage run and a modified run exported under the hub names reach
-_archive_run, so they hold it; a modified run under the non-hub name, a
-research run and a one-model run do not. Another date's archive is never
-held (ST-08: before #88 every archive was held during any run).
+models that is not research, whatever its model settings. A vintage run
+and a modified run, under the hub names by override or under the
+-modified names, reach _archive_run, so they hold it; a research run and
+a one-model run do not. Another date's archive is never held (ST-08:
+before #88 every archive was held during any run).
 """
 from pathlib import Path
 
@@ -33,7 +33,7 @@ KINDS = {
     "modified, hub names by override": ("all", OVERRIDE, True),
     "vintage, modified, hub names by override":
         ("all", {**OVERRIDE, "mode": "vintage"}, True),
-    "modified, non-hub names": ("all", MOD, False),
+    "modified, non-hub names": ("all", MOD, True),
     "research (plain filter)": ("all", {"oracle": "none"}, False),
     "Oracle SIHRS only": ("pf", {}, False),
 }

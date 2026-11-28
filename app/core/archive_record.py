@@ -4,11 +4,15 @@
 One folder per as-of date, app/state/archive/<date>/, holds the run that
 is that date's forecast. Beside its files:
 
-  archive.json    {"run_id", "complete", "archived_utc"}: which run the
-                  folder holds, and whether that run finished ok with every
-                  requested submission file written and no submission
-                  errors (written by _archive_run; absent in folders from
-                  before this record existed, which count as complete)
+  archive.json    {"run_id", "complete", "full", "modified",
+                  "archived_utc"}: which run the folder holds, whether that
+                  run finished ok with every requested submission file
+                  written and no submission errors, whether it covered the
+                  whole hub set, and whether it was made with modified
+                  model settings (written by _archive_run; absent in
+                  folders from before this record existed, which count as
+                  complete; "modified" absent in records from before
+                  modified runs were archived: modified_of reads the folder)
 
 The rule (never a downgrade): a newer run's files replace an earlier
 run's for the same date only when the newer run is complete, or when the
@@ -16,7 +20,10 @@ earlier one is not. A run made in the round's own week (real-time) is the
 date's forecast: a later backtest of that week (a vintage run) replaces
 it only when no real-time run wrote one. choose() applies it to the runs
 that wrote a file for a date (the Output page shows the chosen run's file
-per model); keep_reason() applies it to the archive folder.
+per model); keep_reason() applies it to the archive folder. A run's model
+settings play no part: a run made with modified settings is archived by
+the same rule, its files under their own -modified names, and its record
+says so (modified_of).
 """
 from __future__ import annotations
 
@@ -48,11 +55,23 @@ def _write_json(p: Path, data: dict) -> None:
 
 
 def write_record(d: Path, run_id: str, complete: bool,
-                 full: bool = True) -> None:
+                 full: bool = True, modified: bool = False) -> None:
     _write_json(Path(d) / RECORD, {"run_id": str(run_id),
                                    "complete": bool(complete),
                                    "full": bool(full),
+                                   "modified": bool(modified),
                                    "archived_utc": time.time()})
+
+
+def modified_of(d: Path) -> bool:
+    """Whether the run an archive folder holds was made with modified
+    model settings: its record says so, and a record from before it did
+    is read from the folder, where such a run's knobs.json travels with
+    its files (every modified run writes one, a shipped run never)."""
+    rec = read_record(d) or {}
+    if "modified" in rec:
+        return bool(rec["modified"])
+    return (Path(d) / "knobs.json").is_file()
 
 
 def full_scope(locations) -> bool:
