@@ -36,9 +36,11 @@ from app.core import datasets as D                       # noqa: E402
 from app.core import runs as runs_mod                    # noqa: E402
 from app.core import sandbox as sb                       # noqa: E402
 from app.core import site_build                          # noqa: E402
+from app.core import site_page                           # noqa: E402
 from app.ui import shared as ui_shared                   # noqa: E402
 from app.ui.server import app as srv                     # noqa: E402
 
+import css_cascade as C                                  # noqa: E402
 import served_dom as SD                                  # noqa: E402
 from test_sandbox_guide import _finish, box              # noqa: E402,F401
 
@@ -265,6 +267,47 @@ def test_each_word_is_defined_once_in_the_set_wording():
     assert "Liu-West filter" in said and "forecasting sample" in said.lower()
     for word in ("posterior", "adapt", "track", "follow", "–", "—"):
         assert word not in said.lower(), word
+
+
+#: a glossary entry's definition and its word, as Methods nests them
+_ENTRY = ("dl.uk-stats.uk-stats--kv.mt-glossary", "div.uk-stat")
+
+
+def _weight(cas, chain) -> str:
+    """The font-weight `chain`'s last element draws with: its own, else
+    the nearest ancestor's (font-weight inherits), else normal."""
+    path = C.path(*chain)
+    for i in range(len(path), 0, -1):
+        w = cas.value(path[:i], "font-weight")
+        if w is not None and w != "inherit":
+            return w
+    return "400"
+
+
+def test_the_definitions_read_at_the_texts_weight():
+    """A definition is a sentence or two, not a labelled figure: the
+    kit's labelled value is bold (650), and on the glossary its words
+    take the text's own weight; the words defined stay the labels, at
+    the label's weight. Another labelled value keeps its bold. The
+    public site, which loads neither sheet, draws them the same."""
+    cas = C.Cascade.page("tabs/methods.css", "tabs/models.css")
+    card = ("html", "body", "main", "div.mt-doc", "div.card#glossary")
+    value = card + _ENTRY + ("dd", "span.uk-stat-v")
+    word = card + _ENTRY + ("dt#g-cap",)
+    assert _weight(cas, value) == "400"
+    assert _weight(cas, word) == "600"
+    other = ("html", "body", "main", "div.mt-doc", "div.card",
+             "dl.uk-stats.uk-stats--kv", "div.uk-stat", "dd",
+             "span.uk-stat-v")
+    assert _weight(cas, other) == "650"
+    site = C.Cascade()
+    site.rules = C.parse(site_page.CSS, "site_page.CSS")
+    for i, r in enumerate(site.rules):
+        r.order = i
+    at = ("html", "body", "div.page#p-methods", "section", "div.methods",
+          "div.mt-doc", "div.card#glossary")
+    assert _weight(site, at + _ENTRY + ("dd", "span.uk-stat-v")) == "400"
+    assert _weight(site, at + _ENTRY + ("dt#g-cap",)) == "600"
 
 
 @pytest.fixture

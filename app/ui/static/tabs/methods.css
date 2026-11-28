@@ -166,6 +166,10 @@ a.btn.mt-go{min-height:24px;padding:.15rem .7rem;font-size:var(--fs-label)}
 .mt-rules{margin:.2rem 0 .6rem;padding-left:1.1rem}
 .mt-rules li{margin:.12rem 0}
 .mt-defs{margin:.2rem 0 .8rem}
+/* the glossary's definitions are sentences, not a stat's short value:
+   they take the text's own weight (the kit's labelled value is set bold,
+   650, for a figure), and the words stay the labels */
+.mt-glossary .uk-stat-v{font-weight:400}
 /* the glossary entry a "?" linked to (/methods#g-<key>): its word and its
    lines on a light accent tint, the word's cell as tall as its lines and
    marked by an accent bar, so the eye finds it under the contents row */
