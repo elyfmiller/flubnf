@@ -290,8 +290,9 @@ def _hub_outcome(f, missing=()) -> dict | None:
     data is the next step}; None only before a check, so every check ends
     in a line the card shows and its status line speaks. Commits and
     origin stay in the card's "Hub clone details" fold; this line says
-    what they mean. `missing`: the comparator folders the clone lacks (a
-    pull adds them)."""
+    what they mean, from what the commits change in the folders FluBNF
+    reads (f.changed). `missing`: the comparator folders the clone lacks
+    (a pull adds them)."""
     if f is None:
         return None
     detail = f.detail or ""
@@ -353,14 +354,42 @@ def _hub_outcome(f, missing=()) -> dict | None:
                 "text": (f"{lead}, but the hub's {' and '.join(missing)} "
                          "forecasts are missing: Update data adds them")}
     if f.behind:
-        # commits with no newer week still carry files the console reads
-        # (the round's FluSight-ensemble and -baseline submissions, teams'
-        # forecasts): not up to date, but nothing that makes the pull the
-        # next step
-        return {"state": "info", "new": False,
-                "text": (f"{lead}. The hub has other new files, such as "
-                         "teams' forecasts; Update data brings them in.")}
+        # commits with no newer week: what they change in the folders the
+        # sparse clone holds and FluBNF reads (most are teams' forecasts,
+        # which it never holds). Nothing there makes the pull the next step
+        if f.changed is None:
+            return {"state": "info", "new": False,
+                    "text": (f"{lead}. The hub has changed since your last "
+                             "update; Update data brings the changes in.")}
+        news = _hub_news(f.changed)
+        if news:
+            return {"state": "info", "new": False,
+                    "text": (f"{lead}. The hub has {news}; Update data "
+                             "brings them in.")}
     return {"state": "ok", "new": False, "text": f"{lead}: you are up to date"}
+
+
+#: what a change in one of the folders FluBNF reads brings, as the object
+#: of "The hub has ...", in the order said; the comparators' folders are
+#: named from data.COMPARATORS (_hub_news)
+_HUB_DIR_NEWS = (("target-data", "revised flu data"),
+                 ("auxiliary-data", "updated auxiliary data"))
+
+
+def _hub_news(changed) -> str:
+    """What a check's commits change in the folders FluBNF reads (a
+    Freshness's `changed`), in words: "new FluSight baseline and ensemble
+    forecasts", "revised flu data", "updated auxiliary data", joined with
+    "and"; "" for none."""
+    comp = state.data_mod.COMPARATORS
+    names = [name for name, sub in comp if sub in changed]
+    parts = [f"new FluSight {' and '.join(names)} forecasts"] if names else []
+    parts += [words for d, words in _HUB_DIR_NEWS if d in changed]
+    known = {sub for _n, sub in comp} | {d for d, _w in _HUB_DIR_NEWS}
+    parts += [f"new files in {d}" for d in changed if d not in known]
+    if len(parts) < 2:
+        return "".join(parts)
+    return ", ".join(parts[:-1]) + " and " + parts[-1]
 
 
 def _season_vars(labels) -> dict:

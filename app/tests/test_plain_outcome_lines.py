@@ -3,10 +3,12 @@
 
   * the Data tab's FluSight hub card says what a check found in plain
     words: "No new flu data since Nov 21: you are up to date" when the
-    clone is level with the hub, an info line naming the hub's other new
-    files (teams' forecasts, the round's ensemble) when commits came
-    without a new week, and "New flu data: the week ending Nov 28 is
-    ready to update" when there is one. A failed check says why: no
+    clone is level with the hub or the hub's new commits change nothing
+    in the folders FluBNF reads (the sparse clone holds no team's
+    forecasts), an info line naming what changed there (the FluSight
+    ensemble's and baseline's forecasts) when they do, and "New flu
+    data: the week ending Nov 28 is ready to update" when there is a new
+    week. A failed check says why: no
     connection, or git's own reason when git refused the clone; with no
     hub folder, or commits that could not be counted, it says so too, so
     every check ends in a line. Check for new data comes first; Update
@@ -25,6 +27,7 @@ from __future__ import annotations
 
 import json
 import re
+import subprocess
 import sys
 from pathlib import Path
 
@@ -50,31 +53,55 @@ needs_js = pytest.mark.skipif(
     not SD.HAVE_JS, reason="no JavaScript engine (JavaScriptCore jsc or node)")
 
 UP_TO_DATE = "No new flu data since Nov 21: you are up to date"
-OTHER_FILES = ("No new flu data since Nov 21. The hub has other new files, "
-               "such as teams' forecasts; Update data brings them in.")
+#: the comparators' folders in the sparse clone (data.COMPARATORS)
+COMP_DIRS = tuple(sub for _name, sub in data_mod.COMPARATORS)
+NEW_FORECASTS = ("No new flu data since Nov 21. The hub has new FluSight "
+                 "baseline and ensemble forecasts; Update data brings them "
+                 "in.")
 NEW_WEEK = "New flu data: the week ending Nov 28 is ready to update"
 OFFLINE = ("Could not reach the FluSight hub: check the internet connection "
            "and try again")
 
 
-def _behind(n=46, week="2026-11-21", **kw):
+def _behind(n=46, week="2026-11-21", changed=COMP_DIRS, **kw):
     """A check that found the clone n commits behind origin and no new
-    week in the hub's file (the review's case: 46 commits, no new data)."""
+    week in the hub's file (the review's case: 46 commits, no new data),
+    the commits changing `changed` of the folders FluBNF reads (the
+    round's ensemble and baseline by default; () for none of them)."""
     return F(week, week, n, False,
              f"{n} commits behind origin, no new week of data",
-             local_live=week, remote_live=week, **kw)
+             local_live=week, remote_live=week, changed=changed, **kw)
 
 
 # ----------------------------------------------------------- the words
 
 @pytest.mark.parametrize("f, missing, want", [
-    # no new week: up to date when level; commits still bring other
-    # files (teams' forecasts), but nothing that makes the pull the next
-    # step
-    (_behind(), (), ("info", False, OTHER_FILES)),
+    # no new week: up to date when level, or when the commits change none
+    # of the folders FluBNF reads (other teams' forecasts, which the
+    # sparse clone never holds); what they change there said by name,
+    # but nothing that makes the pull the next step
+    (_behind(), (), ("info", False, NEW_FORECASTS)),
+    (_behind(changed=()), (), ("ok", False, UP_TO_DATE)),
     (F("2026-11-21", "2026-11-21", 0, True, "up to date with origin",
        local_live="2026-11-21", remote_live="2026-11-21"), (),
      ("ok", False, UP_TO_DATE)),
+    (_behind(changed=("model-output/FluSight-ensemble",)), (),
+     ("info", False, "No new flu data since Nov 21. The hub has new "
+                     "FluSight ensemble forecasts; Update data brings them "
+                     "in.")),
+    (_behind(changed=("auxiliary-data",)), (),
+     ("info", False, "No new flu data since Nov 21. The hub has updated "
+                     "auxiliary data; Update data brings them in.")),
+    (_behind(changed=("auxiliary-data", "target-data",
+                      "model-output/FluSight-baseline")), (),
+     ("info", False, "No new flu data since Nov 21. The hub has new "
+                     "FluSight baseline forecasts, revised flu data and "
+                     "updated auxiliary data; Update data brings them in.")),
+    # git could not say what the commits change: no claim either way
+    (_behind(changed=None), (),
+     ("info", False, "No new flu data since Nov 21. The hub has changed "
+                     "since your last update; Update data brings the "
+                     "changes in.")),
     # the hub's file holds newer weeks: one, two, three, or a first pull
     (F(None, None, 3, False, "x", local_live="2026-11-21",
        remote_live="2026-11-28"), (), ("info", True, NEW_WEEK)),
@@ -124,12 +151,14 @@ def test_the_outcome_in_plain_words(f, missing, want):
         assert word not in o["text"].lower(), word
 
 
-def test_up_to_date_only_when_level_with_the_hub():
-    level = _behind(0)
+def test_up_to_date_when_nothing_flubnf_reads_has_changed():
+    level = _behind(0, changed=None)
     assert level.behind == 0
     for f, want in ((level, ("ok", UP_TO_DATE)),
-                    (_behind(1), ("info", OTHER_FILES)),
-                    (_behind(46), ("info", OTHER_FILES))):
+                    (_behind(1, changed=()), ("ok", UP_TO_DATE)),
+                    (_behind(46, changed=()), ("ok", UP_TO_DATE)),
+                    (_behind(1), ("info", NEW_FORECASTS)),
+                    (_behind(46), ("info", NEW_FORECASTS))):
         o = D._hub_outcome(f)
         assert (o["state"], o["text"]) == want
         # neither makes Update data the primary: no new week either way
@@ -255,14 +284,17 @@ def test_commits_alone_are_a_quiet_fact_in_the_fold():
 
 
 def test_the_checks_own_words_count_commits_properly(hub, monkeypatch):  # noqa: F811
+    from test_pull_hub import _R
     monkeypatch.setattr(data_mod, "vintages", lambda: [])
     monkeypatch.setattr(data_mod, "live_newest_week", lambda: "2026-07-04")
-    _freshness_git(hub, monkeypatch, behind="46")
+    g = _freshness_git(hub, monkeypatch, behind="46")
+    g.answers["diff"] = _R(0, "model-output/FluSight-ensemble/2026-07-05-"
+                              "FluSight-ensemble.csv\n")
     f = data_mod.check_freshness()
     assert f.detail == "46 commits behind origin, no new week of data"
     assert D._hub_outcome(f)["text"] == (
-        "No new flu data since Jul 4. The hub has other new files, such as "
-        "teams' forecasts; Update data brings them in.")
+        "No new flu data since Jul 4. The hub has new FluSight ensemble "
+        "forecasts; Update data brings them in.")
     _freshness_git(hub, monkeypatch, behind="0")
     assert D._hub_outcome(data_mod.check_freshness())["text"] == (
         "No new flu data since Jul 4: you are up to date")
@@ -272,6 +304,111 @@ def test_the_checks_own_words_count_commits_properly(hub, monkeypatch):  # noqa:
     # origin's file unreadable: the count alone, no claim about weeks
     _freshness_git(hub, monkeypatch, behind="2", remote_csv="")
     assert data_mod.check_freshness().detail == "2 commits behind origin"
+
+
+def test_the_check_asks_git_what_the_commits_change_in_the_read_folders(
+        hub, monkeypatch):  # noqa: F811
+    from flubnf.settings import HUB_DIRS
+    from test_pull_hub import _R
+    monkeypatch.setattr(data_mod, "vintages", lambda: [])
+    monkeypatch.setattr(data_mod, "live_newest_week", lambda: "2026-07-04")
+    ask = ["diff", "--name-only", "--no-renames", "HEAD", "origin/main",
+           "--", *HUB_DIRS]
+    # commits with no new week: git names the read folders' changed files
+    g = _freshness_git(hub, monkeypatch, behind="46")
+    g.answers["diff"] = _R(0, (
+        "auxiliary-data/locations.csv\n"
+        "model-output/FluSight-baseline/2026-07-05-FluSight-baseline.csv\n"
+        "model-output/FluSight-ensemble/2026-07-05-FluSight-ensemble.csv\n"))
+    f = data_mod.check_freshness()
+    assert ask in g.calls
+    assert f.changed == ("auxiliary-data", "model-output/FluSight-baseline",
+                         "model-output/FluSight-ensemble")
+    # only other folders changed (teams' forecasts): git lists nothing
+    # under the read folders, and the clone is up to date for FluBNF; the
+    # count stays in the fold
+    g = _freshness_git(hub, monkeypatch, behind="46")
+    f = data_mod.check_freshness()
+    assert ask in g.calls and f.changed == ()
+    assert D._hub_outcome(f) == {
+        "state": "ok", "new": False,
+        "text": "No new flu data since Jul 4: you are up to date"}
+    assert f.pill() == ("neutral", "46 commits behind")
+    # a file FluBNF leaves out of the clone (data.HUB_SKIPPED) is no news
+    g = _freshness_git(hub, monkeypatch, behind="3")
+    g.answers["diff"] = _R(0, "".join(p + "\n" for p in data_mod.HUB_SKIPPED))
+    assert data_mod.check_freshness().changed == ()
+    # git could not say: unknown, not "nothing changed"
+    g = _freshness_git(hub, monkeypatch, behind="3")
+    g.answers["diff"] = _R(128, "", "fatal: bad revision 'origin/main'\n")
+    f = data_mod.check_freshness()
+    assert f.changed is None
+    assert D._hub_outcome(f)["text"] == (
+        "No new flu data since Jul 4. The hub has changed since your last "
+        "update; Update data brings the changes in.")
+
+    def slow(args):
+        raise data_mod.subprocess.TimeoutExpired(args, 30)
+    g = _freshness_git(hub, monkeypatch, behind="3")
+    g.answers["diff"] = slow
+    f = data_mod.check_freshness()
+    assert f.changed is None and f.detail.startswith("3 commits behind")
+    # level, or a new week: nothing to ask
+    for behind, local in (("0", "2026-07-04"), ("3", "2026-06-27")):
+        monkeypatch.setattr(data_mod, "live_newest_week", lambda w=local: w)
+        g = _freshness_git(hub, monkeypatch, behind=behind)
+        f = data_mod.check_freshness()
+        assert "diff" not in g.subs() and f.changed is None
+
+
+def _commit(repo, files: dict, msg="c"):
+    for name, text in files.items():
+        (repo / name).parent.mkdir(parents=True, exist_ok=True)
+        (repo / name).write_text(text, encoding="utf-8")
+    for a in (["add", "-A"], ["-c", "user.name=t", "-c",
+                              "user.email=t@example.com", "commit", "-q",
+                              "-m", msg]):
+        subprocess.run(["git", "-C", str(repo), *a], check=True,
+                       capture_output=True)
+
+
+def test_a_real_sparse_clone_is_up_to_date_until_a_read_folder_changes(
+        tmp_path, monkeypatch):
+    from flubnf.settings import HUB_DIRS
+    src, hub = tmp_path / "src", tmp_path / "hub"
+    src.mkdir()
+    subprocess.run(["git", "-C", str(src), "init", "-q"], check=True)
+    subprocess.run(["git", "-C", str(src), "symbolic-ref", "HEAD",
+                    "refs/heads/main"], check=True)
+    _commit(src, {data_mod.LIVE_TARGET: "date,location,value\n"
+                                        "2026-11-21,US,1\n",
+                  "auxiliary-data/locations.csv": "location\nUS\n",
+                  "model-output/FluSight-baseline/a.csv": "a\n",
+                  "model-output/FluSight-ensemble/a.csv": "a\n",
+                  "model-output/team-a/a.csv": "a\n"})
+    subprocess.run(["git", "clone", "-q", "--sparse", str(src), str(hub)],
+                   check=True, capture_output=True)
+    subprocess.run(["git", "-C", str(hub), "sparse-checkout", "set",
+                    *HUB_DIRS], check=True, capture_output=True)
+    monkeypatch.setattr(data_mod, "HUB", hub)
+    monkeypatch.setattr(data_mod, "vintages", lambda: [])
+    monkeypatch.setattr(data_mod, "live_newest_week", lambda: "2026-11-21")
+    # two teams' rounds and the hub's time series (left out of the clone)
+    _commit(src, {"model-output/team-a/b.csv": "b\n",
+                  "model-output/team-b/b.csv": "b\n"})
+    _commit(src, {data_mod.HUB_SKIPPED[0]: "x\n"})
+    f = data_mod.check_freshness()
+    assert (f.behind, f.changed) == (2, ())
+    assert D._hub_outcome(f)["text"] == ("No new flu data since Nov 21: you "
+                                         "are up to date")
+    # the round's ensemble: said by name
+    _commit(src, {"model-output/FluSight-ensemble/b.csv": "b\n"})
+    f = data_mod.check_freshness()
+    assert (f.behind, f.changed) == (3, ("model-output/FluSight-ensemble",))
+    assert D._hub_outcome(f) == {
+        "state": "info", "new": False,
+        "text": ("No new flu data since Nov 21. The hub has new FluSight "
+                 "ensemble forecasts; Update data brings them in.")}
 
 
 def test_commits_that_cannot_be_counted_say_so_with_gits_reason(
@@ -340,15 +477,14 @@ def test_level_with_the_hub_says_up_to_date(hub, monkeypatch):  # noqa: F811
     assert f'<span class="uk-alert-text">{UP_TO_DATE}</span>' in line
 
 
-def test_no_new_week_names_the_other_files_and_keeps_update_data_quiet(
+def test_no_new_week_names_the_new_forecasts_and_keeps_update_data_quiet(
         hub, monkeypatch):  # noqa: F811
     card = _card(monkeypatch, _behind())
     # the outcome in plain words, an info line, not "up to date" (the
     # status line speaks it, so the line has no role of its own)
     line = _line(card)
     assert '<div class="uk-alert uk-alert--info" id="hub-outcome-line">' in line
-    assert ('<span class="uk-alert-text">'
-            + OTHER_FILES.replace("'", "&#39;") + "</span>") in line
+    assert f'<span class="uk-alert-text">{NEW_FORECASTS}</span>' in line
     assert "up to date" not in line
     assert "role=" not in line
     # Check for new data first and the primary; Update data quiet
@@ -407,7 +543,7 @@ def test_the_json_answer_carries_the_outcome(hub, monkeypatch):  # noqa: F811
         "words": "46 commits behind",
         "detail": "46 commits behind origin, no new week of data",
         "new_data": False,
-        "outcome": {"state": "info", "new": False, "text": OTHER_FILES}}
+        "outcome": {"state": "info", "new": False, "text": NEW_FORECASTS}}
 
 
 # ------------------------------------------------- the kit's fold macro
@@ -619,13 +755,13 @@ def test_the_cards_script_shows_each_checks_outcome(hub, monkeypatch, tmp_path):
                  _PRESS, prelude=_prelude() + _CHECK % json.dumps(answers))
     assert got["asked"] == [["/freshness", "POST", "application/json"]] * 2
     same, new = got["out"]
-    # no new week: the info line naming the other files, spoken by the
+    # no new week: the info line naming the new forecasts, spoken by the
     # status line; the count in the fold as a quiet fact; Check for new
     # data stays the primary
     assert 'class="uk-alert uk-alert--info"' in same["outcome"]
-    assert f'<span class="uk-alert-text">{OTHER_FILES}</span>' in same["outcome"]
+    assert f'<span class="uk-alert-text">{NEW_FORECASTS}</span>' in same["outcome"]
     assert "role=" not in same["outcome"]
-    assert same["status"] == OTHER_FILES
+    assert same["status"] == NEW_FORECASTS
     assert same["pill"][0] == "neutral" and "46 commits behind" in same["pill"][1]
     assert same["detail"] == ["46 commits behind origin, no new week of data",
                               False]

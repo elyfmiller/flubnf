@@ -28,7 +28,7 @@ from typing import Optional
 import pandas as pd
 
 from flubnf import vintages as shipped_vintages
-from flubnf.settings import ARCHIVE, HUB, LOCATIONS  # noqa: F401
+from flubnf.settings import ARCHIVE, HUB, HUB_DIRS, LOCATIONS  # noqa: F401
 
 #: the committed snapshots for the as-of weeks the hub archive skipped
 #: (flubnf/vintages.py); a module-level name so tests can point it at an
@@ -414,6 +414,10 @@ class Freshness:
     local_live: Optional[str] = None     # the working file's newest week
     remote_live: Optional[str] = None    # origin's target file's newest week
     tree_stale: bool = False             # the file on disk is not HEAD's
+    #: after a check that found commits but no new week: the folders
+    #: FluBNF reads (HUB_DIRS) whose files those commits change, () for
+    #: none; None when not asked or git could not say (_changed_hub_dirs)
+    changed: Optional[tuple] = None
 
     @property
     def offline(self) -> bool:
@@ -480,6 +484,26 @@ def _git_fatal_line(r) -> str:
                 err[-1] if err else f"git exited {r.returncode}")
 
 
+def _changed_hub_dirs() -> Optional[tuple]:
+    """The folders FluBNF reads (HUB_DIRS, in that order) holding files
+    that differ between the clone's HEAD and origin/main, HUB_SKIPPED
+    left out; () for none. Trees only, without rename detection, so a
+    partial clone fetches no file for it. None when git could not say."""
+    try:
+        r = subprocess.run(
+            ["git", "diff", "--name-only", "--no-renames", "HEAD",
+             "origin/main", "--", *HUB_DIRS],
+            cwd=HUB, capture_output=True, text=True, timeout=30)
+    except (OSError, subprocess.SubprocessError):
+        return None
+    if r.returncode != 0:
+        return None
+    files = [p.strip() for p in (r.stdout or "").splitlines()]
+    files = [p for p in files if p and p not in HUB_SKIPPED]
+    return tuple(d for d in HUB_DIRS
+                 if any(p.startswith(d + "/") for p in files))
+
+
 def _git_last_line(r) -> str:
     """git's verdict in one line: the last non-empty stderr line (a fatal
     error comes after any warnings), else stdout's, else the exit code; a
@@ -528,6 +552,7 @@ def check_freshness(fetch: bool = True) -> Freshness:
     local_latest = local[-1] if local else None
     behind, remote_latest, detail = None, None, ""
     local_live, remote_live, stale = live_newest_week(), None, False
+    changed = None
     # no folder to compare: said as such, not as an offline fetch
     why = hub_missing(data=False)
     if why:
@@ -585,13 +610,16 @@ def check_freshness(fetch: bool = True) -> Freshness:
         # "no new week" only when origin's file was read to say so
         detail = (f"{behind} commit{'s' if behind != 1 else ''} behind "
                   "origin" + (", no new week of data" if remote_live else ""))
+        # most commits are other teams' forecasts, which the sparse clone
+        # never holds: whether they touch what FluBNF reads
+        changed = _changed_hub_dirs()
     elif stale and behind == 0:
         detail = "the target file on disk is not origin's: Update data"
     elif behind == 0:
         detail = "up to date with origin"
     is_fresh = detail == "up to date with origin"
     return Freshness(local_latest, remote_latest, behind, is_fresh, detail,
-                     local_live, remote_live, stale)
+                     local_live, remote_live, stale, changed)
 
 
 def _hub_not_own_repo():
