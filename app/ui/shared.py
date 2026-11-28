@@ -490,24 +490,22 @@ def _wrote_forecasts(res: dict) -> bool:
             or not any(models.get(m) for m in models))
 
 
-def _latest_results(include_modified: bool = False, newest: bool = False):
+def _latest_results(newest: bool = False):
     """(run_id, results) of the run a page shows, or (None, None). A
     corrupt results.json falls through to the next run; the file is read
     fresh (only the scan is cached). Research runs are always skipped
     (audit rr-1).
 
-    By default (Home, Output, the model pages: shipped-product surfaces)
-    the newest real-time run, so a vintage backtest never replaces the
-    current forecast (the newest vintage run only when no real-time run
-    exists), and never a run with modified settings exported under the
-    non-hub name (an override puts one back, badged), and never a run whose
-    model produced nothing (an Oracle-only run whose fits all failed). The
-    Output page's report card passes include_modified: it shows such a run
-    badged, linking that run's own report. The Forecast tab passes
-    include_modified and newest: the newest run that wrote forecasts,
-    whatever its settings or week."""
+    By default (Home, its Weekly report, Output's report card, the model
+    pages) the newest real-time run that wrote forecasts, whatever its
+    model settings: a run with modified settings is shown, and each page
+    marks it "modified settings" (runs.is_modified). A vintage backtest
+    never replaces the current forecast (the newest vintage run only when
+    no real-time run exists), nor does a run whose model produced nothing
+    (an Oracle-only run whose fits all failed). The Forecast tab passes
+    newest: the newest run, whatever its week or what it wrote."""
     import json as _json
-    from app.core.runs import _spec_dict, is_contained, is_research
+    from app.core.runs import _spec_dict, is_research
     first = None
     for f in _workroot_results():
         try:
@@ -516,9 +514,6 @@ def _latest_results(include_modified: bool = False, newest: bool = False):
             continue
         spec = res.get("spec", "")
         if res.get("research") or is_research(spec):
-            continue
-        # modified model settings exported under the non-hub name
-        if not include_modified and is_contained(spec):
             continue
         if newest:
             return f.parent.name, res

@@ -771,10 +771,9 @@ def output_page(request: Request):
     from app.core import archive_record as _ar
     from app.core.runs import APP_STATE, is_contained
     stamp = output_stamp()
-    # the newest run, a modified one included: the report card is where
-    # the person who made it looks for it (its files sit under their
-    # date, tagged); Home and Models keep the shipped rule
-    rid, res = shared._latest_results(include_modified=True)
+    # the run Home shows: the newest real-time run, a modified one
+    # included (its files sit under their date, tagged)
+    rid, res = shared._latest_results()
     dates, own = forecast_dates()
     has_report = bool(rid and (APP_STATE / "workroots" / rid
                                / "report.html").is_file())
@@ -1056,8 +1055,8 @@ def output_report(request: Request, date: str = ""):
             return _notice(request, 404, "empty",
                            f"No archived report for {date}")
         return HTMLResponse(_report_for_serving(d))
-    # the shipped rule: Home's report button and its map link come here,
-    # and Home shows that run (the Output card links its own run's report)
+    # the run Home shows (the newest real-time run, whatever its settings):
+    # Home's report button and its map link come here
     rid, _ = shared._latest_results()
     d = APP_STATE / "workroots" / (rid or "")
     if not (d / "report.html").is_file():
@@ -1184,7 +1183,7 @@ def output_report_download(request: Request, date: str = ""):
         return _weekly_report_file(APP_STATE / "archive" / date, date,
                                    request,
                                    route=f"/output/report/download?date={date}")
-    rid, res = shared._latest_results()        # the shipped rule, as above
+    rid, res = shared._latest_results()        # the run Home shows, as above
     return _weekly_report_file(APP_STATE / "workroots" / (rid or ""),
                                (res or {}).get("forecast_date", ""), request,
                                route="/output/report/download")

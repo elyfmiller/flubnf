@@ -195,14 +195,14 @@
  <div>
   <div class="card md-fc">
    {{ tips.heading("Forecasts", "md-fc") }}
-   {# the shipped rule's run: the newest real-time one, named so (a newer
-      backtest or modified run is on the Forecast tab) #}
+   {# the run Home shows: the newest real-time one whatever its settings,
+      named so (a newer backtest is on the Forecast tab) #}
    {% set run_name = "real-time run" if run_realtime else "run" %}
    {% if has_fans %}
    {# one fact, the run: its name (tips.runname: the data it read, the
       weeks it forecasts, its round and start), its page, and the
-      modified-settings badge an override's run carries #}
-   {% set run_link %}<a href="/runs/{{ rid }}">Run details</a>{% if run_modified %} {{ tips.badge("warn", "modified settings") }}{% endif %}{% if newer_run %} <a href="/forecast">Newer run on the Forecast tab</a>{% endif %}{% endset %}
+      modified-settings badge a run with changed settings carries #}
+   {% set run_link %}<a href="/runs/{{ rid }}">Run details</a>{% if run_modified %} {{ tips.badge("warn", "modified settings", id="md-mod") }}{% endif %}{% if newer_run %} <a href="/forecast">Newer run on the Forecast tab</a>{% endif %}{% endset %}
    {% call tips.stats("uk-stats--row md-runfacts", label="Latest " ~ run_name) %}
     {%- set run_v %}{% if run_nm and run_nm.text %}{{ tips.runname(run_nm) }}{% else %}{{ (date ~ " · " if date else "") ~ run_when }}{% endif %}{% endset %}
     {{- tips.stat("Latest " ~ run_name, run_v, after=run_link) -}}

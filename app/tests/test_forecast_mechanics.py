@@ -2,8 +2,8 @@
 bug hunt).
 
   * the fans draw the newest run, its settings modified or not (badged);
-    Home and Output keep to the shipped real-time run, and a vintage
-    backtest never replaces it (M4, M5);
+    Home and Output keep to the newest real-time run, whatever its
+    settings, and a vintage backtest never replaces it (M4, M5);
   * the forecasts come before the latest run's record;
   * the live run is read once, so a run that ends while the page is built
     still shows its Running card (M7);
@@ -84,8 +84,8 @@ def _run(mode="realtime", knobs=None, override="", status="ok",
 def test_the_forecast_tab_draws_the_newest_run_with_modified_settings(state):
     """M4: a run with modified settings (non-hub file names) showed "No
     forecasts yet", or an older run badged "earlier run" with a false
-    reason. The Forecast tab draws it, badged; Home and Output keep to
-    the shipped run."""
+    reason. The Forecast tab draws it, badged; Home and Output show it
+    too, as the newest real-time run, whatever its settings."""
     shipped = _run()
     modified = _run(knobs={"oracle.w": 0.25})
     html = client.get("/forecast").text
@@ -93,12 +93,12 @@ def test_the_forecast_tab_draws_the_newest_run_with_modified_settings(state):
     assert ('id="fc-fan-mod" data-state="warn">' in html
             and ">modified settings</span>" in html)
     assert 'id="fc-fan-earlier"' not in html
-    assert ui_shared._latest_results()[0] == shipped
-    # with no shipped run at all, Home and Output show none
+    assert ui_shared._latest_results()[0] == modified != shipped
+    # with no shipped run at all, Home and Output still show it
     shutil.rmtree(runs_mod.APP_STATE / "workroots" / shipped)
     ui_shared._invalidate_scans()
-    assert ui_shared._latest_results() == (None, None)
-    assert ui_shared._latest_results(include_modified=True, newest=True)[0] == modified
+    assert ui_shared._latest_results()[0] == modified
+    assert ui_shared._latest_results(newest=True)[0] == modified
 
 
 def test_a_run_whose_ledger_row_was_cleared_is_named_by_its_own_files(state):
@@ -143,7 +143,7 @@ def test_a_vintage_run_never_replaces_the_current_forecast(state):
     live = _run("realtime", date="2098-01-03")
     backtest = _run("vintage", date="2097-12-06")
     assert ui_shared._latest_results()[0] == live
-    assert ui_shared._latest_results(include_modified=True, newest=True)[0] == backtest
+    assert ui_shared._latest_results(newest=True)[0] == backtest
     # a research run is never shown, wherever
     research = _run("realtime")
     row_spec = json.loads((runs_mod.APP_STATE / "workroots" / research
@@ -153,7 +153,7 @@ def test_a_vintage_run_never_replaces_the_current_forecast(state):
         json.dumps(row_spec))
     ui_shared._invalidate_scans()
     assert ui_shared._latest_results()[0] == live
-    assert ui_shared._latest_results(include_modified=True, newest=True)[0] == backtest
+    assert ui_shared._latest_results(newest=True)[0] == backtest
 
 
 def test_with_no_real_time_run_the_newest_vintage_run_shows(state):

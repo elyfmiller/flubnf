@@ -453,12 +453,11 @@ def test_a_modified_run_exports_under_the_non_hub_names(console):
     prov = oracle_mod.read_provenance(w)
     assert prov["w"] == 0.25 and prov["specification"] == "modified"
     assert prov["knobs"] == {"oracle.w": 0.25}
-    # marked on the ledger surfaces, kept off the shipped ones
+    # marked on the ledger surfaces, and the run Home, Output and the model
+    # pages show (badged there)
     assert "modified settings" in ui_shared._outcome_chips(row["outcome"])
     assert ui_shared._pf_member_label(out) == "Oracle SIHRS (modified)"
-    assert ui_shared._latest_results() == (None, None)
-    # Output's report card asks for it by name and shows it badged
-    assert ui_shared._latest_results(include_modified=True)[0] == row["run_id"]
+    assert ui_shared._latest_results()[0] == row["run_id"]
     files = ui_output._submission_files(w)
     assert all(f["modified"] and not f["submittable"] for f in files)
     assert ui_shared._run_label(row["run_id"], row["spec"]).endswith(

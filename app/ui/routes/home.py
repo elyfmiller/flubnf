@@ -367,6 +367,17 @@ def _has_report(rid: str | None) -> bool:
     return (APP_STATE / "workroots" / rid / "report.html").is_file()
 
 
+def _modified(res: dict | None) -> bool:
+    """Whether the run the map shows was made with modified model
+    settings (runs.is_modified: a knobs record in its spec, whatever its
+    files were named); False for no run or an unreadable spec."""
+    from app.core.runs import is_modified
+    try:
+        return bool(res) and is_modified((res or {}).get("spec", ""))
+    except Exception:
+        return False
+
+
 #: the Setup card's component names, by flubnf.settings.check() key and by
 #: version key (the two name one component once, never twice). The engine
 #: is one component however many parts the check and the probe see
@@ -491,6 +502,10 @@ def home(request: Request):
                                           or "", asof=ob["outlook_date"])
                          if ob["outlook_date"] else None),
         "outlook_rid": rid if ob["outlook_date"] else "",
+        # the run made with modified model settings: its run line says so
+        # (read once the map is drawn: the settings module is a science
+        # import the cold paint avoids)
+        "outlook_modified": bool(ob["outlook_date"]) and _modified(res),
         "outlook_n": ob["outlook_n"], "outlook_us": ob.get("outlook_us", ""),
         "outlook_us_by_model": ob.get("us_by_model", {}),
         "outlook_model_label": ob["label"],

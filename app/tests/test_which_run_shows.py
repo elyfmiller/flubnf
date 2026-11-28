@@ -189,10 +189,8 @@ def test_a_run_whose_one_model_produced_nothing_never_replaces_the_shown_run(
     failed = _run(root, "oracle failed", engine="pf",
                   models={"pf": {}, "analogue": {"Ohio": FAN}})
     assert ui_shared._latest_results()[0] == shown
-    assert ui_shared._latest_results(include_modified=True)[0] == shown
     # the Forecast tab shows the newest run, whatever it produced
-    assert ui_shared._latest_results(include_modified=True,
-                                     newest=True)[0] == failed
+    assert ui_shared._latest_results(newest=True)[0] == failed
 
 
 def test_a_run_that_wrote_either_member_or_has_no_models_table_is_shown(root):

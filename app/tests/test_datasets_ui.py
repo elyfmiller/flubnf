@@ -395,7 +395,7 @@ def test_a_real_run_shows_fans_and_exports_and_stays_off_the_hub(monkeypatch):
     # the stored convention the fan script expects (as on the hub view):
     # stored "4" is four weeks ahead, never the canonical "0".."3"
     assert sorted(fanq["analogue"]["Adult"]) == ["1", "2", "3", "4"]
-    # the Output tab and Home read shipped runs only
+    # the Output tab and Home never show a dataset run (a research run)
     assert ui_shared._latest_results() == (None, None)
 
 

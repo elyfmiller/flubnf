@@ -101,7 +101,7 @@
    label. While a round is
    open its CSV downloads are the page's primary, so this one is quiet. #}
 {% set rep_when %}{% if has_report and report_name and report_name.text %}{{ tips.runname(report_name, href="/runs/" ~ rid, cls="out-repname") }}{% endif %}
-{#- the newest run with modified settings and no override: shown here,
+{#- the run Home shows, here with modified settings and no override:
     badged (routes/output.output_page report_modified); the same badge
     tags its -modified files under their date below #}
 {%- if report_modified %}<span class="out-bt">{{ tips.badge("warn", "modified · non-hub names", id="out-rep-mod") }}</span>{% endif %}{% endset %}

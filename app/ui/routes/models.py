@@ -207,11 +207,12 @@ def model_page(request: Request, name: str):
             action=("/models", "Open Models"), active="Models",
             heading="Model")
     from app.core.archive_record import realtime_of
+    # the newest real-time run, whatever its settings (badged when modified)
     rid, res = shared._latest_results()
-    # a newer run of any kind (a vintage week or modified settings, as a
-    # quick run from this page can make) is on the Forecast tab: the card
-    # says so beside the run it keeps to
-    newest_rid, _ = shared._latest_results(include_modified=True, newest=True)
+    # a newer run of another kind (a vintage week, or one whose model
+    # produced nothing) is on the Forecast tab: the card says so beside the
+    # run it keeps to
+    newest_rid, _ = shared._latest_results(newest=True)
     fanq = {}
     if res and name in res.get("models", {}):
         fanq = {loc: qs for loc, qs in res["models"][name].items()
@@ -252,8 +253,9 @@ def model_page(request: Request, name: str):
         # the run by its name, as every page names it (tips.runname)
         "run_nm": (_run_name(rid, (res or {}).get("spec") or "")
                    if rid else None),
-        # a modified run is here only when an override exported it under
-        # the hub names: badged as Storage and the run page badge it
+        # a run with modified settings (its files under -modified names, or
+        # the hub names by override): badged as Home, Storage and the run
+        # page badge it
         "run_modified": _runs.is_modified((res or {}).get("spec", "")),
         # the run is the newest real-time one (a vintage only when none
         # exists): the card names it so, as a newer backtest is not here

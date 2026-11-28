@@ -7,8 +7,8 @@ newest first (app/ui/routes/output.forecast_dates, output.html).
     and Show in folder;
   * a modified-settings run's <model>-modified file sits under its date
     with a "modified settings" tag, never as the hub-named file; when it
-    is the newest run, the weekly report card shows it, badged (Home,
-    Forecast and Models keep the shipped rule and skip it);
+    is the newest real-time run, the weekly report card shows it, badged,
+    as Home, its Weekly report and the model pages do;
   * own-data runs are listed apart ("Your data") with their exports;
   * nothing on the page reads as a submission workflow (no marks).
 """
@@ -400,14 +400,13 @@ def test_refusals_and_missing_reports_are_console_pages(root):
 
 
 def test_the_report_card_shows_the_newest_run_even_when_modified(root):
-    """A modified run exported under the non-hub name is the run the
-    person just made: the Output page's report card names it, badges it
-    once it has a report, and its buttons serve that run's own report.
-    The shipped surfaces keep their rule: shared._latest_results with its
-    default skips it, and /output/report (Home's button and map link)
-    still serves the shipped run's report. The archived week stays in the
-    picker while the card shows a modified run, since such a run is never
-    archived and the archive's report is the shipped run's."""
+    """A modified run exported under the non-hub name is the newest
+    real-time run: the Output page's report card names it, badges it once
+    it has a report, and its buttons serve that run's own report, and
+    /output/report (Home's button and map link) serves that report too
+    (shared._latest_results, whatever the run's settings). The archived
+    week stays in the picker while the card shows another run than the
+    archive holds, and leaves it once the archive holds the card's run."""
     from app.core import archive_record, knobs as K
     hub = _run(root, "2098-01-03", [GH])
     (hub / "report.html").write_text("<p>the hub run's report</p>")
@@ -417,8 +416,7 @@ def test_the_report_card_shows_the_newest_run_even_when_modified(root):
     archive_record.write_record(arch, hub.name, True)
     mod = _run(root, "2098-01-03", [GH + "-modified"],
                spec=json.dumps({"extra": K.write_extra({"oracle.w": 0.25}, {})}))
-    assert ui_shared._latest_results()[0] == hub.name
-    assert ui_shared._latest_results(include_modified=True)[0] == mod.name
+    assert ui_shared._latest_results()[0] == mod.name
 
     def card():
         html = client.get("/output").text
@@ -436,11 +434,16 @@ def test_the_report_card_shows_the_newest_run_even_when_modified(root):
     assert 'id="tip-out-rep-mod"' not in c
     assert f'href="/runs/{mod.name}/report"' in c
     assert "the modified run's report" in client.get(f"/runs/{mod.name}/report").text
-    assert "the hub run's report" in client.get("/output/report").text
-    assert '<option value="2098-01-03"' in html        # the picker keeps the week
-    # with the override the run is back on every surface, unbadged here;
-    # the week stays in the picker while the archive holds another run's
-    # report (G06, OU-01), and leaves it once the archive holds this run
+    # Home's Weekly report is the same run's
+    assert "the modified run's report" in client.get("/output/report").text
+    # the picker keeps the week: its archive holds the hub run's report
+    assert '<option value="2098-01-03"' in html
+    assert "the hub run's report" in client.get(
+        "/output/report?date=2098-01-03").text
+    # a newer run with the override is shown, unbadged here (its files
+    # take the hub names); the week stays in the picker while the archive
+    # holds another run's report (G06, OU-01), and leaves it once the
+    # archive holds this run
     over = _run(root, "2098-01-03", [GH], spec=json.dumps(
         {"extra": K.write_extra({"oracle.w": 0.25}, {}, override="asked")}))
     (over / "report.html").write_text("<p>the override run's report</p>")
