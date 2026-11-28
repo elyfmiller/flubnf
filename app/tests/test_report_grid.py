@@ -451,7 +451,8 @@ def test_each_panel_names_its_h3_97_5_over_the_recent_level():
 def test_over_fifteen_times_reads_red():
     """Red above 15x the level. The figure is the model's own growth, before
     the upper-tail cap (Ely: "I would still like to see the growth
-    itself"), so on a capped run red marks where the cap moved the file."""
+    itself"); a capped run's own line is its cap
+    (test_report_red_follows_cap)."""
     at = G.tail_ratios(_wide(q975=15 * 3, obs=3.0))["analogue"]
     assert not at[1] and G._times(at[0]) == "15\u00d7"
     over = G.tail_ratios(_wide(q975=15 * 3 + 1, obs=3.0))["analogue"]

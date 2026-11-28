@@ -281,45 +281,136 @@ def flags(panel: dict) -> list:
     return out
 
 
-#: horizon 3's 97.5% quantile over the recent level above which a panel's
-#: figure turns red (Ely, 2026-10-28; the upper-tail cap's 15 times)
+#: the line a run with no cap reads its tail figures against: horizon 3's
+#: 97.5% quantile over the recent level above which a panel's figure turns
+#: red (Ely, 2026-10-28; the upper-tail cap's 15 times). A capped run's
+#: line is its own cap: the figure is over the level its cap multiplies,
+#: red above its n (cap_settings; decided 2026-11-27).
 TAIL_X = 15.0
 
+#: the level a figure is a multiple of (flubnf.tailcap.LEVELS; a run with
+#: no cap: "mean"), in the legend's words (tail_key) and in each figure's
+#: own (tail_words)
+LEVEL_WORDS = {"mean": "the average of the last three weeks of data",
+               "last": "the last week of data",
+               "larger": "the larger of the last week and the average of "
+                         "the last three weeks"}
+_LEVEL_SHORT = {"mean": "the last three weeks' average",
+                "last": "the last week's count",
+                "larger": "the larger of the last week and the three-week "
+                          "average"}
 
-def tail_ratios(panel: dict) -> dict:
-    """Each member's horizon-3 97.5% quantile over the location's recent
-    level, the upper-tail cap's own (flubnf.tailcap.recent_level: the mean
-    of the last three reported weeks), as {model: (ratio, over, filed)}:
-    `ratio` the model's own, before the output stage's upper-tail cap
-    (ui/pipeline.py hands the grid those; Ely, 2026-10-28, "I would still
-    like to see the growth itself"), `over` that above TAIL_X (_above), so
-    on a capped run red is where the cap moved the file; `filed` the
-    submitted file's ratio where it differs, else None. {} when the level
-    is 0 or unknown."""
-    from flubnf.tailcap import recent_level
-    o = panel.get("observed") or []
-    r = recent_level([v for _, v in o])
-    if not r > 0:
-        return {}
+
+#: the cap's level and form before their knobs existed (output.tail_level
+#: came on 2026-11-11, output.tail_mode before it): a run that records a cap
+#: but not these capped on the mean of the last three weeks, by clipping
+_LEVEL_BEFORE_KNOB, _MODE_BEFORE_KNOB = "mean", "clip"
+
+
+def cap_of_record(rec) -> dict | None:
+    """A run's upper-tail cap from what the run recorded ({"n", "level",
+    "mode"}, as the pipeline's outcome["tail_cap"] or a knobs.json's
+    values): {"n", "level", "levels": {member: level}
+    (flubnf.tailcap.member_levels), "mode"}. A cap the run did not record
+    is none, and a level or form it did not record is the one in force
+    before their knobs, never today's default. None for no cap (0, absent,
+    or a value that does not read). Never raises."""
+    import math
+    try:
+        from flubnf import tailcap
+        if not rec:
+            return None
+        n = float(rec.get("n", rec.get("output.tail_cap")) or 0)
+        if not (math.isfinite(n) and n > 0):
+            return None
+        level = str(rec.get("level", rec.get("output.tail_level"))
+                    or _LEVEL_BEFORE_KNOB)
+        levels = tailcap.member_levels(level)
+        mode = str(rec.get("mode", rec.get("output.tail_mode"))
+                   or _MODE_BEFORE_KNOB)
+    except Exception:
+        return None
+    return {"n": n, "level": level, "levels": levels, "mode": mode}
+
+
+def cap_settings(folder) -> dict | None:
+    """The run's own upper-tail cap, as the knobs.json beside its report
+    records it (app.core.knobs.read_record: the values the run used, written
+    for a modified run and carried into an archived week), through
+    cap_of_record. None for a run with no cap: no file (a shipped run), no
+    cap recorded, a cap of 0, or a file or value that does not read. Never
+    raises. It reads the file only: report_v2.render_bundle reads a
+    bundle's own recorded cap ("tail_cap") first and comes here only for an
+    older bundle."""
+    try:
+        from app.core.knobs import read_record
+        return cap_of_record(read_record(folder))
+    except Exception:
+        return None
+
+
+def _line(cap: dict | None) -> float:
+    """The red line: the run's own cap (cap_settings), else TAIL_X."""
+    return float(cap["n"]) if cap else TAIL_X
+
+
+def _x(n: float) -> str:
+    """A red line as the words print it: 15x, 10x, 12.5x."""
+    return f"{n:g}\u00d7"
+
+
+def _level_of(cap: dict | None, m: str) -> str:
+    """The level member `m`'s figure is a multiple of: its cap's level on a
+    capped run, the mean of the last three weeks without one (tail_ratios:
+    flubnf.tailcap.recent_level)."""
+    if not cap:
+        return "mean"
+    from flubnf.tailcap import LEVEL_PRODUCTION
+    return (cap.get("levels") or {}).get(m, LEVEL_PRODUCTION)
+
+
+def tail_ratios(panel: dict, cap: dict | None = None) -> dict:
+    """Each member's horizon-3 97.5% quantile over the location's level,
+    as {model: (ratio, over, filed)}: `ratio` the model's own, before the
+    output stage's upper-tail cap (ui/pipeline.py hands the grid those;
+    Ely, 2026-10-28, "I would still like to see the growth itself"),
+    `over` that above the red line (_above), `filed` the submitted file's
+    ratio where it differs, else None. Without a cap the level is the
+    upper-tail cap's registered one (flubnf.tailcap.recent_level: the mean
+    of the last three reported weeks) and the line TAIL_X; with the run's
+    cap (`cap`, cap_settings) the level is the one that member's cap
+    multiplies (tailcap.cap_level: the mean, the last week or the larger)
+    and the line the cap's n, so red is where the cap acts (rounding to
+    whole admissions, or a median already above the line, can leave the
+    file as it was; `filed` says where it changed). A member whose level is
+    0 or unknown has no figure."""
+    from flubnf.tailcap import cap_level, recent_level
+    vals = [v for _, v in panel.get("observed") or []]
+    line = _line(cap)
     own = panel.get("before") or panel.get("models") or {}
     filed = panel.get("submitted") or {}
     out = {}
     for m in MODELS:
         f = own.get(m)
-        if f:
-            q = float(f["q"][3][4])
-            s = filed.get(m)
-            qs = float(s["q"][3][4]) if s else q
-            out[m] = (q / r, _above(q / r), qs / r if qs != q else None)
+        if not f:
+            continue
+        r = cap_level(vals, _level_of(cap, m)) if cap else recent_level(vals)
+        if not r > 0:
+            continue
+        q = float(f["q"][3][4])
+        s = filed.get(m)
+        qs = float(s["q"][3][4]) if s else q
+        out[m] = (q / r, _above(q / r, line), qs / r if qs != q else None)
     return out
 
 
-def _above(x: float) -> bool:
-    """Whether a tail ratio is above TAIL_X, within the figure's last
-    decimal (_tail_times prints two at most): a ratio on the line is not
-    above it, float noise included (245 over the level of 16, 16, 17 is
-    15.000000000000002), nor one that still reads 15.00 (15.003)."""
-    return round(x, 2) > TAIL_X
+def _above(x: float, line: float = TAIL_X) -> bool:
+    """Whether a tail ratio is above the red line (TAIL_X, or a capped
+    run's n), within the figure's last decimal (_tail_times prints two at
+    most): a ratio on the line is not above it, float noise included (245
+    over the level of 16, 16, 17 is 15.000000000000002), nor one that
+    still reads 15.00 (15.003)."""
+    return round(x, 2) > line
 
 
 def _times(x: float) -> str:
@@ -328,20 +419,21 @@ def _times(x: float) -> str:
     return f"{x:.1f}\u00d7" if round(x, 1) < 10 else f"{x:.0f}\u00d7"
 
 
-def _tail_times(x: float, over: bool) -> str:
+def _tail_times(x: float, over: bool, line: float = TAIL_X) -> str:
     """A model's own tail figure (_times), never reading against the red
-    line: `over` is decided on the ratio to two decimals (_above), so where
-    the whole number would read as TAIL_X itself or on its wrong side
-    (15.18 and 14.58 both "15x", one red) the figure gets one decimal
-    (15.2x, 14.6x), a second only while a red one still reads 15.0
-    (15.04x), never more. Every other figure prints as _times does."""
+    line (TAIL_X, or a capped run's n): `over` is decided on the ratio to
+    two decimals (_above), so where the whole number would read as the
+    line itself or on its wrong side (15.18 and 14.58 both "15x", one red)
+    the figure gets one decimal (15.2x, 14.6x), a second only while a red
+    one still reads 15.0 (15.04x), never more. Every other figure prints
+    as _times does."""
     s = _times(x)
     v = float(s[:-1])
-    if v != TAIL_X and (v > TAIL_X) == over:
+    if v != line and (v > line) == over:
         return s
     for d in (1, 2):
         s = f"{x:.{d}f}\u00d7"
-        if not over or float(s[:-1]) > TAIL_X:
+        if not over or float(s[:-1]) > line:
             break
     return s
 
@@ -355,21 +447,36 @@ def flag_key(when: str = "the last target week") -> str:
 
 
 def tail_key(when: str = "the last target week",
-             capped: bool = False) -> str:
+             capped: bool = False, cap: dict | None = None,
+             models=MODELS) -> str:
     """The one legend line for the figures beside each location's name
     (_tail), in plain words under the legend: what "h3 97.5%" and each
-    model's figure are, when one turns red, and (`capped`: the cap changed
-    some location's file) what the arrow is. `when`: the last target week
-    ("Dec 19")."""
-    cap = (", before the cap" if capped else "")
+    model's figure are, what it is a multiple of, when one turns red, and
+    (`capped`: the cap changed some location's file) what the arrow is.
+    `when`: the last target week ("Dec 19"). `cap`: the run's own cap
+    (cap_settings): the figures are over the level it multiplies, each
+    drawn member's (`models`) named where they differ, red above its n;
+    None: over the last three weeks' average, red above TAIL_X."""
     arrow = (' <b class="g-tail-f">\u2192</b> marks the same figure in the '
              "submitted file, after the cap." if capped else "")
-    return ('<p class="g-tailkey"><b>h3 97.5%</b> is the top of each '
+    head = ('<p class="g-tailkey"><b>h3 97.5%</b> is the top of each '
             "model's 95% range for the last forecast week (h3, ending "
-            f"{_html.escape(when)}), as a multiple of the average of the "
-            f"last three weeks of data{cap}; "
-            '<span class="g-tail-over">red</span> above '
-            f"{TAIL_X:.0f}\u00d7.{arrow}</p>")
+            f"{_html.escape(when)})")
+    red = '<span class="g-tail-over">red</span> above '
+    if not cap:
+        before = ", before the cap" if capped else ""
+        return (f"{head}, as a multiple of {LEVEL_WORDS['mean']}{before}; "
+                f"{red}{_x(TAIL_X)}.{arrow}</p>")
+    lv = ([(m, _level_of(cap, m)) for m in reversed(MODELS) if m in models]
+          or [(m, _level_of(cap, m)) for m in reversed(MODELS)])
+    if len({v for _m, v in lv}) == 1:
+        of = f"{LEVEL_WORDS[lv[0][1]]}, the level the run's cap multiplies"
+    else:
+        of = ("the level the run's cap multiplies ("
+              + "; ".join(f"{_html.escape(_SHORT.get(m, m))}: "
+                          f"{LEVEL_WORDS[v]}" for m, v in lv) + ")")
+    return (f"{head}, before the cap, as a multiple of {of}; "
+            f"{red}{_x(_line(cap))}, the run's cap.{arrow}</p>")
 
 
 #: the flag key without a date (kept for callers that have no grid)
@@ -419,9 +526,11 @@ def _fmt(v: float) -> str:
     return f"{v:,.0f}"
 
 
-def panel_label(panel: dict) -> str:
+def panel_label(panel: dict, cap: dict | None = None) -> str:
     """A panel's spoken summary: the name, the latest count, each model's
-    median and 95% interval for the last target week, and the flags."""
+    median and 95% interval for the last target week, its tail figure
+    (tail_ratios; `cap`: the run's own cap, cap_settings), and the
+    flags."""
     name = str(panel.get("name") or panel.get("key") or "")
     o = panel.get("observed") or []
     fans = panel.get("models") or {}
@@ -440,11 +549,12 @@ def panel_label(panel: dict) -> str:
                         f"95% interval {_fmt(r[0])} to {_fmt(r[4])}")
     if o and not fans:
         bits.append("no forecast")
-    for m, (x, over, filed) in sorted(tail_ratios(panel).items(),
+    of = "the cap's level" if cap else "the recent level"
+    for m, (x, over, filed) in sorted(tail_ratios(panel, cap).items(),
                                       key=lambda kv: kv[0] != "pf"):
         bits.append(f"{_SHORT[m]} 4-week-ahead 97.5% quantile "
-                    f"{x:.1f} times the recent level"
-                    + (f", above {TAIL_X:.0f}" if over else "")
+                    f"{x:.1f} times {of}"
+                    + (f", above {_line(cap):g}" if over else "")
                     + (f", {filed:.1f} as submitted" if filed is not None
                        else ""))
     fl = flags(panel)
@@ -483,11 +593,12 @@ def _scale(panel: dict, whole: bool = False):
 
 
 def panel_svg(panel: dict, idx: int, colors: dict, w: int = W, h: int = H,
-              fs: float = 9) -> tuple:
+              fs: float = 9, cap: dict | None = None) -> tuple:
     """One location's panel as inline SVG, and whether a 95% band runs
     off its scale. `w`, `h`: the viewBox (the national panel under the map
     is wide and short); `fs`: the axis text size in viewBox units, the
-    margins scaled with it."""
+    margins scaled with it; `cap`: the run's own cap (its spoken summary,
+    panel_label)."""
     k = fs / 9.0
     ml, mr, mt, mb = ML * k, MR * k, MT * k, MB * k
     o = panel.get("observed") or []
@@ -510,7 +621,7 @@ def panel_svg(panel: dict, idx: int, colors: dict, w: int = W, h: int = H,
 
     cid = f"gclip{idx}"
     parts = [f'<svg class="g-svg" viewBox="0 0 {w} {h}" role="img" '
-             f'aria-label="{_html.escape(panel_label(panel))}">',
+             f'aria-label="{_html.escape(panel_label(panel, cap))}">',
              f'<defs><clipPath id="{cid}"><rect x="{ml:.1f}" y="{mt:.1f}" '
              f'width="{w - ml - mr:.1f}" height="{h - mt - mb + 3 * k:.1f}"/>'
              '</clipPath>'
@@ -607,26 +718,32 @@ def _latest(p: dict) -> str:
             '</span>')
 
 
-def tail_words(m: str, x: float, over: bool, filed) -> str:
+def tail_words(m: str, x: float, over: bool, filed,
+               cap: dict | None = None) -> str:
     """One model's figure spelled out (M-E12's form): "97.5% at h3 = 24x
     the last three weeks' average (name), above 15x, submitted 11x", the
     model's own figure as the token beside the name prints it
-    (_tail_times: 15.2x above 15x, 14.6x below)."""
-    return (f"97.5% at h3 = {_tail_times(x, over)} the last three weeks' "
-            f"average ({_SHORT.get(m, m)})"
-            + (f", above {TAIL_X:.0f}\u00d7" if over else "")
+    (_tail_times: 15.2x above 15x, 14.6x below). `cap`: the run's own cap
+    (cap_settings): the figure is over the level that member's cap
+    multiplies and the line is its n ("... 12x the last week's count
+    (name), above 10x")."""
+    line = _line(cap)
+    return (f"97.5% at h3 = {_tail_times(x, over, line)} "
+            f"{_LEVEL_SHORT[_level_of(cap, m)]} ({_SHORT.get(m, m)})"
+            + (f", above {_x(line)}" if over else "")
             + (f", submitted {_times(filed)}" if filed is not None else ""))
 
 
-def _tail(p: dict, colors: dict) -> str:
-    """Beside the name: each model's horizon-3 97.5% quantile over the
-    recent level (tail_ratios), after its colour's dot, red above TAIL_X
-    (_tail_times: the figure never reads against that line), then the
-    submitted file's where the cap moved it. Each figure carries
-    its words for assistive tech (tail_words; the marks are hidden from
-    it) and the hover says them all. A legend switch hides its model's
-    figure. "" without a level."""
-    rs = tail_ratios(p)
+def _tail(p: dict, colors: dict, cap: dict | None = None) -> str:
+    """Beside the name: each model's horizon-3 97.5% quantile over its
+    level (tail_ratios; `cap`: the run's own cap, cap_settings), after its
+    colour's dot, red above the line (TAIL_X, or the cap's n; _tail_times:
+    the figure never reads against it), then the submitted file's where
+    the cap moved it. Each figure carries its words for assistive tech
+    (tail_words; the marks are hidden from it) and the hover says them
+    all. A legend switch hides its model's figure. "" without a level."""
+    rs = tail_ratios(p, cap)
+    line = _line(cap)
     if not rs:
         return ""
     vals, why = [], []
@@ -634,7 +751,7 @@ def _tail(p: dict, colors: dict) -> str:
         if m not in rs:
             continue
         x, over, filed = rs[m]
-        words = tail_words(m, x, over, filed)
+        words = tail_words(m, x, over, filed, cap)
         then = (f'<span class="g-tail-f" aria-hidden="true">'
                 f'\u2192{_times(filed)}</span>'
                 if filed is not None else "")
@@ -643,7 +760,7 @@ def _tail(p: dict, colors: dict) -> str:
                     f'<i aria-hidden="true" style="'
                     f'background:{model_color(m, colors)}"></i>'
                     f'<span class="{"g-tail-over" if over else "g-tail-own"}"'
-                    f' aria-hidden="true">{_tail_times(x, over)}</span>'
+                    f' aria-hidden="true">{_tail_times(x, over, line)}</span>'
                     f'{then}</span>')
         why.append(words)
     return (f'<span class="g-tail" title="{_html.escape("; ".join(why))}">'
@@ -677,22 +794,23 @@ def cap_moves(panel: dict) -> list:
             for m in reversed(MODELS) if m in s and m in own]
 
 
-def cap_parts(panel: dict, uid: str) -> tuple:
+def cap_parts(panel: dict, uid: str, cap: dict | None = None) -> tuple:
     """A changed location's "cap applied" link and its line, ("", "") for
     a location the cap did not change. The link shows the location before
     the cap (report_v2's handler: every link for one location moves
     together, whatever the report-wide switch says); the line gives each
     moved model's h3 97.5% before and after, in admissions and as a
-    multiple of the last three weeks' average, the multiples printed as
-    the figures beside the name print them (_tail: a 15.18 reads 15.2x in
-    both). `uid`: unique per place (the panel, the feature, a detail
-    section)."""
+    multiple of its level (tail_ratios: the last three weeks' average, or
+    with `cap`, the run's own cap from cap_settings, the level that
+    member's cap multiplies), the multiples printed as the figures beside
+    the name print them (_tail: a 15.18 reads 15.2x in both). `uid`:
+    unique per place (the panel, the feature, a detail section)."""
     moves = cap_moves(panel)
     if not moves:
         return "", ""
     key = _html.escape(str(panel.get("data_key", panel.get("key", ""))))
     lid = "gcap-" + _html.escape(str(uid))
-    rs = tail_ratios(panel)
+    rs = tail_ratios(panel, cap)
     bits = []
     for m, b, a in moves:
         name = _SHORT.get(m, m)
@@ -702,7 +820,8 @@ def cap_parts(panel: dict, uid: str) -> tuple:
         x = ""
         if m in rs:                                 # no level, no multiples
             own, over, filed = rs[m]
-            x = f" ({_tail_times(own, over)} \u2192 {_times(filed)})"
+            x = (f" ({_tail_times(own, over, _line(cap))} \u2192 "
+                 f"{_times(filed)})")
         bits.append(f"{name} {_fmt(b)} \u2192 {_fmt(a)}{x}")
     where = _html.escape(str(panel.get("name") or panel.get("key") or ""))
     link = (f'<button type="button" class="g-capbtn" data-cap-key="{key}" '
@@ -716,20 +835,23 @@ def cap_parts(panel: dict, uid: str) -> tuple:
 
 
 def _figure(p: dict, title: str, fl: str, idx: int, colors: dict,
-            cls: str = "gpanel", anchor: bool = True, **size) -> str:
+            cls: str = "gpanel", anchor: bool = True,
+            cap: dict | None = None, **size) -> str:
     """One panel: the name and latest count, the tail figures, a "cap
     applied" link where the file differs from the model's own, then the
     flags at the right and the link's line (closed), then the chart (the
-    drawing as it opens, the submitted fans). `anchor` is kept for
-    callers."""
-    svg, _clipped = panel_svg(shown(p), idx, colors, **size)
+    drawing as it opens, the submitted fans). `cap`: the run's own cap
+    (cap_settings), which the figures are read against. `anchor` is kept
+    for callers."""
+    svg, _clipped = panel_svg(shown(p), idx, colors, cap=cap, **size)
     key = _html.escape(str(p.get("key", "")))
     flags_html = f'<span class="g-flags">{fl}</span>' if fl else ""
     data_key = str(p.get("data_key", p.get("key", "")))
-    link, line = cap_parts(dict(p, data_key=data_key), p.get("key", ""))
+    link, line = cap_parts(dict(p, data_key=data_key), p.get("key", ""),
+                           cap)
     return (f'<figure class="{cls}" id="g-{key}" '
             f'data-key="{_html.escape(data_key)}">'
-            f'<figcaption><b>{title}</b>{_latest(p)}{_tail(p, colors)}'
+            f'<figcaption><b>{title}</b>{_latest(p)}{_tail(p, colors, cap)}'
             f'{link}{flags_html}{line}'
             f'</figcaption>{svg}</figure>')
 
@@ -771,9 +893,11 @@ def _drawn(panels) -> tuple:
                  if any((p.get("models") or {}).get(m) for p in panels))
 
 
-def us_feature_html(grid: dict | None, colors: dict) -> str:
+def us_feature_html(grid: dict | None, colors: dict,
+                    cap: dict | None = None) -> str:
     """The national panel at a larger size, for the space under the map
-    ("" when the run has no US panel)."""
+    ("" when the run has no US panel). `cap`: the run's own cap
+    (cap_settings), which its figures are read against."""
     us = next((p for p in (grid or {}).get("panels") or []
                if p.get("key") == "US"), None)
     if not us:
@@ -787,14 +911,17 @@ def us_feature_html(grid: dict | None, colors: dict) -> str:
             + _figure(dict(us, key="US-feature", data_key="US"),
                       "United States",
                       _flag_spans(shown(us)), 999, colors,
-                      cls="gpanel g-feature",
-                      anchor=False, w=FEATURE_W, h=FEATURE_H, fs=FEATURE_FS)
+                      cls="gpanel g-feature", anchor=False, cap=cap,
+                      w=FEATURE_W, h=FEATURE_H, fs=FEATURE_FS)
             + head + "</aside>")
 
 
-def grid_html(grid: dict | None, colors: dict, details=()) -> str:
+def grid_html(grid: dict | None, colors: dict, details=(),
+              cap: dict | None = None) -> str:
     """The "All locations" section ("" without a grid). `details`: report
-    keys that have a detail section (their panel title opens it)."""
+    keys that have a detail section (their panel title opens it). `cap`:
+    the run's own cap (cap_settings): the tail figures and their legend
+    line are read against it; None: against TAIL_X."""
     if not grid or not grid.get("panels"):
         return ""
     panels = grid["panels"]
@@ -803,8 +930,8 @@ def grid_html(grid: dict | None, colors: dict, details=()) -> str:
     pages = [panels[i:i + PER_PAGE] for i in range(0, len(panels), PER_PAGE)]
     drawn = _drawn(panels)
     # the tail figures' legend line, once, on the first page
-    key_line = (tail_key(when, any_capped(grid))
-                if any(tail_ratios(shown(p)) for p in panels) else "")
+    key_line = (tail_key(when, any_capped(grid), cap, drawn)
+                if any(tail_ratios(shown(p), cap) for p in panels) else "")
     out = ['<section class="card rp-grid" id="all-locations" '
            'aria-labelledby="h-grid">',
            '<div class="uk-heading"><h2 id="h-grid">All locations</h2></div>']
@@ -822,7 +949,7 @@ def grid_html(grid: dict | None, colors: dict, details=()) -> str:
                      if key in details else name)
             fl = _flag_spans(shown(p))
             out.append(_figure(p, title, fl, (k - 1) * PER_PAGE + i,
-                               colors))
+                               colors, cap=cap))
         out.append("</div></div>")
     out.append("</section>")
     return "".join(out)

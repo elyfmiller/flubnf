@@ -1095,6 +1095,33 @@ def write_record(path, spec) -> bool:
     return True
 
 
+def read_record(folder) -> dict:
+    """The knob values a run folder's knobs.json records, as the run used
+    them: every knob of its "effective" table (the value at run time,
+    defaults included), overlaid by its "values" (write_record; an
+    archived week carries the file with its report). A knob that did not
+    exist when the run ran is absent, never filled from today's default.
+    {} for a shipped run (no file) and for a file that does not read:
+    never raises."""
+    from pathlib import Path
+    try:
+        body = json.loads((Path(folder) / "knobs.json").read_text(
+            encoding="utf-8"))
+    except (OSError, ValueError, TypeError):
+        return {}
+    if not isinstance(body, Mapping):
+        return {}
+    out = {}
+    rows = body.get("effective")
+    for r in rows if isinstance(rows, list) else ():
+        if isinstance(r, Mapping) and isinstance(r.get("key"), str):
+            out[r["key"]] = r.get("value")
+    vals = body.get("values")
+    if isinstance(vals, Mapping):
+        out.update(vals)
+    return out
+
+
 def legacy_settings_knobs(settings: Mapping) -> dict:
     """The non-default knob set a retrospective's run record implies: its
     recorded knobs, or, for a record from before the registry, what its
