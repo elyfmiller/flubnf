@@ -683,22 +683,26 @@ def cap_parts(panel: dict, uid: str) -> tuple:
     the cap (report_v2's handler: every link for one location moves
     together, whatever the report-wide switch says); the line gives each
     moved model's h3 97.5% before and after, in admissions and as a
-    multiple of the last three weeks' average. `uid`: unique per place
-    (the panel, the feature, a detail section)."""
+    multiple of the last three weeks' average, the multiples printed as
+    the figures beside the name print them (_tail: a 15.18 reads 15.2x in
+    both). `uid`: unique per place (the panel, the feature, a detail
+    section)."""
     moves = cap_moves(panel)
     if not moves:
         return "", ""
-    from flubnf.tailcap import recent_level
     key = _html.escape(str(panel.get("data_key", panel.get("key", ""))))
     lid = "gcap-" + _html.escape(str(uid))
-    r = recent_level([v for _, v in panel.get("observed") or []])
+    rs = tail_ratios(panel)
     bits = []
     for m, b, a in moves:
         name = _SHORT.get(m, m)
         if b == a:
             bits.append(f"{name} {_fmt(b)}, unchanged")
             continue
-        x = f" ({_times(b / r)} \u2192 {_times(a / r)})" if r > 0 else ""
+        x = ""
+        if m in rs:                                 # no level, no multiples
+            own, over, filed = rs[m]
+            x = f" ({_tail_times(own, over)} \u2192 {_times(filed)})"
         bits.append(f"{name} {_fmt(b)} \u2192 {_fmt(a)}{x}")
     where = _html.escape(str(panel.get("name") or panel.get("key") or ""))
     link = (f'<button type="button" class="g-capbtn" data-cap-key="{key}" '

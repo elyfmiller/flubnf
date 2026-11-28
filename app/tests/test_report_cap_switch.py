@@ -164,6 +164,29 @@ def test_only_a_changed_card_carries_the_link_with_its_figures(tmp_path):
     assert "data-cap-key" not in _section(html, 'id="us-feature"', "</aside>")
 
 
+def test_the_line_prints_the_before_figure_as_the_card_does(tmp_path):
+    """Beside the red line the card's figure takes a decimal (15.2x, red);
+    the "cap applied" line gives the same figure, on the card and in the
+    detail section, never a whole "15x" beside it."""
+    b = _bundle()
+    oh = next(p for p in b["grid"]["panels"] if p["key"] == "OH")
+    oh["models"]["pf"]["q"][3][4] = 334.0           # level 22: 15.18x
+    _filed(tmp_path, oh, top=286.0)                 # 13x
+    html = report_v2.render_bundle(b, tmp_path / "r.html").read_text(
+        encoding="utf-8")
+    card = _figure(html, "OH")
+    assert '<span class="g-tail-over" aria-hidden="true">15.2×</span>' in card
+    assert '<span class="g-tail-f" aria-hidden="true">→13×' in card
+    pf_name = G._SHORT["pf"]
+    want = ("Shown before the cap. h3 97.5%, before → submitted: "
+            f"{pf_name} 334 → 286 (15.2× → 13×).")
+    detail = _section(html, '<section class="state" id="st-OH"')
+    for where, uid in ((card, "OH"), (detail, "st-OH")):
+        line = re.search(rf'<p class="g-capline" id="gcap-{uid}" '
+                         rf'data-cap-line="OH" hidden>([^<]+)</p>', where)
+        assert line and line.group(1) == want, where
+
+
 def test_the_link_follows_the_card_into_the_feature_and_the_detail(tmp_path):
     """A capped United States carries the link on its panel, on the
     larger panel under the map and in its detail, one key, unique ids."""
