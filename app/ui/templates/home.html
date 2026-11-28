@@ -455,6 +455,12 @@
     lines above already say so, and how to add it #}
  {% set ebv = engine_build_view() %}
  {% if not (engine_absent and ebv.engine == "public" and not ebv.known) %}{% with eb_id = "home" %}{% include "_engine_build.html" %}{% endwith %}{% endif %}
+ {# the card's outcome is its heading's badge ("All components
+    installed", or how many are not) and the lines to act on above; the
+    engine in words and each component's version or build (commits
+    included) sit under it in a closed fold that remembers this
+    reader's choice #}
+ {% call tips.fold("Component versions", id="hm-versions-fold", cls="hm-versions-fold", remember=True) %}
  {# the engine this copy runs, in words (engine_build.engine_words):
     the public engine, the default, or the private one, the
     fallback, which this copy records #}
@@ -484,6 +490,7 @@
   {% set v %}<span data-vkey="{{ key }}">{{ versions[key] }}</span>{% endset %}
   {{ tips.stat(name, v, id="hm-v-" ~ key) }}
   {% endfor %}
+ {% endcall %}
  {% endcall %}
  {# a version that was still resolving at paint lands through base.html's
     poll: once none is, the badge is drawn again counting what is missing

@@ -279,9 +279,14 @@
 
 {# progressive disclosure: a closed fold whose summary says what is inside
    ("3 missing locations"), the list or detail in the body (a call block).
-   `after` is markup in the summary after its text (a badge). #}
-{% macro fold(summary, id="", open=False, after="", cls="") -%}
-<details class="uk-fold{% if cls %} {{ cls }}{% endif %}"{% if id %} id="{{ id }}"{% endif %}{% if open %} open{% endif %}><summary><span class="uk-fold-sum">{{ summary }}</span>{% if after %} {{ after }}{% endif %}</summary><div class="uk-fold-body">{{ caller() }}</div></details>
+   `after` is markup in the summary after its text (a badge). `open`: the
+   page asks for it open (something inside needs a look). `remember`
+   (with an id): the reader's own open or closed choice is kept in this
+   browser under "fold:<id>" (tips.js) and comes back on the next visit;
+   a fold the page asks open, or one a link points into, opens whatever
+   was kept. Without script or storage it is a plain fold. #}
+{% macro fold(summary, id="", open=False, after="", cls="", remember=False) -%}
+<details class="uk-fold{% if cls %} {{ cls }}{% endif %}"{% if id %} id="{{ id }}"{% endif %}{% if open %} open{% endif %}{% if remember and id %} data-remember{% endif %}><summary><span class="uk-fold-sum">{{ summary }}</span>{% if after %} {{ after }}{% endif %}</summary><div class="uk-fold-body">{{ caller() }}</div></details>
 {%- endmacro %}
 
 {# a row of facts instead of a sentence: items are (icon, text), (icon,

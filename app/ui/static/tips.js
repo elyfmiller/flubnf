@@ -417,3 +417,54 @@
                      progress: progress, setProgress: setProgress,
                      place: placeBy};
 })();
+
+/* Folds that remember (tips.fold with remember and an id: the
+   data-remember attribute). A fold the page leaves closed opens again
+   where this reader last left it open (localStorage "fold:<id>", '1'
+   open, '0' closed); a fold the page asks open stays open. A link to
+   something inside a closed fold opens that fold, on load and on a hash
+   change, without counting as the reader's choice. Storage that throws
+   (a private window, file:, blocked site data) leaves each fold as the
+   page drew it; without this script a fold is a plain <details>. ES5. */
+(function () {
+  var PREFIX = 'fold:';
+  function kept(id) {
+    try { return window.localStorage.getItem(PREFIX + id); }
+    catch (e) { return null; }
+  }
+  function keep(id, open) {
+    try { window.localStorage.setItem(PREFIX + id, open ? '1' : '0'); }
+    catch (e) { /* storage off: no memory, the fold still works */ }
+  }
+  // opened by the page's script, not the reader: the toggle event that
+  // follows (it is queued) is not stored
+  function openQuietly(d) {
+    if (d.open) return;
+    d.ukQuiet = true;
+    d.open = true;
+  }
+  function isFold(el) {
+    return el.localName === 'details'
+      && (' ' + el.className + ' ').indexOf(' uk-fold ') >= 0;
+  }
+  // every fold holding (or being) the element the address points at
+  function openTarget() {
+    var h = '';
+    try { h = decodeURIComponent(String(location.hash || '').slice(1)); }
+    catch (e) { return; }
+    for (var t = h ? document.getElementById(h) : null;
+         t && t.nodeType === 1; t = t.parentNode)
+      if (isFold(t)) openQuietly(t);
+  }
+  var folds = document.querySelectorAll('details.uk-fold[data-remember]');
+  for (var i = 0; i < folds.length; i++) (function (d) {
+    if (!d.id) return;
+    if (!d.hasAttribute('open') && kept(d.id) === '1') openQuietly(d);
+    d.addEventListener('toggle', function () {
+      if (d.ukQuiet) { d.ukQuiet = false; return; }
+      keep(d.id, d.open);
+    });
+  })(folds[i]);
+  openTarget();
+  window.addEventListener('hashchange', openTarget);
+})();

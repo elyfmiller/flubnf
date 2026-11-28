@@ -275,7 +275,7 @@ def test_the_run_page_names_a_modified_runs_files_once(tmp_path,
     page = client.get(f"/runs/{rid}").text
     assert 'id="modified-note"' in page and "Files named" in page
     rec = page.split('class="card runrec"', 1)[1]
-    rec = rec.split("Produced by", 1)[0]
+    rec = rec.split('id="run-versions"', 1)[0]
     assert "<dt>files</dt>" not in rec
     assert "<strong>Settings</strong>" not in rec
     assert "<dt>model settings</dt>" in rec

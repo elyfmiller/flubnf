@@ -93,7 +93,7 @@ def test_with_no_hub_folder_update_data_is_never_the_primary(
                                                    behind=0, is_fresh=False,
                                                    detail="no hub"))
     r = client.post("/freshness", headers={"accept": "application/json"})
-    assert r.json()["behind"] is False
+    assert r.json()["new_data"] is False
 
 
 # ------------------------------------------------ protected folders

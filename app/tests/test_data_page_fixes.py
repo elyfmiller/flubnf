@@ -103,13 +103,13 @@ def test_missing_comparators_name_their_remedy_and_make_update_data_primary(arch
             '<span class="hint">Update data adds them.</span>') in html
     assert 'class="gold" id="hub-pull"' in html
     assert 'class="quiet" id="hub-check"' in html
-    # a check's JSON answer counts them as "behind" too
+    # a check's JSON answer counts them as new data too
     monkeypatch.setattr(data_mod, "check_freshness",
                         lambda: data_mod.Freshness(local_latest=V2, remote_latest=V2,
                                                    behind=0, is_fresh=True,
                                                    detail="up to date"))
     r = client.post("/freshness", headers={"accept": "application/json"})
-    assert r.json()["behind"] is True
+    assert r.json()["new_data"] is True
 
     # a pull that adds the folders says so
     def fake_pull():

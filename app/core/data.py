@@ -28,7 +28,7 @@ from typing import Optional
 import pandas as pd
 
 from flubnf import vintages as shipped_vintages
-from flubnf.settings import ARCHIVE, HUB, LOCATIONS  # noqa: F401
+from flubnf.settings import ARCHIVE, HUB, HUB_DIRS, LOCATIONS  # noqa: F401
 
 #: the committed snapshots for the as-of weeks the hub archive skipped
 #: (flubnf/vintages.py); a module-level name so tests can point it at an
@@ -153,6 +153,9 @@ def no_data_weeks() -> dict:
 #: the hub's live target file, relative to the clone: `git pull` rewrites it
 #: every week, the dated archive copy (vintage_path) is added by hand later
 LIVE_TARGET = "target-data/target-hospital-admissions.csv"
+#: the vintage archive and the locations file, as paths in the hub
+_ARCHIVE_DIR = ARCHIVE.relative_to(HUB).as_posix()
+_LOCATIONS_FILE = LOCATIONS.relative_to(HUB).as_posix()
 
 _live_cache: dict = {}
 
@@ -414,15 +417,32 @@ class Freshness:
     local_live: Optional[str] = None     # the working file's newest week
     remote_live: Optional[str] = None    # origin's target file's newest week
     tree_stale: bool = False             # the file on disk is not HEAD's
+    #: after a check that found commits but no new week: the folders
+    #: FluBNF reads (HUB_DIRS) whose files those commits change, () for
+    #: none; None when not asked or git could not say (_changed_hub_dirs)
+    changed: Optional[tuple] = None
+
+    @property
+    def offline(self) -> bool:
+        """Whether the fetch failed for want of a network (no host, no
+        connection, a timeout, TLS), not because git refused the clone
+        itself (dubious ownership, not a git repository, a file at the hub
+        path), which a working connection does not cure. check_freshness
+        keeps the fetch's network line when its stderr has one, whatever
+        git's fatal line says (_fetch_reason)."""
+        return (self.detail.startswith("fetch failed")
+                and bool(_OFFLINE_RE.search(_unquoted(self.detail))))
 
     def pill(self) -> tuple:
-        """(class, words) for the Data tab's hub-clone pill: ok "up to
-        date"; warn "N weeks behind", "new vintage", "N commits behind",
-        "stale files"; bad "offline"."""
+        """(class, words) for the Data tab's hub-clone badge, in the card's
+        "Hub clone details" fold: ok "up to date"; warn "N weeks behind",
+        "new vintage", "stale files"; neutral "N commits behind" (commits
+        that bring no new week ask nothing of the reader); bad
+        "offline", or "check failed" for a fetch git refused."""
         if self.detail.startswith("no hub clone"):
             return "bad", "missing"
         if self.detail.startswith("fetch failed"):
-            return "bad", "offline"
+            return "bad", "offline" if self.offline else "check failed"
         if self.remote_live and (not self.local_live
                                  or self.remote_live > self.local_live):
             if not self.local_live:
@@ -434,19 +454,96 @@ class Freshness:
         if (self.remote_latest and self.local_latest
                 and self.remote_latest > self.local_latest):
             return "warn", "new vintage"
-        if self.behind:
-            return "warn", (f"{self.behind} commit"
-                            f"{'s' if self.behind != 1 else ''} behind")
+        # a file on disk that is not origin's matters more than a count
         if self.tree_stale:
             return "warn", "stale files"
+        if self.behind:
+            return "neutral", (f"{self.behind} commit"
+                               f"{'s' if self.behind != 1 else ''} behind")
         if self.is_fresh:
             return "ok", "up to date"
         return "warn", "not checked"
 
 
+#: a failed fetch's words when the hub could not be reached (git's, curl's
+#: or ssh's), matched outside quoted paths; any other failure is git
+#: refusing the clone itself (Freshness.offline)
+_OFFLINE_RE = re.compile(
+    r"could not resolve host|could not resolve proxy|unable to access|"
+    r"failed to connect|couldn't connect|connection refused|"
+    r"connection reset|timed out|network is unreachable|no route to host|"
+    r"host is down|bad file number|connection closed by|"
+    r"kex_exchange_identification|rpc failed|transfer closed|"
+    r"\bssl\b|\bssl_|gnutls|\btls\b", re.I)
+
 #: git's refusal when another command holds one of its locks; its last line
 #: ("remove the file manually to continue") names no file
 _LOCKED_RE = re.compile(r"Unable to create '([^']*\.lock)': File exists")
+
+
+def _git_fatal_line(r) -> str:
+    """Why a git command failed, in one line: its fatal line (the last
+    line can be a fragment, such as a usage hint), else its last stderr
+    line, else the exit code."""
+    err = [l.strip() for l in (r.stderr or "").splitlines() if l.strip()]
+    return next((l for l in err if l.startswith("fatal:")),
+                err[-1] if err else f"git exited {r.returncode}")
+
+
+def _unquoted(text: str) -> str:
+    """`text` without its quoted parts (paths, URLs), whose own words
+    (ssl, timed out) say nothing about the network."""
+    return re.sub(r"'[^']*'", "", text)
+
+
+def _fetch_reason(r) -> str:
+    """Why a fetch failed, in one line: the line saying the hub could not
+    be reached when its stderr has one (ssh's and curl's words come on a
+    line before git's fatal one, which then says only "Could not read
+    from remote repository" or "expected flush after ref listing"), else
+    git's fatal line (_git_fatal_line). Indented lines are git's advice
+    (a command to run, with an unquoted path), never its reason."""
+    for raw in (r.stderr or "").splitlines():
+        if (raw.strip() and not raw[:1].isspace()
+                and _OFFLINE_RE.search(_unquoted(raw))):
+            return raw.strip()
+    return _git_fatal_line(r)
+
+
+def _read_here(path: str) -> bool:
+    """Whether FluBNF reads the hub file `path`: of target-data only the
+    live admissions file (LIVE_TARGET), of auxiliary-data only the
+    vintage archive and locations.csv, and every comparator forecast. The
+    hub's other files in those folders (the ED-visit targets, oracle
+    output, HUB_SKIPPED) change on their own and are no news here."""
+    if path in HUB_SKIPPED:
+        return False
+    if path.startswith("target-data/"):
+        return path == LIVE_TARGET
+    if path.startswith("auxiliary-data/"):
+        return (path.startswith(_ARCHIVE_DIR + "/")
+                or path == _LOCATIONS_FILE)
+    return True
+
+
+def _changed_hub_dirs() -> Optional[tuple]:
+    """The folders FluBNF reads (HUB_DIRS, in that order) holding files
+    it reads (_read_here) that differ between the clone's HEAD and
+    origin/main; () for none. Trees only, without rename detection, so a
+    partial clone fetches no file for it. None when git could not say."""
+    try:
+        r = subprocess.run(
+            ["git", "diff", "--name-only", "--no-renames", "HEAD",
+             "origin/main", "--", *HUB_DIRS],
+            cwd=HUB, capture_output=True, text=True, timeout=30)
+    except (OSError, subprocess.SubprocessError):
+        return None
+    if r.returncode != 0:
+        return None
+    files = [p.strip() for p in (r.stdout or "").splitlines()]
+    files = [p for p in files if p and _read_here(p)]
+    return tuple(d for d in HUB_DIRS
+                 if any(p.startswith(d + "/") for p in files))
 
 
 def _git_last_line(r) -> str:
@@ -497,6 +594,7 @@ def check_freshness(fetch: bool = True) -> Freshness:
     local_latest = local[-1] if local else None
     behind, remote_latest, detail = None, None, ""
     local_live, remote_live, stale = live_newest_week(), None, False
+    changed = None
     # no folder to compare: said as such, not as an offline fetch
     why = hub_missing(data=False)
     if why:
@@ -509,16 +607,17 @@ def check_freshness(fetch: bool = True) -> Freshness:
             if f.returncode != 0:
                 # a network failure exits nonzero without raising; reading the
                 # stale origin/main would then say "up to date". Offline is never fresh.
-                err = (f.stderr or "").strip().splitlines()
-                # prefer git's fatal line: the last line can be a fragment
-                fatal = next((l for l in err if l.startswith("fatal:")),
-                             err[-1] if err else f"git exited {f.returncode}")
-                detail = f"fetch failed: {fatal}"
+                detail = f"fetch failed: {_fetch_reason(f)}"
             else:
                 r = subprocess.run(
                     ["git", "rev-list", "--count", "HEAD..origin/main"],
                     cwd=HUB, capture_output=True, text=True, timeout=15)
                 behind = int(r.stdout.strip()) if r.returncode == 0 else None
+                if behind is None:
+                    # no count to compare by: git's reason, unless origin's
+                    # files show newer data anyway (below)
+                    detail = ("could not compare with origin: "
+                              + _git_fatal_line(r))
                 ls = subprocess.run(
                     ["git", "ls-tree", "-r", "--name-only", "origin/main",
                      "auxiliary-data/target-data-archive/"],
@@ -550,14 +649,19 @@ def check_freshness(fetch: bool = True) -> Freshness:
         detail = (f"new vintage {remote_latest} upstream (local "
                   f"{local_latest}): Update data")
     elif behind:
-        detail = f"{behind} commit(s) behind origin, no new vintage yet"
+        # "no new week" only when origin's file was read to say so
+        detail = (f"{behind} commit{'s' if behind != 1 else ''} behind "
+                  "origin" + (", no new week of data" if remote_live else ""))
+        # most commits are other teams' forecasts, which the sparse clone
+        # never holds: whether they touch what FluBNF reads
+        changed = _changed_hub_dirs()
     elif stale and behind == 0:
         detail = "the target file on disk is not origin's: Update data"
     elif behind == 0:
         detail = "up to date with origin"
     is_fresh = detail == "up to date with origin"
     return Freshness(local_latest, remote_latest, behind, is_fresh, detail,
-                     local_live, remote_live, stale)
+                     local_live, remote_live, stale, changed)
 
 
 def _hub_not_own_repo():

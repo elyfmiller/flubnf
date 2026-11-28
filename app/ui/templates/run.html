@@ -136,7 +136,17 @@
 {% if results and not live %}<div class="card">{{ tips.heading("Results", after=(results_tip | safe if results_tip else "")) }}{{ results | safe }}</div>{% endif %}
 <div class="card runrec">{{ tips.heading("Run settings", "run-settings") }}
  {{ settings_html(settings, title="") | safe }}
- {{ settings_html(versions, title="Produced by") | safe }}
+ {# the software that produced the run (app build, engine versions, the
+    engine's commit): a closed fold that remembers this reader's choice.
+    A run made on another engine build than production says so on the
+    fold's own line, since that can change what its numbers mean #}
+ {% set produced = settings_html(versions, title="") %}
+ {% if produced %}
+ {% set off_prod = namespace(v=false) %}
+ {% for k, v in versions if "not the production build" in (v | string) %}{% set off_prod.v = true %}{% endfor %}
+ {% call tips.fold("Software versions", id="run-versions", remember=True,
+                   after=(tips.badge("warn", "not the production build", id="run-versions-warn") if off_prod.v else "")) %}{{ produced | safe }}{% endcall %}
+ {% endif %}
 </div>
 </div>
 {% endif %}

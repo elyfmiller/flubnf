@@ -58,7 +58,7 @@
  <span class="st-shown" id="st-shown" aria-live="polite"></span>
 </div>
 {% if (ledger_total | default(0)) > (ledger | length) %}
-{{ tips.alert("info", "Showing the newest " ~ (ledger | length) ~ " of " ~ ledger_total ~ " runs.", id="st-cap", live="", tiptext="The table holds the newest runs only; older rows stay in the ledger, and each run's page opens from its workroot under On disk.") }}
+{{ tips.alert("info", "Showing the newest " ~ (ledger | length) ~ " of " ~ ledger_total ~ " runs.", id="st-cap", live="", tiptext="The table holds the newest runs only; older rows stay in the ledger, and each run's page still opens from its row under On disk.") }}
 {% endif %}
 {# a row with no elapsed shows a dash (hms renders None): a run still
    going or cut short has none yet, and rows from before elapsed was
