@@ -24,6 +24,7 @@ from fastapi.testclient import TestClient
 sys.path.insert(0, str(Path(__file__).resolve().parents[2]))
 
 import app.core.runs as runs_mod                               # noqa: E402
+from app.core import run_label                                 # noqa: E402
 from app.core import archive_record as AR                      # noqa: E402
 from app.core.runs import Ledger, RunSpec                      # noqa: E402
 from app.ui import pipeline as P                               # noqa: E402
@@ -182,8 +183,8 @@ def test_a_marker_left_by_an_earlier_version_neither_locks_nor_shows(root):
     assert _held(root) == "B"
     (root / "archive" / DATE / "submitted.json").write_text("{}")
     html = client.get("/storage").text
-    row = html.split("Weekly report and submissions · Round ", 1)[1]
-    assert f"(as of {DATE})" in row.split("</strong>", 1)[0]
+    row = html.split("Weekly report and submissions · ", 1)[1]
+    assert run_label.text(DATE) in row.split("</strong>", 1)[0]
     assert "data-del-storage" in row.split("</div>", 1)[0]
     assert "Submitted" not in html and "unmarked" not in html
     out = client.get("/output").text

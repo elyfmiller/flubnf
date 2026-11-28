@@ -45,7 +45,7 @@ DOCS_INDEX = (REPO / "docs" / "README.md").read_text()
 MACROS = ("tip", "label", "icon", "icon_tip", "toggletip", "heading",
           "badge", "alert", "empty", "stats", "stat", "reason_button",
           "stepper", "progress", "legend", "fold", "meta", "tag",
-          "namechip")
+          "namechip", "runname")
 ICON_NAMES = ("info", "warning", "error", "check", "clock", "download",
               "upload", "folder", "external", "lock", "calendar", "refresh", "dot",
               "close")
@@ -753,24 +753,31 @@ def test_the_tabs_own_words_keep_their_other_signal():
     assert "border" in md[".md-par"]
 
 
-def test_the_ledger_s_run_label_holds_one_line_only_where_there_is_room():
-    # Storage's run ledger: a run's link takes its own line, so the quiet
-    # facts after it start under it. It holds to one line only where the
-    # ledger is 46rem wide or more (a container query, so it follows the
-    # text size); narrower, the label wraps between its date and its time
-    # and the summary column keeps its room, with no sideways scroll
+def test_the_ledger_s_run_name_wraps_in_its_column():
+    # Storage's run ledger: a run's name (tips.runname) takes its own line,
+    # so its start and the quiet facts after it (research, modified
+    # settings) share the line under it. The name is long ("Data through
+    # Nov 21 · forecasts for weeks ending Nov 28 to Dec 19"), so it wraps
+    # inside its column and the summary column keeps its room, with no
+    # sideways scroll; nothing holds it to one line
     css = (TABS / "storage.css").read_text()
     rules = _rules(css)
     led = _rule(rules, ".st-ledger")
-    assert led["container-type"] == "inline-size"
     assert led["overflow-x"] == "auto"
-    assert [d for s, d in rules if s == ".st-ledger td.st-run > a"] == [
-        {"display": "block"}, {"white-space": "nowrap"}]
-    assert _rules(_at_blocks(css, "@container (min-width:46rem)")) == [
-        (".st-ledger td.st-run > a", {"white-space": "nowrap"})]
-    # the phone's cards keep their own layout (rows as grids, no scroll)
+    assert [d for s, d in rules if s == ".st-ledger td.st-run .uk-run > a"] \
+        == [{"display": "block"}]
+    assert [d for s, d in rules if s == ".st-ledger td.st-run .uk-run-sub"] \
+        == [{"display": "inline", "margin-right": ".6rem"}]
+    assert not [s for s, d in rules
+                if "st-run" in s and d.get("white-space") == "nowrap"]
+    # the phone's cards keep their own layout (rows as grids, no scroll);
+    # the column headings go, a group's round heading stays
     phone = _rules(_at_blocks(css, "@media (max-width:40rem)"))
     assert (".st-ledger", {"overflow-x": "visible"}) in phone
+    assert (".st-ledger thead", {"display": "none"}) in phone
+    assert (".st-ledger tr.st-ghead", {"display": "block",
+                                       "padding-left": ".1rem",
+                                       "padding-right": ".1rem"}) in phone
 
 
 def test_every_kit_class_has_a_rule():

@@ -280,3 +280,18 @@
 {%- set body %}{% if caller is defined %}{{ caller() }}{% else %}{{ tiptext }}{% endif %}{% endset -%}
 <span class="uk-name">{{ text }}{% if body | trim %}{{ tip(id, tip_label or (text | lower), body) }}{% endif %}</span>
 {%- endmacro %}
+
+{# a run's name, the one way every page names a run (shared._run_name):
+   the data it read and the weeks it forecasts, a link to the run when
+   `href` is given. Under it, on a quieter line: a hub run's round unless
+   round=False (a list that groups runs by round says it once, in a
+   <p class="uk-run-sub"> heading), and its start unless when=False (runs
+   of one week read apart by it). A run on your own data has no round.
+   `id` names the words (the link). #}
+{% macro runname(n, href="", when=True, round=True, id="", cls="") -%}
+{%- set sub = ([n.round] if round and n.round else []) + (["run " ~ n.when] if when and n.when else []) -%}
+<span class="uk-run{% if cls %} {{ cls }}{% endif %}">
+{%- if href %}<a href="{{ href }}"{% if id %} id="{{ id }}"{% endif %}>{{ n.text }}</a>{% else %}<span{% if id %} id="{{ id }}"{% endif %}>{{ n.text }}</span>{% endif %}
+{%- if sub %}<span class="uk-run-sub">{{ sub | join(" · ") }}</span>{% endif -%}
+</span>
+{%- endmacro %}

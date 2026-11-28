@@ -29,11 +29,19 @@
  {%- if modified %}{{ tips.badge("warn", "modified settings") }}{% endif %}
  {%- if status and not said_below %}{{ tips.badge(RUN_STATE.get(status, "error"), status) }}{% endif %}
 {% endset %}
-<div class="fc-runhead">{{ tips.heading("Run: " ~ (label or "details"), level=1, after=badges | trim, aside=(rerun if can_rerun and not error else "")) }}</div>
+{# the run by its name (shared._run_name, as every page names it): the
+   data it read and the weeks it forecasts; under it, quieter, a hub run's
+   round and the run's start, which tells apart runs of one week #}
+{% set nm = name if name is defined and name else {} %}
+<div class="fc-runhead">{{ tips.heading("Run: " ~ (nm.text or label or "details"), level=1, after=badges | trim, aside=(rerun if can_rerun and not error else "")) }}
+{%- if nm.text %}
+<p class="uk-run-sub" id="run-sub">{% if nm.round %}{{ nm.round }} · {% endif %}run {{ nm.when }}</p>
+{%- endif %}</div>
 
-{# which run's files Output shows for this date (archive_record.choose):
-   a run Output passes over names the one it shows; a run it shows says
-   so. The rule it picks by is in Output's "i" #}
+{# which run's files Output shows for this run's weeks
+   (archive_record.choose): a run Output passes over names the one it
+   shows; a run it shows says so. The heading names the weeks, so the
+   alert does not again. The rule it picks by is in Output's "i" #}
 {% set sup = run_supersession(run_id) if (status != "running" and not dataset and not files_deleted) else {} %}
 {% if files_deleted %}
 <div class="out-rp-sup" id="run-supersession">{{ tips.alert("info", "This run's files were deleted in Storage.", id="run-deleted", live="") }}</div>
@@ -41,10 +49,10 @@
 <div class="out-rp-sup" id="run-supersession">
 {% if sup.by and not sup.shown %}
  {% set to_run %}<a class="btn quiet" href="/runs/{{ sup.by }}">Open run {{ sup.by_when }}</a>{% endset %}
- {{ tips.alert("info", "Output shows run " ~ sup.by_when ~ " for " ~ sup.ref ~ ".", title="Superseded.", id="run-sup", live="", action=to_run) }}
+ {{ tips.alert("info", "Output shows run " ~ sup.by_when ~ " instead.", title="Superseded.", id="run-sup", live="", action=to_run) }}
 {% elif sup.shown %}
  {% set to_out %}<a class="btn quiet" href="/output#fc-{{ sup.asof }}">Open Output</a>{% endset %}
- {% set said = ("Output shows this run's files for " ~ sup.ref ~ ".") if not sup.by else ("Output shows " ~ (sup.shown | length) ~ " of this run's files for " ~ sup.ref ~ "; its hub-named files there are from run " ~ sup.by_when ~ ".") %}
+ {% set said = "Output shows this run's files." if not sup.by else ("Output shows " ~ (sup.shown | length) ~ " of this run's files; its hub-named files there are from run " ~ sup.by_when ~ ".") %}
  {{ tips.alert("ok", said, id="run-sup", live="", action=to_out) }}
 {% endif %}
 </div>

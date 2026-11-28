@@ -22,6 +22,7 @@ from fastapi.testclient import TestClient
 sys.path.insert(0, str(Path(__file__).resolve().parents[2]))
 
 import app.core.runs as runs_mod                               # noqa: E402
+from app.core import run_label                                 # noqa: E402
 from app.core.runs import Ledger, RunSpec                      # noqa: E402
 from app.ui import server as srv                               # noqa: E402
 from app.ui import shared as ui_shared                         # noqa: E402
@@ -86,7 +87,12 @@ def test_dates_are_listed_newest_first_one_card_each(root):
     html = client.get("/output").text
     assert html.index('id="fc-2098-01-17"') < html.index('id="fc-2098-01-10"') \
         < html.index('id="fc-2098-01-03"')
-    assert "Forecast 2098-01-24" in html and "as of 2098-01-17" in html
+    # each date by its runs' name (the data, the weeks), its round once
+    # under it; no "as of", no bare reference date as a heading
+    assert f">{run_label.text('2098-01-17')}</h2>" in html
+    assert ('<p class="uk-run-sub out-round">Not a FluSight round '
+            '(2098-01-24)</p>') in html
+    assert "as of 2098-01-17" not in html and "Forecast 2098-01-24" not in html
     import re
     from urllib.parse import unquote
     offered = {unquote(m) for m in
@@ -203,7 +209,11 @@ def test_own_data_runs_are_listed_apart_with_their_exports(root):
     block = html.split('id="own-data"', 1)[1]
     assert "Your data" in html.split('id="own-data"', 1)[0][-200:] + block[:200]
     # one group per run: the dataset's name over its as-of
-    assert ">Clinic admissions</h3>" in block and "as of 2098-01-10" in block
+    # the run by its name, with no round (your own data)
+    assert ">Clinic admissions</h3>" in block
+    assert (f'<p class="out-set-run"><span class="uk-run"><a href="/runs/'
+            f'{w.name}">{run_label.text("2098-01-10")}</a>') in block
+    assert "FluSight round" not in block and "as of" not in block
     assert "2098-01-17-FluBNF-Groundhog.csv" in block
     # with runs to list, no empty state
     assert 'id="out-own-empty"' not in html
@@ -294,8 +304,11 @@ def test_each_date_card_names_its_hub_window_in_a_badge(root):
                                                      "Not a FluSight round")
     _run(root, "2098-01-03", [GH])
     card = client.get("/output").text.split('id="fc-2098-01-03"', 1)[1]
-    assert ('<span class="uk-badge-t">Not a FluSight round · record only'
-            '</span>') in card
+    # its round line says it is not a round; the badge says only what
+    # that makes its files
+    assert ('<p class="uk-run-sub out-round">Not a FluSight round '
+            '(2098-01-10)</p>') in card
+    assert '<span class="uk-badge-t">record only</span>' in card
     assert 'id="tip-out-win-1"' not in card
 
 
@@ -312,7 +325,7 @@ def test_a_closed_round_names_its_close_and_an_open_one_the_readers_clock(
         "2026-10-10", today=dt.date(2026, 10, 8)))
     card = client.get("/output").text.split('id="fc-2098-01-03"', 1)[1]
     assert '<span class="uk-badge-t">Closed Wed 2026-10-07</span>' in card
-    assert "data-out-local" not in card.split("</ul>", 1)[0]
+    assert "data-out-local" not in card.split(GH, 1)[0]
     monkeypatch.setattr(O, "_date_status", lambda ref, **k: real(
         "2026-10-10", today=dt.date(2026, 10, 6)))
     page = client.get("/output").text
@@ -340,8 +353,8 @@ def test_a_seasons_older_dates_sit_behind_one_fold(root):
     assert head.count('class="card out-day"') == 1
     assert head.count('class="out-line"') == 3
     assert 'id="fc-2098-01-03"' in fold and 'id="fc-2098-01-03"' not in head
-    assert "1 earlier forecast date<" in fold
-    assert "2098-01-10 to 2098-01-10" in fold
+    assert "1 earlier forecast<" in fold
+    assert "data through Jan 3 to Jan 3, 2098" in fold
     assert html.count("/output/download?path=") == 5
 
 

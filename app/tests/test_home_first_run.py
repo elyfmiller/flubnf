@@ -268,8 +268,10 @@ def test_the_weekly_view_keeps_the_map_first(empty, tmp_path, monkeypatch):
     Start here side by side, the steps plain."""
     _latest(tmp_path, monkeypatch)
     p = _get()
-    assert "2098-01-03" in _text(p.one(lambda e: e.get("tag") == "h2"
-                                       and e["attrs"].get("id") == "h-hm-map"))
+    # the map's run under its heading, by its name: the newest week of the
+    # series it stored (it recorded none) and the weeks after its as-of
+    assert ("Data through Dec 27, 2097 · forecasts for weeks ending Jan 10 "
+            "to Jan 31, 2098") in _text(p.by_id("hm-run"))
     start, outlook = p.card("hm-start"), p.card("hm-outlook")
     assert p.at(outlook) < p.at(start)
     grid = p.one(lambda e: "homeperf" in _cls(e))

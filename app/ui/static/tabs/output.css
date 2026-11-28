@@ -81,19 +81,26 @@ ul.out-cov-list li{margin:.12rem 0;overflow-wrap:anywhere}
    the eye finds */
 .out-day--due{border-color:var(--gold-bright);
   box-shadow:0 0 0 1px var(--gold-bright)}
+/* a date's card heads with its runs' name (tips.runname's words), as
+   written rather than a capitalised title, its round on the quieter line
+   under it */
+.out-runh > h2{text-transform:none;letter-spacing:normal;color:var(--ink);
+  font-size:var(--fs-lead);overflow-wrap:anywhere}
+p.out-round{margin:-.4rem 0 .45rem}
+/* the weekly report's run, beside its heading */
+.out-repname{font-size:var(--fs-label);font-weight:500}
 /* a run writing this date: the badge and the way to its progress */
 .out-live{gap:.4rem;font-size:var(--fs-label);font-weight:600}
 
-/* a past or record date on one line: the reference date and its badge,
-   the as-of, then a download per model; wraps as a whole on a phone */
+/* a past or record date on one line: its runs' name over its round, its
+   badge, then a download per model; wraps as a whole on a phone */
 .out-line{display:flex;flex-wrap:wrap;align-items:center;gap:.35rem 1rem;
   padding:.5rem 0}
 .out-line + .out-line{border-top:1px solid var(--line)}
 .out-line-id{display:inline-flex;flex-wrap:wrap;align-items:center;
   gap:.25rem .5rem;min-width:0}
+.out-line-name{min-width:0;overflow-wrap:anywhere}
 .out-line-ref{font-weight:650}
-.out-line-asof{display:inline-flex;align-items:center;gap:.3em;
-  color:var(--mut);font-size:var(--fs-label)}
 .out-line-dl{display:inline-flex;flex-wrap:wrap;align-items:center;
   gap:.35rem .45rem;margin-left:auto}
 a.btn.out-dl{margin:0;padding:.2rem .6rem;font-size:var(--fs-label)}
@@ -127,6 +134,7 @@ details.out-older > summary:hover{border-style:solid}
 .out-set + .out-set{border-top:1px solid var(--line);margin-top:.35rem;
   padding-top:.7rem}
 .out-set-name{margin:0;font-size:var(--fs-lead);font-weight:700}
+p.out-set-run{margin:.1rem 0 .4rem;font-size:var(--fs-label)}
 .out-set .out-file{padding-left:.9rem;
   border-left:2px solid var(--line)}
 .out-set .out-file + .out-file{border-top:0;margin-top:.2rem}

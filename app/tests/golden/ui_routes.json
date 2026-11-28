@@ -123,6 +123,7 @@
   "relwis_convention_note": "value str",
   "restart_needed": "callable _restart_needed",
   "results_html": "callable results_html",
+  "run_name_for": "callable _run_name_for",
   "run_supersession": "callable run_supersession",
   "running_sha": "callable <lambda>",
   "sandbox_storage": "callable _sandbox_storage_line",
@@ -131,7 +132,8 @@
   "settings_html": "callable settings_html",
   "static_data_uri": "callable _data_uri",
   "validator_command": "callable validator_command",
-  "version_pending": "value str"
+  "version_pending": "value str",
+  "weeks_span": "callable _weeks_span"
  },
  "jinja_filters": {
   "hms": "callable fmt_hms"

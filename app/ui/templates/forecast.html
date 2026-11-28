@@ -41,7 +41,7 @@
   <span class="uk-tt-line"><b>Real-time</b> forecasts from the hub's newest week; <b>Vintage</b> from an archived week, as it stood.</span>
   <span class="uk-tt-line"><b>Forecast date:</b> a Saturday must be an archived week; any other day anchors on the latest archived week before it.</span>
   <span class="uk-tt-line"><b>Not archived:</b> the newest week, read from target-data until archived.</span>
-  <span class="uk-tt-line"><b>Reference date:</b> the anchor week plus 7 days; it names the round, and horizons count from it.</span>
+  <span class="uk-tt-line"><b>FluSight round:</b> the anchor week plus 7 days, the date its files carry.</span>
   <span class="uk-tt-line"><b>All 53:</b> the 50 states, DC, Puerto Rico and US; US is fitted and scored apart.</span>
   {%- if data_issues %}
   <span class="uk-tt-line"><b>Data issues:</b> each state is preset to the recommended choice, for this run only. <a href="/methods#mt-newest">What each choice does</a></span>
@@ -115,18 +115,22 @@
    <script type="application/json" id="fc-future-week">{{ fw.week | tojson }}</script>
    {% endif %}
    {% endif %}
-   {# the round the date answers: its reference date (the anchor week + 7)
-      and the hub's window for it (output._date_status), repainted from
-      GET /api/forecast/week-info as the date changes. Display only #}
-   {% if not dataset %}{% set wi = week_info if week_info is defined and week_info else {} %}
-   <div id="fc-datestats"{% if not wi %} hidden{% endif %}>
-   {% call tips.stats("uk-stats--row fc-datestats", label="The round") %}
-    {{- tips.stat("Reference date", wi.reference or "", id="fc-ref") -}}
-    {%- set win %}<span id="fc-win-slot">{{ tips.badge((wi.badge or ["neutral", ""])[0], (wi.badge or ["neutral", ""])[1], id="fc-win") }}</span>{% endset -%}
-    {{- tips.stat("FluSight window", win, id="fc-win-stat") -}}
-   {% endcall %}
+   {# what the date gives, in the words every run is named by
+      (forecast_aids.week_info, app/core/run_label): the data a run from
+      its anchor week reads and the weeks it forecasts; for the hub, the
+      round it answers (its reference date, the anchor week + 7) as the
+      quieter line under it, with the hub's window for that round
+      (output._date_status; no badge for a week that is not a round, which
+      its line already says). Repainted from GET /api/forecast/week-info as
+      the date changes. Display only: the form posts the date as typed #}
+   {% set wi = week_info if week_info is defined and week_info else {} %}
+   <div class="fc-datestats" id="fc-datestats"{% if not wi %} hidden{% endif %}>
+    <p class="fc-gives" id="fc-label">{{ wi.label or "" }}</p>
+    {% if not dataset %}
+    <p class="uk-run-sub fc-round"><span id="fc-ref">{{ wi.round or "" }}</span>
+     <span id="fc-win-slot"{% if wi.state == "record" %} hidden{% endif %}>{{ tips.badge((wi.badge or ["neutral", ""])[0], (wi.badge or ["neutral", ""])[1], id="fc-win") }}</span></p>
+    {% endif %}
    </div>
-   {% endif %}
    {# the newest week's reporting, shown while the anchor is that week #}
    {# with the Data issues box under it, the line's counts are the box's
       head and the box's rows name each state: no "?" #}
@@ -193,8 +197,9 @@
         }
         return {{ ("No week of this dataset on or before " if dataset else "No archived week on or before ") | tojson }} + day + '.';
       }
-      // the round row: the anchor's reference date and FluSight window
-      // (read-only GET; the newest answer wins)
+      // the round row: what the anchor week gives (the run's name: the
+      // data and the weeks) and, for the hub, its round and FluSight
+      // window (read-only GET; the newest answer wins)
       var roundSeq = 0,
           roundWeek = {{ ((week_info or {}).week if week_info is defined else none) | default(none, true) | tojson }};
       function paintRound(a) {
@@ -207,9 +212,13 @@
           .then(function (r) { return r.json(); })
           .then(function (d) {
             if (seq !== roundSeq) return;
-            if (!d || !d.reference) { row.hidden = true; return; }
-            document.getElementById('fc-ref').textContent = d.reference;
-            var b = document.getElementById('fc-win');
+            if (!d || !d.label) { row.hidden = true; return; }
+            document.getElementById('fc-label').textContent = d.label;
+            var ref = document.getElementById('fc-ref'),
+                slot = document.getElementById('fc-win-slot'),
+                b = document.getElementById('fc-win');
+            if (ref) ref.textContent = d.round || '';
+            if (slot) slot.hidden = d.state === 'record';
             if (b && window.FluBNFUI) FluBNFUI.setBadge(b, d.badge[0], d.badge[1]);
             row.hidden = false;
           })
@@ -857,10 +866,13 @@
   <div class="card fc-latest">
    {% set r = ledger[0] %}
    {{ tips.heading("Latest run", "fc-latest") }}
-   {# the run, its status in a badge (a word and an icon, never color
-      alone); the run page keeps the full record #}
-   <p class="fc-runline"><a href="/runs/{{ r.run_id }}">{{ r.label }}</a>
-    {{ tips.badge(RUN_STATE.get(r.status, "error"), r.status, id="fc-latest-status") }}</p>
+   {# the run by its name (tips.runname: the data it read, the weeks it
+      forecasts, its start, a hub run's round under it), its status in a
+      badge (a word and an icon, never color alone) and a modified run's
+      mark; the run page keeps the full record #}
+   <p class="fc-runline">{% if r.name is defined and r.name and r.name.text %}{{ tips.runname(r.name, href="/runs/" ~ r.run_id, id="fc-latest-run") }}{% else %}<a href="/runs/{{ r.run_id }}" id="fc-latest-run">{{ r.label }}</a>{% endif %}
+    {{ tips.badge(RUN_STATE.get(r.status, "error"), r.status, id="fc-latest-status") }}
+    {%- if r.modified %} {{ tips.badge("warn", "modified settings", id="fc-latest-mod") }}{% endif %}</p>
    {# a run that failed says why where it is read: the first clause, the
       full reason in its tip #}
    {% if r.error and RUN_STATE.get(r.status, "error") == "error" %}
@@ -940,7 +952,7 @@
     settings, and when it is not the newest run the Latest run card shows
     (the badge says why: forecast_aids.fan_run) #}
  {% set fr = aids.fan_run if (aids is defined and aids) else none %}
- {% set fan_meta %}{% if fr %}<ul class="uk-meta" aria-label="The run drawn"><li>{{ tips.icon("clock") }}<span class="uk-sr">Run: </span><a href="/runs/{{ fr.run_id }}" id="fc-fan-run">{{ fr.label }}</a></li></ul>{% if fr.modified %}{{ tips.badge("warn", "modified settings", id="fc-fan-mod") }}{% endif %}{% if fr.earlier %}{{ tips.badge("warn", fr.earlier, id="fc-fan-earlier") }}{% endif %}{% else %}{{ tips.meta([("calendar", fc_date, "Forecast date"), ("clock", "latest stored run")]) }}{% endif %}{% endset %}
+ {% set fan_meta %}{% if fr %}<ul class="uk-meta" aria-label="The run drawn"><li>{{ tips.icon("clock") }}<span class="uk-sr">Run: </span>{{ tips.runname(fr.name, href="/runs/" ~ fr.run_id, id="fc-fan-run") }}</li></ul>{% if fr.modified %}{{ tips.badge("warn", "modified settings", id="fc-fan-mod") }}{% endif %}{% if fr.earlier %}{{ tips.badge("warn", fr.earlier, id="fc-fan-earlier") }}{% endif %}{% elif fc_name is defined and fc_name and fc_name.text %}<ul class="uk-meta" aria-label="The run drawn"><li>{{ tips.icon("clock") }}<span class="uk-sr">Run: </span>{{ tips.runname(fc_name, href=("/runs/" ~ fc_run) if fc_run else "", id="fc-fan-run") }}</li></ul>{% else %}{{ tips.meta([("calendar", fc_date, "Forecast date"), ("clock", "latest stored run")]) }}{% endif %}{% endset %}
  {{ tips.heading("Forecasts", "fc-fans", after=fan_meta) }}
  {# the models shown, the kit's segmented switch (filled by the script
     when the run has more than one model): all of them together, each its

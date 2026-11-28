@@ -112,19 +112,24 @@ def restore_last_form(last_form: dict, default_date) -> bool:
 
 # === The date: reference date and FluSight window ===
 def week_info(week: str, today=None, now=None) -> dict:
-    """{"week", "reference", "badge": [state, words], "state", "text"} for
-    an anchor week (a Saturday): the reference date is a week later, the
-    window the hub's for that round (output._date_status); {} for a
-    non-date."""
+    """{"week", "label", "round", "reference", "badge": [state, words],
+    "state", "text"} for an anchor week: "label" is what a run from it
+    reads and forecasts, in the words every run is named by
+    (app/core/run_label: "Data through Nov 21 · forecasts for weeks ending
+    Nov 28 to Dec 19"); "round" the hub round it answers ("FluSight round
+    2026-11-28", the reference date a week later); the badge the hub's
+    window for that round (output._date_status). {} for a non-date."""
     try:
         w = date.fromisoformat(str(week)[:10])
     except (TypeError, ValueError):
         return {}
+    from app.core import run_label as _rl
     ref = (w + timedelta(days=7)).isoformat()
     from app.ui.routes.output import _date_status
     st = _date_status(ref, today=today, now=now) or {}
     badge = list(st.get("badge") or ("neutral", "window unknown"))
-    return {"week": w.isoformat(), "reference": ref, "badge": badge,
+    return {"week": w.isoformat(), "label": _rl.text(w, today=today),
+            "round": _rl.round_text(w), "reference": ref, "badge": badge,
             "state": st.get("state", ""), "text": st.get("text", "")}
 
 
@@ -178,8 +183,10 @@ _NOT_DRAWN = {"running": "still running", "error": "failed",
 
 
 def fan_run(ledger_rows: list, rid) -> dict | None:
-    """The run the Forecasts card draws: {"run_id", "label", "modified",
-    "earlier"}. modified: it ran with modified model settings (the card
+    """The run the Forecasts card draws: {"run_id", "label", "name",
+    "modified", "earlier"}. label: its one-line name (shared._run_label);
+    name: its parts (shared._run_name, the card's tips.runname).
+    modified: it ran with modified model settings (the card
     badges it). earlier: "" when it is the newest hub row of the ledger,
     else the badge's words, saying why the newest is not drawn (it failed,
     stopped or is still running, is a research run, Storage deleted its
@@ -187,16 +194,17 @@ def fan_run(ledger_rows: list, rid) -> dict | None:
     if not rid:
         return None
     from app.core import runs as _runs
-    from app.ui.shared import _run_label
-    spec = ""
+    from app.ui.shared import _run_label, _run_name
+    spec, outcome = "", None
     for r in ledger_rows or []:
         if r.get("run_id") == rid:
-            spec = r.get("spec") or ""
+            spec, outcome = r.get("spec") or "", r.get("outcome")
             break
     else:
         try:
             row = _runs.Ledger().row(rid)
             spec = (row or {}).get("spec") or ""
+            outcome = (row or {}).get("outcome")
         except Exception:
             spec = ""
     top = (ledger_rows or [None])[0] if ledger_rows else None
@@ -207,7 +215,9 @@ def fan_run(ledger_rows: list, rid) -> dict | None:
                    else "has its files deleted" if top.get("files_deleted")
                    else "has no forecasts"))
         earlier = f"earlier run · newest {why}"
-    return {"run_id": rid, "label": _run_label(rid, spec, tag=False),
+    return {"run_id": rid,
+            "label": _run_label(rid, spec, tag=False, outcome=outcome),
+            "name": _run_name(rid, spec, outcome),
             "modified": _runs.is_modified(spec), "earlier": earlier}
 
 

@@ -234,6 +234,14 @@ The short name of the formula or figure beside it: an equation's caption, as pla
 <p class="eqnote md-eqnote">The curve the filter bends each week.</p>
 ```
 
+### Run name: `tips.runname(n, href="", when=True, round=True, id="", cls="")`
+
+The one way a page names a run: the data it read and the weeks it forecasts ("Data through Nov 21 · forecasts for weeks ending Nov 28 to Dec 19"), from `shared._run_name` (`app/core/run_label.py`), never a bare forecast or reference date. With `href` the words link to the run. Under them, on a quieter line, a FluSight hub run's round ("FluSight round 2026-11-28") and the run's start ("run 11-25 22:12:51"), so runs of one week read apart: `when=False` drops the start where only one run can be meant, and a list that groups runs by round says the round once in the group's heading (`<p class="uk-run-sub">`) and passes `round=False`. A run on your own data never has a round. File names keep the reference date.
+
+```jinja
+{{ tips.runname(r.name, href="/runs/" ~ r.run_id) }}
+```
+
 ### Segmented switch: `<div class="uk-seg" role="group" aria-label="...">`
 
 One choice among a few, joined in one outline: the chart's view, the map's model, a horizon. The children are buttons whose `aria-pressed` says which is on (a script flips it), or links with the current choice a `<span aria-current="true">`, or, where the switch shows one of several panels and its arrow keys move among them (the Sandbox's diagram views), tabs in a `role="tablist"` whose `aria-selected` says which shows; the choice is filled as a primary button is. Keyboard focus is a ring inside the segment (the switch clips anything outside it): gold, and on the chosen segment its own text color, since the fill is that gold; every ring holds 3:1 on its segment in every theme and mode. It has no macro because its buttons are the page's own (ids, handlers); the kit only draws them.

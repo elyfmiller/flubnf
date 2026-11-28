@@ -24,6 +24,7 @@ from fastapi.testclient import TestClient
 sys.path.insert(0, str(Path(__file__).resolve().parents[2]))
 
 import app.core.runs as runs_mod                               # noqa: E402
+from app.core import run_label                                 # noqa: E402
 from app.core import archive_record as AR                      # noqa: E402
 from app.core.runs import Ledger, RunSpec                      # noqa: E402
 from app.ui import pipeline as P                               # noqa: E402
@@ -107,9 +108,9 @@ def test_the_weeks_archived_report_stays_reachable_beside_a_newer_few_state_run(
     assert f'href="/runs/{ohio}/report"' in card
     assert _shown_file() == "whole"
     # and the week's archived report, the whole set's, is in the picker
-    ref = O._reference_date(DATE)
     assert (f'<label for="archreport">Archived weeks</label>' in html)
-    assert f'<option value="{DATE}">{ref} (as of {DATE})</option>' in html
+    assert (f'<option value="{DATE}">{run_label.text(DATE)}</option>'
+            in html)
     assert "Earlier weeks" not in html
     assert "REPORT whole" in client.get(f"/output/report?date={DATE}").text
 
