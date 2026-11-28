@@ -6,6 +6,24 @@ pages (TEAM.md, team/README.md, FLUSIGHT-2026-27.md). Works on `dev`.
 
 ## Now
 
+- 2026-11-27 (night): two pull requests into `dev`, not merged: #20 (the
+  weekly report's red tail figures follow the run's own cap; the cap is
+  read as the run recorded it, and new runs record it in the report
+  bundle) and #21 (the newest real-time run on Home, the default report,
+  the model pages and Output's card whatever its settings, marked when
+  modified; such weeks archived; Output's Archived weeks reach the weeks
+  2026-10-31 to 11-14 that were never archived). They merge together
+  without conflicts. Both pass the full suite on macOS under
+  JavaScriptCore and node apart from the 23 known failures.
+  - Found from the owner's console (on `main`): Output's archived-week
+    "Open" and Home's Weekly report opened the 2026-10-31 round's report,
+    because every run since was made with modified settings.
+  - To archive the four unarchived weeks for good (optional once #21 is
+    in: the picker reaches them), run `pipeline._archive_run` on
+    20261104T115729-e5c9d5 (2026-10-31), 20261112T081320-cf3385
+    (11-07), 20261118T122436-8089f5 (11-14) and 20261125T221251-f9f105
+    (11-21) with the console idle.
+
 - 2026-11-27 (later): #16 to #19 are merged into `dev` in order, each
   with a merge commit (#16 5862d429, #17 9d7537bf, #18 41149bb7, #19
   445aba63). The merged tree is the one tested below; the model-name
@@ -1185,6 +1203,15 @@ pages (TEAM.md, team/README.md, FLUSIGHT-2026-27.md). Works on `dev`.
 
 ## Decided
 
+- 2026-11-27, later (Ely):
+  - **Red tail figures in the weekly report follow the run's own cap**
+    (#20): a capped run's figures are over the level its cap multiplies
+    and red above its n; a run with no cap keeps 15x over the three-week
+    mean.
+  - **Home, the default report, the model pages and the archive show the
+    newest real-time run whatever its settings** (#21), marked "modified
+    settings"; a week's archive of hub-named files is never replaced by
+    -modified ones.
 - 2026-11-27 (Ely):
   - **Saved figures** from the Forecast chart are always light, whatever
     the console's theme.
@@ -1638,10 +1665,6 @@ pages (TEAM.md, team/README.md, FLUSIGHT-2026-27.md). Works on `dev`.
 ## Open
 
 - For Ely (2026-11-27), from #16 to #19; each shipped as described:
-  - **Red tail figures in the weekly report** are above a fixed 15x
-    (report_grid.TAIL_X), while recent rounds were capped at 10x, so a
-    figure between 10x and 15x was capped but is not red. Should red
-    follow the run's own cap?
   - **A tooltip holds a link** (the glossary's), an exception to the
     kit's rule; the alternative is to make every glossary-linked "?" a
     toggletip.
