@@ -16,7 +16,9 @@ run on your own data never names a round. The four weeks are the forecasts'
 
 Dates read "Nov 21" while every date of a label falls in this year; when
 one does not, every date carries its year, written once at the end of a
-range whose two ends share it ("Nov 22 to Dec 13, 2025").
+range whose two ends share it ("Nov 22 to Dec 13, 2025"). The weekly
+report takes "this year" as its as-of's (report_v2.report_dates), so a
+stored report reads the same whatever day it is rebuilt.
 
 "Data through" is the newest week of data the run read: what it recorded
 (its outcome's "data_source" "newest_week"); for a run from before that

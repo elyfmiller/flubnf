@@ -206,10 +206,11 @@ def test_bundle_stores_the_asof_and_the_true_reference_date(tmp_path):
     report_v2.render_bundle(b, tmp_path / "again.html")
     again = (tmp_path / "again.html").read_text()
     # the header names the run by its data and weeks, its round under them
-    words = run_label.text("2098-01-03")
+    words = run_label.text("2098-01-03", today="2098-01-03")
     assert f"{words}</span><span class=\"uk-run-sub\">" in again
     assert "Not a FluSight round (2098-01-10)" in again
-    assert f"<title>FluBNF weekly report: {words}</title>" in again
+    assert (f"<title>FluBNF weekly report: {words} (Not a FluSight round, "
+            "2098-01-10)</title>") in again
 
 
 def test_report_names_the_runs_recorded_build_like_the_run_page(tmp_path,
@@ -257,5 +258,5 @@ def test_an_older_bundles_reference_date_still_reads_as_its_asof(tmp_path):
            "details": {}, "national": {"summary_html": ""}}
     assert report_v2.bundle_asof(old) == "2098-01-03"
     html = report_v2.render_bundle(old, tmp_path / "r.html").read_text()
-    assert run_label.text("2098-01-03") in html
+    assert run_label.text("2098-01-03", today="2098-01-03") in html
     assert "Not a FluSight round (2098-01-10)" in html

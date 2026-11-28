@@ -1029,14 +1029,19 @@ def _md(iso: str) -> str:
     return f"{d.strftime('%b')} {d.day}"
 
 
-def report_dates(asof: str, data_through=None, today=None) -> dict:
+def report_dates(asof: str, data_through=None) -> dict:
     """The report's dates from its as-of: the reference date (as-of + 7,
     submit.hub_reference_date's rule), the four target weeks (horizons 0
     to 3: the reference date and the three Saturdays after it), and the
     header's words, the run's name as every page says it
     (app/core/run_label): "line" ("Data through Nov 21 · forecasts for
     weeks ending Nov 28 to Dec 19", from the week the run recorded reading
-    when given) and "round" ("FluSight round 2026-11-28")."""
+    when given), "round" ("FluSight round 2026-11-28") and "title" (the
+    page title's: the line, then the round, which carries the year).
+
+    The line's year rule is taken against the as-of, not the day the page
+    is built: a stored or shared report reads the same whenever it is
+    rebuilt, its dates carrying their years only when they cross one."""
     from datetime import date as _date, timedelta as _td
     from app.core import run_label
     try:
@@ -1045,9 +1050,14 @@ def report_dates(asof: str, data_through=None, today=None) -> dict:
         return {}
     ref = a + _td(days=7)
     targets = [ref + _td(days=7 * h) for h in range(4)]
+    line = run_label.text(a, data_through, today=a)
+    rnd = run_label.round_text(a)
+    # the title's round in brackets after the line; a week the hub takes no
+    # files for says so with its reference date, in one pair of brackets
+    note = (rnd if run_label.is_round(ref.isoformat())
+            else f"Not a {run_label.ROUND_WORDS}, {ref.isoformat()}")
     return {"asof": a, "ref": ref.isoformat(), "targets": targets,
-            "line": run_label.text(a, data_through, today=today),
-            "round": run_label.round_text(a)}
+            "line": line, "round": rnd, "title": f"{line} ({note})"}
 
 
 def _run_time(seconds) -> str:
@@ -1452,7 +1462,7 @@ def build_report(asof: str, state_cards: dict, state_details: dict,
 
     html = f"""<!doctype html><html lang="en"><head><meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1">
-<title>FluBNF weekly report: {_esc(week_line)}</title>
+<title>FluBNF weekly report: {_esc(dates.get("title") or week_line)}</title>
 {theme_boot_script()}
 {plotly_js}
 {page_style()}{grid_style}</head><body>
@@ -1730,12 +1740,13 @@ def render_bundle(bundle: dict, out_path: Path) -> Path:
 # ---------------------------------------------------------- 6. serve time
 def builder_sources_mtime() -> float:
     """Newest mtime of the weekly report's builder sources (this module,
-    html_page, scoring, usmap, nau.css, charts.js, and the UI kit it
-    inlines: ui-kit.css, tips.js, _tips.html, the faces and the marks): a
-    stored report.html older than this is stale."""
+    html_page, scoring, usmap, run_label (the header's words), nau.css,
+    charts.js, and the UI kit it inlines: ui-kit.css, tips.js, _tips.html,
+    the faces and the marks): a stored report.html older than this is
+    stale."""
     srcs = [Path(__file__).with_name(m + ".py")
             for m in ("report_v2", "report_grid", "html_page", "scoring",
-                      "us_national", "usmap")]
+                      "us_national", "usmap", "run_label")]
     kit = [html_page.KIT_CSS, html_page.KIT_JS, html_page.TIPS_TPL,
            html_page.FONTS_CSS, html_page.LOGOS_CSS]
     return max([0.0] + [p.stat().st_mtime
