@@ -320,6 +320,24 @@ def _times(x: float) -> str:
     return f"{x:.1f}\u00d7" if round(x, 1) < 10 else f"{x:.0f}\u00d7"
 
 
+def _tail_times(x: float, over: bool) -> str:
+    """A model's own tail figure (_times), never reading against the red
+    line: `over` is decided on the unrounded ratio (tail_ratios), so where
+    the whole number would read as TAIL_X itself or on its wrong side
+    (15.18 and 14.58 both "15x", one red) the figure gets one decimal
+    (15.2x, 14.6x), more only while a red one still reads as no more than
+    TAIL_X (15.04x). Every other figure prints as _times does."""
+    s = _times(x)
+    v = float(s[:-1])
+    if v != TAIL_X and (v > TAIL_X) == over:
+        return s
+    for d in range(1, 16):
+        s = f"{x:.{d}f}\u00d7"
+        if not over or float(s[:-1]) > TAIL_X:
+            break
+    return s
+
+
 def flag_key(when: str = "the last target week") -> str:
     """The flag words, explained once per page. `when`: the last target
     week ("Oct 31"). The tail figures have their own line (tail_key)."""
@@ -583,17 +601,20 @@ def _latest(p: dict) -> str:
 
 def tail_words(m: str, x: float, over: bool, filed) -> str:
     """One model's figure spelled out (M-E12's form): "97.5% at h3 = 24x
-    the last three weeks' average (name), above 15x, submitted 11x"."""
-    return (f"97.5% at h3 = {_times(x)} the last three weeks' average "
-            f"({_SHORT.get(m, m)})"
+    the last three weeks' average (name), above 15x, submitted 11x", the
+    model's own figure as the token beside the name prints it
+    (_tail_times: 15.2x above 15x, 14.6x below)."""
+    return (f"97.5% at h3 = {_tail_times(x, over)} the last three weeks' "
+            f"average ({_SHORT.get(m, m)})"
             + (f", above {TAIL_X:.0f}\u00d7" if over else "")
             + (f", submitted {_times(filed)}" if filed is not None else ""))
 
 
 def _tail(p: dict, colors: dict) -> str:
     """Beside the name: each model's horizon-3 97.5% quantile over the
-    recent level (tail_ratios), after its colour's dot, red above TAIL_X,
-    then the submitted file's where the cap moved it. Each figure carries
+    recent level (tail_ratios), after its colour's dot, red above TAIL_X
+    (_tail_times: the figure never reads against that line), then the
+    submitted file's where the cap moved it. Each figure carries
     its words for assistive tech (tail_words; the marks are hidden from
     it) and the hover says them all. A legend switch hides its model's
     figure. "" without a level."""
@@ -614,7 +635,8 @@ def _tail(p: dict, colors: dict) -> str:
                     f'<i aria-hidden="true" style="'
                     f'background:{model_color(m, colors)}"></i>'
                     f'<span class="{"g-tail-over" if over else "g-tail-own"}"'
-                    f' aria-hidden="true">{_times(x)}</span>{then}</span>')
+                    f' aria-hidden="true">{_tail_times(x, over)}</span>'
+                    f'{then}</span>')
         why.append(words)
     return (f'<span class="g-tail" title="{_html.escape("; ".join(why))}">'
             '<span class="g-tail-l" aria-hidden="true">h3 97.5%</span>'

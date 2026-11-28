@@ -469,6 +469,42 @@ def test_over_fifteen_times_reads_red():
     assert G.tail_ratios({"observed": [], "models": {}}) == {}
 
 
+def test_a_figure_beside_the_red_line_never_reads_against_it():
+    """Red is decided on the unrounded ratio, so a whole number that would
+    read as 15x (15.18 red, 14.58 not, in one report) or on the wrong side
+    of it gets one decimal, in the token and in its words alike; more only
+    while a red one still reads as 15.0. Every other figure is as it was."""
+    import html
+    name = G._SHORT["analogue"]
+
+    def shown(q975):                                # level 50
+        p = _wide(q975=q975, obs=50.0)
+        x, over, filed = G.tail_ratios(p)["analogue"]
+        tail = G._tail(p, COLORS)
+        cls = "g-tail-over" if over else "g-tail-own"
+        tok = re.search(rf'<span class="{cls}" aria-hidden="true">'
+                        r'([^<]+)</span>', tail).group(1)
+        words = G.tail_words("analogue", x, over, filed)
+        assert f'<span class="uk-sr">{html.escape(words)}</span>' in tail
+        return over, tok, words
+
+    over, tok, words = shown(759.0)                 # 15.18x
+    assert over and tok == "15.2×"
+    assert words == (f"97.5% at h3 = 15.2× the last three weeks' "
+                     f"average ({name}), above 15×")
+    over, tok, words = shown(729.0)                 # 14.58x
+    assert not over and tok == "14.6×"
+    assert words == (f"97.5% at h3 = 14.6× the last three weeks' "
+                     f"average ({name})")
+    # on the line itself, and just above it
+    assert shown(750.0)[:2] == (False, "15.0×")
+    assert shown(752.0)[:2] == (True, "15.04×")
+    # away from the line the whole numbers stay
+    assert shown(820.0)[:2] == (True, "16×")   # 16.4x
+    assert shown(680.0)[:2] == (False, "14×")  # 13.6x
+    assert shown(1200.0)[:2] == (True, "24×")
+
+
 # ---------------------- before and after the cap, per location (2026-10-28)
 
 def _filed(tmp_path, panel, model="pf", hub="NAU_PyBNF-OracleSIHRS-modified",
