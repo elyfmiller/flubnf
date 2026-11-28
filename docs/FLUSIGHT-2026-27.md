@@ -136,9 +136,13 @@ The 2026-27 season is the Oracle SIHRS model's first prospective test.
    the panels worth a second look (a horizon-3 median below the latest
    count, or two models outside each other's 95% bands). Beside each name,
    each model's own horizon-3 97.5% quantile (before any upper-tail cap)
-   over the mean of the last three weeks, red above 15x, then the
-   submitted file's where the cap moved it (55x -> 15x); one line under
-   the legend says so. The report opens on what was submitted. The
+   as a multiple of a recent level, then the submitted file's where the
+   cap moved it (21x -> 10x). On a run with a cap the level is the one
+   that model's cap multiplies (Upper-tail level: the three-week mean,
+   the last week or the larger) and red is above the run's own cap (10x),
+   so red marks what the cap moved; on a run with no cap it is the mean
+   of the last three weeks and red is above 15x. One line under the
+   legend says which. The report opens on what was submitted. The
    "Charts: Submitted / Before cap" switch at the top shows every
    location's own forecast instead, to review how much the output stage
    narrows the width; a location the cap changed carries a "cap applied"

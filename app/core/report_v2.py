@@ -1191,7 +1191,7 @@ def build_report(asof: str, state_cards: dict, state_details: dict,
                  cards_model: str = "",
                  fitted_fips=None, national_in_run=None,
                  gap_fips=None, no_forecast=None, grid=None,
-                 data_through: str = "") -> Path:
+                 data_through: str = "", tail_cap=None) -> Path:
     """asof: the run's as-of date (the page names the run by it, as every
     page does: the data through it and the target weeks, then its round).
     data_through: the newest week the run recorded reading, when the bundle
@@ -1216,7 +1216,10 @@ def build_report(asof: str, state_cards: dict, state_details: dict,
     a bare card is "no forecast". no_forecast: model -> {fips: reason} for
     in-scope states that have data but no forecast from that model.
     grid: the bundle's "grid" (report_grid), drawn as the "All locations"
-    pages under the detail sections; None (older bundles): no such pages."""
+    pages under the detail sections; None (older bundles): no such pages.
+    tail_cap: the run's own upper-tail cap (report_grid.cap_settings), which
+    every tail figure and the "cap applied" lines are read against; None:
+    no cap, the figures against report_grid.TAIL_X."""
     # build-time SVG map (usmap): plotly geo fetches its geometry from a CDN
     svg_map = usmap.svg_map
     cards_by_fips = {c["fips"]: c for c in state_cards.values() if "fips" in c}
@@ -1341,7 +1344,7 @@ def build_report(asof: str, state_cards: dict, state_details: dict,
         # the link only where this detail has a before-the-cap version
         cap_link, cap_line = report_grid.cap_parts(
             dict(grid_panels.get(a) or {}, data_key=a),
-            f"st-{a}") if d.get("fan_before") else ("", "")
+            f"st-{a}", tail_cap) if d.get("fan_before") else ("", "")
         fan_head = str(kit.heading("Weekly admissions", id=f"fan-{a}",
                                    level=3, aside=Markup(cap_link))) + cap_line
         who = MODEL_SHORT.get(d.get("model") or "pf", "Oracle SIHRS")
@@ -1373,7 +1376,7 @@ def build_report(asof: str, state_cards: dict, state_details: dict,
     if national.get("fan"):
         cap_link, cap_line = report_grid.cap_parts(
             dict(grid_panels.get("US") or {}, data_key="US"),
-            "st-US") if national.get("fan_before") else ("", "")
+            "st-US", tail_cap) if national.get("fan_before") else ("", "")
         nat_head = str(kit.heading("Weekly admissions", id="fan-US",
                                    level=3, aside=Markup(cap_link))) + cap_line
         nat_fan = _ba_pair("US", _html(national["fan"], lazy=True),
@@ -1461,12 +1464,13 @@ def build_report(asof: str, state_cards: dict, state_details: dict,
     if national.get("fan"):
         have_detail.add("US")
     grid_section = report_grid.grid_html(grid, MEMBER_COLORS,
-                                         details=have_detail)
+                                         details=have_detail, cap=tail_cap)
     grid_style = (f"<style>{report_grid.grid_css()}</style>"
                   if grid_section else "")
     # the national forecast, larger, under the map (the first printed
     # page's spare height)
-    us_feature = report_grid.us_feature_html(grid, MEMBER_COLORS)
+    us_feature = report_grid.us_feature_html(grid, MEMBER_COLORS,
+                                             cap=tail_cap)
 
     dates = report_dates(asof, data_through)
     week_line = dates.get("line") or f"week of {asof}"
@@ -1708,6 +1712,9 @@ def render_bundle(bundle: dict, out_path: Path) -> Path:
     # a location opens on the file and switches to the model's own
     submitted = report_grid.submitted_fans(Path(out_path).parent)
     grid = report_grid.attach_submitted(bundle.get("grid"), submitted)
+    # the run's own upper-tail cap, from its knobs.json there too (None for
+    # a shipped run): the tail figures go red above it
+    tail_cap = report_grid.cap_settings(Path(out_path).parent)
     by_key = {p.get("key"): p for p in (grid or {}).get("panels") or []}
     details = {}
     for key, d in (bundle.get("details") or {}).items():
@@ -1785,7 +1792,8 @@ def render_bundle(bundle: dict, out_path: Path) -> Path:
         # v8 field (absent: no "All locations" pages)
         grid=grid,
         # the week the run recorded reading (absent: its as-of)
-        data_through=str(bundle.get("data_through") or ""))
+        data_through=str(bundle.get("data_through") or ""),
+        tail_cap=tail_cap)
 
 
 # ---------------------------------------------------------- 6. serve time

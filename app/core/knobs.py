@@ -1095,6 +1095,21 @@ def write_record(path, spec) -> bool:
     return True
 
 
+def read_record(folder) -> dict:
+    """The knob values a run folder's knobs.json records (write_record's
+    "values", the JSON form; an archived week carries the file with its
+    report). {} for a shipped run (no file) and for a file that does not
+    read: never raises."""
+    from pathlib import Path
+    try:
+        body = json.loads((Path(folder) / "knobs.json").read_text(
+            encoding="utf-8"))
+    except (OSError, ValueError, TypeError):
+        return {}
+    vals = body.get("values") if isinstance(body, Mapping) else None
+    return dict(vals) if isinstance(vals, Mapping) else {}
+
+
 def legacy_settings_knobs(settings: Mapping) -> dict:
     """The non-default knob set a retrospective's run record implies: its
     recorded knobs, or, for a record from before the registry, what its
